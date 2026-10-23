@@ -72,6 +72,57 @@ export function fraccionPonderada(corte, pesos = PESOS_MINORISTA) {
   return total > 0 ? hecho / total : null;
 }
 
+// Ajuste por lluvia de Minorista (referencial). Del análisis de octubre 2026 (sucursales
+// sin CENTRAL, comparando cada día con el promedio de su día de la semana): los días con
+// lluvia ≥ 5 mm vendieron 0,89 de lo normal y los días secos 1,08.
+export const AJUSTE_LLUVIA = { umbralMm: 5, factorLluvia: 0.89, factorSeco: 1.08 };
+
+// Proyección de Minorista con el pronóstico de lluvia para los días que faltan.
+// pronostico: [{ fecha: 'YYYY-MM-DD', lluvia }]. Los días sin pronóstico quedan como
+// en la ponderada. Devuelve null en modo manual o si todavía no hay venta ponderable.
+export function proyeccionLluvia(data, pronostico = [], ajuste = AJUSTE_LLUVIA) {
+  const c = parseCorte(data.corte);
+  if (!c || data.dias?.modo === 'manual') return null;
+  const pesos = data.pesos || PESOS_MINORISTA;
+  const porWd = Object.fromEntries(DIAS_SEMANA.map((d) => [d.wd, Number(pesos[d.k]) || 0]));
+  const porFecha = new Map(pronostico.map((p) => [p.fecha, p]));
+  const ultimo = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
+  const peso = (d) => porWd[new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay()];
+
+  let hecho = 0;
+  for (let d = 1; d <= c.d; d++) hecho += peso(d);
+  if (hecho <= 0) return null;
+  const real = Number(data.real?.min) || 0;
+  const ritmo = real / hecho; // venta por punto de peso
+
+  let resto = 0, restoBase = 0, conPronostico = 0, conLluvia = 0;
+  for (let d = c.d + 1; d <= ultimo; d++) {
+    const fecha = `${c.y}-${String(c.m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const p = porFecha.get(fecha);
+    let f = 1;
+    if (p) {
+      conPronostico++;
+      const llueve = p.lluvia >= ajuste.umbralMm;
+      if (llueve) conLluvia++;
+      f = llueve ? ajuste.factorLluvia : ajuste.factorSeco;
+    }
+    resto += peso(d) * ritmo * f;
+    restoBase += peso(d) * ritmo;
+  }
+  const proyeccion = real + resto;
+  const base = real + restoBase;
+  const objetivo = Number(data.obj?.min) || 0;
+  return {
+    proyeccion,
+    proyeccionPct: objetivo > 0 ? proyeccion / objetivo : 0,
+    base,
+    variacion: base > 0 ? proyeccion / base - 1 : 0,
+    diasRestantes: ultimo - c.d,
+    conPronostico,
+    conLluvia,
+  };
+}
+
 // Días que usa la proyección de una unidad: los del calendario (automático)
 // o los que cargó el administrador (manual). En automático, una unidad ponderada
 // agrega la fracción del mes transcurrida según el peso de cada día.

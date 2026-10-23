@@ -319,6 +319,11 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 ### 12.7 Fineboats referencial
 - Fineboats mantiene la proyección lineal, pero marcada como **Referencial** en todo el dashboard, porque sus ventas no siguen un ritmo diario. Igual suma en la proyección total.
 
+### 12.8 Clima y Minorista ajustada por lluvia (referencial)
+- `GET /api/clima` (cualquier usuario): pronóstico diario del área central (Asunción, -25,30 / -57,60) desde **MET Norway** (`api.met.no`, gratuito también para uso comercial; pide User-Agent identificado). Se guarda en Blobs (`clima`) y se renueva cada 3 h; si falla, sirve el último guardado.
+- Dashboard: tarjeta "Clima para lo que queda del mes" con un recuadro por día (máxima, lluvia, peso del día en el mes de Minorista), los viernes a domingo resaltados y los días con lluvia ≥ 5 mm en azul.
+- Proyección de Minorista **ajustada por lluvia**, marcada **Referencial**: a lo que falta del mes (según la ponderación) se le aplica ×0,89 en días con lluvia ≥ 5 mm y ×1,08 en días secos; días sin pronóstico quedan igual. Factores del análisis de octubre 2026 (lluvia vs venta por sucursal, cada día contra el promedio de su día de la semana, 19 días sin lunes: r = −0,50). No reemplaza la proyección principal ni suma en el total. No aplica con días en manual.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

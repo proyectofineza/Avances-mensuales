@@ -93,6 +93,25 @@ assert.equal(man.unidades.min.proyeccion, 400e6 / 20 * 26);
 const sab = calcularReporte({ ...base, corte: '2026-10-03' });
 assert.ok(sab.unidades.min.proyeccion < 400e6 / 3 * 31);
 
+// Proyección de Minorista ajustada por lluvia (referencial)
+import { proyeccionLluvia } from '../public/js/calc.js';
+const sinPron = proyeccionLluvia(base, []);
+assert.ok(Math.abs(sinPron.proyeccion - r.unidades.min.proyeccion) < 1e-3); // sin pronóstico = ponderada
+assert.equal(sinPron.diasRestantes, 9);
+const pron = [
+  { fecha: '2026-10-23', lluvia: 16 }, { fecha: '2026-10-24', lluvia: 12 },
+  ...[25, 26, 27, 28, 29, 30, 31].map((d) => ({ fecha: `2026-10-${d}`, lluvia: 0 })),
+];
+const conLluvia = proyeccionLluvia(base, pron);
+assert.equal(conLluvia.conPronostico, 9);
+assert.equal(conLluvia.conLluvia, 2);
+assert.ok(Math.abs(conLluvia.base - r.unidades.min.proyeccion) < 1e-3);
+const todoLluvia = proyeccionLluvia(base, pron.map((p) => ({ ...p, lluvia: 20 })));
+assert.ok(todoLluvia.proyeccion < sinPron.proyeccion);
+const restoPond = sinPron.proyeccion - 400e6;
+assert.ok(Math.abs(todoLluvia.proyeccion - (400e6 + restoPond * 0.89)) < 1);
+assert.equal(proyeccionLluvia({ ...base, dias: { modo: 'manual' } }, pron), null); // manual: no aplica
+
 // Normalización y validación
 const n = normalizarReporte({ corte: '2026-10-22', obj: { may: '5' }, dias: { modo: 'manual', fgl: { mes: 40, curso: -2 } } });
 assert.equal(n.obj.may, 5);

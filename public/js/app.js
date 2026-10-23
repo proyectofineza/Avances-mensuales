@@ -1,7 +1,7 @@
 import * as API from './api.js';
 import {
-  UNIDADES, IDS, DIAS_SEMANA, PESOS_MINORISTA,
-  calcularReporte, estado, diasOperativos, diasUnidad, normalizarReporte, validarReporte,
+  UNIDADES, IDS, DIAS_SEMANA, PESOS_MINORISTA, AJUSTE_LLUVIA, parseCorte,
+  calcularReporte, estado, diasOperativos, diasUnidad, normalizarReporte, validarReporte, proyeccionLluvia,
   mesAnterior, mismoMesAnioAnterior, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, fmtDiaMes,
   fmtFechaHora, nombreMes, fmtCI, hoyAsuncion,
 } from './calc.js';
@@ -533,10 +533,24 @@ function renderUsers() {
 // ---------- Dashboard ----------
 
 let dashKey = null;
+let climaPedido = 0;
+
+// El pronóstico se pide como mucho cada 30 min (el servidor lo guarda 3 h).
+async function cargarClima() {
+  if (state.clima && Date.now() - climaPedido < 30 * 60e3) return false;
+  climaPedido = Date.now();
+  try {
+    state.clima = await API.getClima();
+  } catch {
+    state.clima = { error: true, dias: [] };
+  }
+  return true;
+}
 
 async function refreshDashboard(force = false) {
   try {
-    const dash = await API.getDashboard();
+    const [dash, climaNuevo] = await Promise.all([API.getDashboard(), cargarClima()]);
+    if (climaNuevo) force = true;
     state.published = dash.published;
     state.history = dash.history;
     const key = dash.published ? dash.published.publicadoEn : 'none';
@@ -792,6 +806,97 @@ function proyeccionHtml(r, corte) {
     </section>`;
 }
 
+// Íconos simples del clima (SVG, sin emojis) según el símbolo de MET Norway.
+function iconoClima(simbolo = '') {
+  const nube = '<path d="M8 19h9a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 12.2 3.5 3.5 0 0 0 8 19z" fill="#CBD5E1" stroke="#64748B" stroke-width="1.2"/>';
+  const sol = '<circle cx="12" cy="12" r="4.5" fill="#FBBF24"/><g stroke="#F59E0B" stroke-width="1.6" stroke-linecap="round"><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></g>';
+  const gotas = '<g stroke="#2563EB" stroke-width="1.6" stroke-linecap="round"><path d="M9 21l-1 2M13 21l-1 2M17 21l-1 2"/></g>';
+  const rayo = '<path d="M13 18l-3 4h3l-2 3" fill="none" stroke="#F59E0B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>';
+  let cuerpo, titulo;
+  if (/thunder/.test(simbolo)) { cuerpo = nube + rayo; titulo = 'Tormenta'; }
+  else if (/rain|sleet|snow|showers/.test(simbolo)) { cuerpo = nube + gotas; titulo = 'Lluvia'; }
+  else if (/partlycloudy|fair/.test(simbolo)) { cuerpo = '<g transform="translate(-3 -4) scale(.85)">' + sol + '</g>' + nube; titulo = 'Parcialmente nublado'; }
+  else if (/cloudy|fog/.test(simbolo)) { cuerpo = nube; titulo = 'Nublado'; }
+  else { cuerpo = sol; titulo = 'Despejado'; }
+  return `<svg class="clima-ico" viewBox="0 0 24 26" role="img" aria-label="${titulo}"><title>${titulo}</title>${cuerpo}</svg>`;
+}
+
+const DIA_CORTO = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+// Clima de lo que queda del mes y proyección de Minorista ajustada por lluvia (referencial).
+function climaHtml(r, p) {
+  const c = parseCorte(p.corte);
+  const ultimo = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
+  if (c.d >= ultimo) return '';
+  const clima = state.clima || { dias: [] };
+  const porFecha = new Map((clima.dias || []).map((d) => [d.fecha, d]));
+  const pesos = p.pesos || PESOS_MINORISTA;
+  const pesoWd = Object.fromEntries(DIAS_SEMANA.map((d) => [d.wd, Number(pesos[d.k]) || 0]));
+  let pesoMes = 0;
+  for (let d = 1; d <= ultimo; d++) pesoMes += pesoWd[new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay()];
+
+  const tiles = [];
+  for (let d = c.d + 1; d <= ultimo; d++) {
+    const fecha = `${c.y}-${String(c.m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const wd = new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay();
+    const x = porFecha.get(fecha);
+    const fuerte = wd === 5 || wd === 6 || wd === 0;
+    const llueve = x && x.lluvia >= AJUSTE_LLUVIA.umbralMm;
+    const peso = pesoMes > 0 ? pesoWd[wd] / pesoMes : 0;
+    tiles.push(`
+      <div class="clima-dia${fuerte ? ' fuerte' : ''}${llueve ? ' llueve' : ''}">
+        <span class="cd-fecha">${DIA_CORTO[wd]} ${d}</span>
+        ${x ? iconoClima(llueve && !/rain|thunder|showers/.test(x.simbolo || '') ? 'rain' : x.simbolo) : '<span class="clima-ico sin">—</span>'}
+        <span class="cd-temp">${x ? `${Math.round(x.tmax)}°` : 'Sin dato'}</span>
+        <span class="cd-lluvia">${x ? `${String(x.lluvia).replace('.', ',')} mm` : ''}</span>
+        <span class="cd-peso" title="Parte de la venta del mes de Minorista que se espera este día">${fmtPct(peso)} del mes</span>
+      </div>`);
+  }
+
+  const aj = proyeccionLluvia(p, clima.dias || []);
+  const min = r.unidades.min;
+  let resumen;
+  if (!aj) {
+    resumen = '<p class="muted small" style="margin:12px 0 0">El ajuste por lluvia solo se calcula con días en automático.</p>';
+  } else if (!aj.conPronostico) {
+    resumen = `<p class="muted small" style="margin:12px 0 0">${clima.error ? 'No se pudo obtener el pronóstico del clima.' : 'Todavía no hay pronóstico para los días que quedan.'}</p>`;
+  } else {
+    const e = estado(aj.proyeccionPct);
+    resumen = `
+      <div class="clima-cmp">
+        <div>
+          <span>Minorista · ponderada</span>
+          <strong>${fmtMillones(min.proyeccion)}</strong>
+          <small>${fmtPct(min.proyeccionPct)} del objetivo</small>
+        </div>
+        <div class="ajustada">
+          <span>Ajustada por lluvia <span class="tag-ref">Referencial</span></span>
+          <strong>${fmtMillones(aj.proyeccion)}</strong>
+          <small><b class="pu-${e.clase}">${fmtPct(aj.proyeccionPct)}</b> del objetivo · ${varHtml(aj.variacion)} vs ponderada</small>
+        </div>
+        <div>
+          <span>Días que quedan</span>
+          <strong>${aj.diasRestantes}</strong>
+          <small>${aj.conLluvia} con lluvia · ${aj.conPronostico - aj.conLluvia} secos${aj.conPronostico < aj.diasRestantes ? ` · ${aj.diasRestantes - aj.conPronostico} sin pronóstico` : ''}</small>
+        </div>
+      </div>`;
+  }
+
+  const actualizado = clima.actualizado ? ` · actualizado ${fmtFechaHora(clima.actualizado)}${clima.vencido ? ' (sin conexión, último disponible)' : ''}` : '';
+  return `
+    <div class="card clima-card">
+      <div class="card-head" style="margin-bottom:0">
+        <div>
+          <h2>Clima para lo que queda del mes</h2>
+          <p class="muted small">Área central (Asunción) · pronóstico MET Norway${actualizado}</p>
+        </div>
+      </div>
+      ${resumen}
+      <div class="clima-dias">${tiles.join('')}</div>
+      <p class="nota">Recuadro marcado: viernes a domingo, los días fuertes de Minorista. En azul: lluvia de ${AJUSTE_LLUVIA.umbralMm} mm o más. El ajuste usa lo observado en octubre 2026: con lluvia se vendió ${fmtPct(AJUSTE_LLUVIA.factorLluvia)} de lo normal para ese día y en días secos ${fmtPct(AJUSTE_LLUVIA.factorSeco)}. Es orientativo: se va a afinar con más meses de datos.</p>
+    </div>`;
+}
+
 function renderDashboard() {
   const el = $('dash');
   const p = state.published;
@@ -857,6 +962,8 @@ function renderDashboard() {
       <span><i class="sw" style="background:#D1D5DB"></i>Proyección al cierre (tono claro)</span>
       <span><i class="sw target"></i>Objetivo (100%)</span>
     </div>
+
+    ${climaHtml(r, p)}
 
     <div class="dash-bottom">
       ${evolucionHtml()}

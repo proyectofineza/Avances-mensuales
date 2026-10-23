@@ -24,6 +24,7 @@ export const getDashboard = () => api('GET', 'dashboard');
 export const getDraft = () => api('GET', 'draft');
 export const saveDraft = (draft) => api('PUT', 'draft', draft);
 export const publish = (avisarTeams) => api('POST', 'publish', { avisarTeams });
+export const getClima = () => api('GET', 'clima');
 export const getTeams = () => api('GET', 'teams');
 export const testTeams = () => api('POST', 'teams');
 export const getUsers = () => api('GET', 'users');

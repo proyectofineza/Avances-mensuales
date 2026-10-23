@@ -401,6 +401,28 @@ tfoot td { border-top: 2px solid var(--border); border-bottom: 0; font-weight: 6
   .pu-name small { display: none; }
 }
 
+/* Clima */
+.clima-card { margin-bottom: 16px; }
+.clima-cmp { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; }
+.clima-cmp > div { background: var(--bg); border-radius: var(--r-ctl); padding: 12px 14px; display: grid; gap: 2px; }
+.clima-cmp > div.ajustada { background: #EFF6FF; border: 1px solid #BFD0F7; }
+.clima-cmp span { font-size: 12px; color: var(--text-2); }
+.clima-cmp strong { font-size: 22px; font-weight: 700; }
+.clima-cmp small { font-size: 12px; color: var(--text-2); }
+.clima-dias { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.clima-dia {
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px 6px;
+  display: grid; justify-items: center; gap: 2px; text-align: center; background: var(--surface);
+}
+.clima-dia.fuerte { border: 2px solid #F59E0B; padding: 9px 5px; }
+.clima-dia.llueve { background: #EFF6FF; }
+.cd-fecha { font-size: 13px; font-weight: 600; }
+.clima-ico { width: 30px; height: 32px; }
+.clima-ico.sin { display: grid; place-items: center; color: var(--text-2); }
+.cd-temp { font-size: 16px; font-weight: 600; }
+.cd-lluvia { font-size: 12px; color: #1D4ED8; min-height: 16px; }
+.cd-peso { font-size: 11px; color: var(--text-2); }
+
 /* Cargar ventas: días y comparativa */
 .main-col { display: grid; gap: 20px; min-width: 0; }
 .dias-input { width: 80px; min-width: 0; }
