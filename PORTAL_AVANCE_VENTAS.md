@@ -336,6 +336,14 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Admin · Usuarios: columna **Última conexión** ("recién", "hace 3 h", "ayer 14:20" o fecha y hora; en naranja si pasaron más de 7 días; "Nunca ingresó"), con la cantidad de ingresos y el detalle al pasar el mouse.
 - Al eliminar un usuario se borra también su registro de actividad.
 
+### 12.11 Ventas por sucursal (Baratote Minorista)
+- Menú **Sucursales** (admin y comerciales). Los comerciales ven las pestañas Dashboard · Sucursales.
+- Carga (solo admin): archivo CSV o filas pegadas de Excel con **sucursal, fecha, monto**, con o sin títulos. Acepta tabulado, `;` o `,`; fechas `AAAA-MM-DD`, `DD/MM/AAAA`, `DD/MM/AA`, número de serie de Excel, o solo el día eligiendo el mes (formato `SUCURSAL, Suma de MONTO, Día`). Montos en guaraníes con o sin puntos. Se revisa antes de guardar y se listan las líneas con problemas.
+- Guardado en Blobs por mes: `sucursales/AAAA-MM` → `{ mes, filas: [{ sucursal, fecha, monto }], actualizado, por }`, índice `sucursales/index`. Al cargar, se **reemplazan completas las fechas incluidas** y se conserva el resto del mes. El admin puede borrar un mes.
+- Vista: venta Minorista del mes, sucursales con venta, promedio por día y mejor día; gráfico de venta por día (viernes a domingo resaltados); peso por día de la semana del mes; ranking de sucursales con buscador y detalle día por día al tocar una fila.
+- **CENTRAL** (Mayorista) se muestra aparte y no suma en Minorista (`NO_MINORISTA` en `public/js/sucursales.js`).
+- La forma de fila `{ sucursal, fecha, monto }` es la que se va a migrar a una tabla en Supabase (etapa 5), donde se sumarán artículo, proveedor y marca.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

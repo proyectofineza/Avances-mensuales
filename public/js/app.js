@@ -5,6 +5,7 @@ import {
   mesAnterior, mismoMesAnioAnterior, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, fmtDiaMes,
   fmtFechaHora, nombreMes, fmtCI, hoyAsuncion,
 } from './calc.js';
+import { leerPlanilla, resumirMes, NO_MINORISTA } from './sucursales.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -41,7 +42,8 @@ async function init() {
   }
   $('user-name').textContent = state.user.nombre;
   $('user-rol').textContent = ROL_TEXTO[state.user.rol] || state.user.rol;
-  $('tabs').hidden = !isAdmin();
+  $('tabs').hidden = false;
+  document.querySelectorAll('.solo-admin').forEach((el) => { el.hidden = !isAdmin(); });
 
   $('btn-salir').addEventListener('click', async () => {
     try { await API.logout(); } finally { location.replace('index.html'); }
@@ -52,6 +54,7 @@ async function init() {
     setupVentas();
     setupUsuarios();
   }
+  setupSucursales();
 
   window.addEventListener('hashchange', route);
   document.addEventListener('visibilitychange', () => {
@@ -66,20 +69,24 @@ async function init() {
 
 const isAdmin = () => state.user?.rol === 'admin';
 
+const VISTAS = ['ventas', 'usuarios', 'dashboard', 'sucursales'];
+
 function currentView() {
   const h = location.hash.slice(1);
-  if (!isAdmin()) return 'dashboard';
-  return ['ventas', 'usuarios', 'dashboard'].includes(h) ? h : 'ventas';
+  const permitidas = isAdmin() ? VISTAS : ['dashboard', 'sucursales'];
+  if (permitidas.includes(h)) return h;
+  return isAdmin() ? 'ventas' : 'dashboard';
 }
 
 function route() {
   const view = currentView();
   if (location.hash.slice(1) !== view) history.replaceState(null, '', `#${view}`);
-  for (const v of ['ventas', 'usuarios', 'dashboard']) $(`view-${v}`).hidden = v !== view;
+  for (const v of VISTAS) $(`view-${v}`).hidden = v !== view;
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === view));
   if (view === 'ventas') loadVentas();
   if (view === 'usuarios') loadUsuarios();
   if (view === 'dashboard') refreshDashboard(true);
+  if (view === 'sucursales') loadSucursales();
 }
 
 function showNotice(text, isError = false) {
@@ -604,6 +611,270 @@ function renderUsers() {
         <td class="r">${acciones}</td>
       </tr>`;
   }).join('');
+}
+
+// ---------- Ventas por sucursal ----------
+
+const suc = { datos: null, lectura: null, abierta: null, filtro: '' };
+const fechaDeMes = (mes) => `${mes}-01`;
+
+function setupSucursales() {
+  $('suc-mes').addEventListener('change', () => loadSucursales($('suc-mes').value));
+  $('suc-contenido').addEventListener('input', (e) => {
+    if (e.target.id !== 'suc-buscar') return;
+    suc.filtro = e.target.value;
+    renderRanking();
+  });
+  $('suc-contenido').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-suc]');
+    if (!tr) return;
+    suc.abierta = suc.abierta === tr.dataset.suc ? null : tr.dataset.suc;
+    renderRanking();
+  });
+  if (!isAdmin()) return;
+
+  $('suc-mes-carga').value = hoyAsuncion().slice(0, 7);
+  $('suc-archivo').addEventListener('change', async () => {
+    const archivo = $('suc-archivo').files[0];
+    if (!archivo) return;
+    $('suc-texto').value = await leerArchivo(archivo);
+    revisarPlanilla();
+  });
+  $('suc-leer').addEventListener('click', revisarPlanilla);
+  $('suc-mes-carga').addEventListener('change', () => { if (suc.lectura || $('suc-texto').value) revisarPlanilla(); });
+  $('suc-texto').addEventListener('input', () => {
+    suc.lectura = null;
+    $('suc-guardar').disabled = true;
+    $('suc-preview').textContent = '';
+  });
+  $('suc-guardar').addEventListener('click', guardarPlanilla);
+  $('suc-borrar-mes').addEventListener('click', borrarMesSucursales);
+}
+
+// Los CSV de Excel en Windows suelen venir en Windows-1252 (Ñ, tildes): si UTF-8 falla, se reintenta.
+async function leerArchivo(archivo) {
+  const buf = await archivo.arrayBuffer();
+  const utf8 = new TextDecoder('utf-8').decode(buf);
+  return utf8.includes('�') ? new TextDecoder('windows-1252').decode(buf) : utf8;
+}
+
+function revisarPlanilla() {
+  const msgEl = $('suc-msg');
+  msgEl.hidden = true;
+  const texto = $('suc-texto').value;
+  if (!texto.trim()) { showMsg(msgEl, 'Subí un archivo o pegá las filas de la planilla.', false); return; }
+  let r = leerPlanilla(texto);
+  if (r.necesitaMes) {
+    $('suc-mes-carga-box').hidden = false;
+    r = leerPlanilla(texto, $('suc-mes-carga').value);
+  } else {
+    $('suc-mes-carga-box').hidden = true;
+  }
+  suc.lectura = r;
+
+  const errEl = $('suc-errores');
+  errEl.hidden = !r.errores.length;
+  errEl.innerHTML = r.errores.length
+    ? `<li><b>${r.errores.length} línea${r.errores.length === 1 ? '' : 's'} con problemas (no se van a guardar):</b></li>`
+      + r.errores.slice(0, 10).map((e) => `<li>Línea ${e.linea}: ${esc(e.motivo)}</li>`).join('')
+      + (r.errores.length > 10 ? `<li>… y ${r.errores.length - 10} más.</li>` : '')
+    : '';
+
+  if (!r.filas.length) {
+    $('suc-guardar').disabled = true;
+    $('suc-preview').textContent = '';
+    return;
+  }
+  const fechas = r.filas.map((f) => f.fecha).sort();
+  const sucursales = new Set(r.filas.map((f) => f.sucursal)).size;
+  const total = r.filas.reduce((s, f) => s + f.monto, 0);
+  const meses = [...new Set(fechas.map((f) => f.slice(0, 7)))].map((m) => nombreMes(fechaDeMes(m))).join(', ');
+  $('suc-preview').textContent = `${fmtMiles(r.filas.length)} filas · ${sucursales} sucursales · del ${fmtFecha(fechas[0])} al ${fmtFecha(fechas.at(-1))} (${meses}) · total ${fmtMillones(total)}`;
+  $('suc-guardar').disabled = false;
+}
+
+async function guardarPlanilla() {
+  const msgEl = $('suc-msg');
+  if (!suc.lectura?.filas.length) return;
+  const btn = $('suc-guardar');
+  btn.disabled = true;
+  try {
+    const res = await API.saveSucursales(suc.lectura.filas);
+    const partes = res.resumen.map((x) => `${nombreMes(fechaDeMes(x.mes))}: ${fmtMiles(x.filas)} filas de ${x.dias} día${x.dias === 1 ? '' : 's'}${x.reemplazadas ? ` (se reemplazaron ${fmtMiles(x.reemplazadas)} filas anteriores de esos días)` : ''}`);
+    showMsg(msgEl, `Planilla guardada. ${partes.join(' · ')}.`, true);
+    suc.lectura = null;
+    $('suc-texto').value = '';
+    $('suc-archivo').value = '';
+    $('suc-preview').textContent = '';
+    $('suc-errores').hidden = true;
+    await loadSucursales(res.resumen.at(-1).mes);
+  } catch (err) {
+    btn.disabled = false;
+    handleError(err, msgEl);
+  }
+}
+
+async function borrarMesSucursales() {
+  const mes = suc.datos?.mes;
+  if (!mes || !confirm(`¿Borrar todas las ventas por sucursal de ${nombreMes(fechaDeMes(mes))}? No se puede deshacer.`)) return;
+  try {
+    await API.deleteSucursalesMes(mes);
+    showMsg($('suc-msg'), `Se borraron las ventas de ${nombreMes(fechaDeMes(mes))}.`, true);
+    await loadSucursales();
+  } catch (err) {
+    handleError(err, $('suc-msg'));
+  }
+}
+
+async function loadSucursales(mes) {
+  try {
+    suc.datos = await API.getSucursales(mes);
+    suc.abierta = null;
+    const sel = $('suc-mes');
+    sel.innerHTML = suc.datos.meses.length
+      ? [...suc.datos.meses].reverse().map((m) => `<option value="${m}"${m === suc.datos.mes ? ' selected' : ''}>${nombreMes(fechaDeMes(m))}</option>`).join('')
+      : '<option value="">Sin datos</option>';
+    if (isAdmin()) $('suc-borrar-mes').hidden = !suc.datos.mes;
+    renderSucursales();
+  } catch (err) {
+    handleError(err);
+  }
+}
+
+function renderSucursales() {
+  const d = suc.datos;
+  const el = $('suc-contenido');
+  if (!d?.mes || !d.filas.length) {
+    $('suc-sub').textContent = '';
+    el.innerHTML = `<div class="card empty">Todavía no hay ventas por sucursal cargadas.${isAdmin() ? ' Cargá la primera planilla arriba.' : ''}</div>`;
+    return;
+  }
+  const res = resumirMes(d.filas);
+  suc.res = res;
+  $('suc-sub').textContent = `${nombreMes(fechaDeMes(d.mes))} · actualizado ${fmtFechaHora(d.actualizado)}${d.por ? ' por ' + d.por : ''}`;
+
+  const c = parseCorte(fechaDeMes(d.mes));
+  const ultimo = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
+  const porDia = new Map(res.dias.map((x) => [x.fecha, x.monto]));
+  const max = Math.max(...res.dias.map((x) => x.monto), 1);
+  const mejor = res.dias.reduce((a, b) => (b.monto > a.monto ? b : a), res.dias[0]);
+  const diasCargados = res.dias.length;
+
+  // Columnas por día; viernes a domingo en el color fuerte.
+  const cols = [], labels = [];
+  for (let dd = 1; dd <= ultimo; dd++) {
+    const fecha = `${d.mes}-${String(dd).padStart(2, '0')}`;
+    const v = porDia.get(fecha);
+    const wd = new Date(Date.UTC(c.y, c.m - 1, dd)).getUTCDay();
+    const finde = wd === 5 || wd === 6 || wd === 0;
+    cols.push(`<div class="sd-col" title="${DIA_CORTO[wd]} ${fmtFecha(fecha)}: ${v === undefined ? 'sin datos' : fmtMillones(v)}">
+      <div style="height:${v ? ((v / max) * 100).toFixed(1) : 0}%;background:${finde ? COLOR.min.fuerte : '#FCD9A0'}"></div></div>`);
+    labels.push(`<span class="${finde ? 'finde' : ''}">${dd}</span>`);
+  }
+
+  // Peso de cada día de la semana en este mes (promedio por día, sobre la semana).
+  const suma = Array(7).fill(0), cuenta = Array(7).fill(0);
+  for (const x of res.dias) {
+    const wd = new Date(`${x.fecha}T12:00:00Z`).getUTCDay();
+    suma[wd] += x.monto;
+    cuenta[wd]++;
+  }
+  const prom = suma.map((s, i) => (cuenta[i] ? s / cuenta[i] : 0));
+  const semana = prom.reduce((a, b) => a + b, 0);
+  const pesos = DIAS_SEMANA.map((x) => `
+    <div class="sp-dia${x.wd === 5 || x.wd === 6 || x.wd === 0 ? ' finde' : ''}">
+      <span>${x.nombre.slice(0, 3)}</span>
+      <strong>${semana ? fmtPct(prom[x.wd] / semana) : '—'}</strong>
+      <small>${cuenta[x.wd]} día${cuenta[x.wd] === 1 ? '' : 's'}</small>
+    </div>`).join('');
+  const finde = semana ? (prom[5] + prom[6] + prom[0]) / semana : 0;
+
+  el.innerHTML = `
+    <div class="kpis">
+      <div class="card kpi" style="border-top:4px solid ${COLOR.min.fuerte}">
+        <span class="kpi-label">Venta Minorista del mes</span>
+        <span class="kpi-value">${fmtMillones(res.total)}</span>
+        <span class="kpi-sub">${diasCargados} día${diasCargados === 1 ? '' : 's'} cargado${diasCargados === 1 ? '' : 's'} · hasta el ${fmtFecha(res.dias.at(-1).fecha)}</span>
+      </div>
+      <div class="card kpi" style="border-top:4px solid #1D4ED8">
+        <span class="kpi-label">Sucursales con venta</span>
+        <span class="kpi-value">${res.sucursales.length}</span>
+        <span class="kpi-sub">Promedio ${fmtMillones(res.total / Math.max(res.sucursales.length, 1))} por sucursal</span>
+      </div>
+      <div class="card kpi" style="border-top:4px solid #0D9488">
+        <span class="kpi-label">Promedio por día</span>
+        <span class="kpi-value">${fmtMillones(res.total / Math.max(diasCargados, 1))}</span>
+        <span class="kpi-sub">Mejor día: ${DIA_CORTO[new Date(`${mejor.fecha}T12:00:00Z`).getUTCDay()]} ${fmtFecha(mejor.fecha)} · ${fmtMillones(mejor.monto)}</span>
+      </div>
+    </div>
+    ${res.totalExcluido ? `<p class="muted small" style="margin:-8px 0 16px">${NO_MINORISTA.join(', ')} (Mayorista) no se incluye: ${fmtMillones(res.totalExcluido)} en el mes.</p>` : ''}
+
+    <div class="dash-bottom">
+      <div class="card">
+        <h2>Venta por día</h2>
+        <p class="muted small" style="margin:4px 0 0">Total de las sucursales cada día. Viernes a domingo en naranja fuerte.</p>
+        <div class="sd-chart">${cols.join('')}</div>
+        <div class="sd-labels">${labels.join('')}</div>
+      </div>
+      <div class="card">
+        <h2>Peso por día de la semana</h2>
+        <p class="muted small" style="margin:4px 0 0">Qué parte de la venta semanal se hace cada día, según este mes. Viernes a domingo: <b>${fmtPct(finde)}</b>.</p>
+        <div class="sp-grid">${pesos}</div>
+        ${isAdmin() ? '<p class="nota">Podés usar estos valores en Cargar ventas → Peso por día de la semana · Minorista.</p>' : ''}
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-head">
+        <div>
+          <h2>Ranking de sucursales</h2>
+          <p class="muted small">Tocá una sucursal para ver su venta día por día.</p>
+        </div>
+        <input id="suc-buscar" class="suc-buscar" type="search" placeholder="Buscar sucursal" value="${esc(suc.filtro)}" aria-label="Buscar sucursal">
+      </div>
+      <div class="table-wrap" id="suc-ranking"></div>
+    </div>`;
+  renderRanking();
+}
+
+function renderRanking() {
+  const res = suc.res;
+  if (!res) return;
+  const q = suc.filtro.trim().toUpperCase();
+  const lista = res.sucursales.map((s, i) => ({ ...s, puesto: i + 1 })).filter((s) => !q || s.sucursal.includes(q));
+  const top = res.sucursales[0]?.total || 1;
+  const filas = lista.map((s) => {
+    const abierta = suc.abierta === s.sucursal;
+    let detalle = '';
+    if (abierta) {
+      const maxDia = Math.max(...Object.values(s.dias), 1);
+      detalle = `<tr class="suc-detalle"><td colspan="7"><div class="sdd">${res.dias.map((x) => {
+        const v = s.dias[x.fecha] || 0;
+        const wd = new Date(`${x.fecha}T12:00:00Z`).getUTCDay();
+        const finde = wd === 5 || wd === 6 || wd === 0;
+        return `<div class="sdd-dia" title="${DIA_CORTO[wd]} ${fmtFecha(x.fecha)}: ${fmtMillones(v)}">
+          <div class="sdd-bar"><div style="height:${((v / maxDia) * 100).toFixed(1)}%;background:${finde ? COLOR.min.fuerte : '#FCD9A0'}"></div></div>
+          <span class="${finde ? 'finde' : ''}">${Number(x.fecha.slice(8))}</span>
+          <small>${v ? fmtM1(v) : '0'}</small>
+        </div>`;
+      }).join('')}</div><p class="muted small" style="margin:6px 0 0">Montos en millones por día.</p></td></tr>`;
+    }
+    return `
+      <tr data-suc="${esc(s.sucursal)}" class="suc-row${abierta ? ' abierta' : ''}">
+        <td class="muted">${s.puesto}</td>
+        <td><b>${esc(s.sucursal)}</b></td>
+        <td class="r">${fmtMillones(s.total)}</td>
+        <td class="r">${fmtPct(s.total / (res.total || 1))}</td>
+        <td class="r">${fmtMillones(s.total / Math.max(s.diasConVenta, 1))}</td>
+        <td class="r">${s.diasConVenta}</td>
+        <td style="min-width:120px"><div class="rank-bar"><div style="width:${((s.total / top) * 100).toFixed(1)}%"></div></div></td>
+      </tr>${detalle}`;
+  }).join('');
+  $('suc-ranking').innerHTML = `
+    <table class="suc-tabla">
+      <thead><tr><th>#</th><th>Sucursal</th><th class="r">Venta del mes</th><th class="r">% del total</th><th class="r">Prom./día</th><th class="r">Días</th><th></th></tr></thead>
+      <tbody>${filas || '<tr><td colspan="7" class="muted">No hay sucursales con ese nombre.</td></tr>'}</tbody>
+    </table>`;
 }
 
 // ---------- Dashboard ----------

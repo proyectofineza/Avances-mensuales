@@ -410,6 +410,47 @@ tfoot td { border-top: 2px solid var(--border); border-bottom: 0; font-weight: 6
   .pu-name small { display: none; }
 }
 
+/* Ventas por sucursal */
+.suc-mes { display: grid; gap: 4px; min-width: 180px; }
+.suc-mes label { margin: 0; }
+.suc-carga-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.suc-carga-grid input[type="file"] { height: auto; padding: 10px; }
+textarea {
+  font: inherit; font-size: 13px; font-family: ui-monospace, 'IBM Plex Mono', monospace;
+  width: 100%; padding: 10px 12px; border: 1px solid var(--input-border); border-radius: var(--r-ctl);
+  resize: vertical; background: #fff; color: var(--text);
+}
+.suc-errores { margin: 12px 0 0; padding: 12px 14px 12px 30px; background: #FDF0DC; color: #92400E; border-radius: var(--r-ctl); font-size: 13px; }
+.suc-errores li:first-child { list-style: none; margin-left: -16px; margin-bottom: 4px; }
+.sd-chart { height: 180px; display: flex; align-items: flex-end; gap: 3px; margin-top: 16px; border-bottom: 1px solid var(--border); }
+.sd-col { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 0; }
+.sd-col > div { width: 100%; border-radius: 3px 3px 0 0; }
+.sd-labels { display: flex; gap: 3px; margin-top: 4px; }
+.sd-labels span { flex: 1; text-align: center; font-size: 10px; color: var(--text-2); min-width: 0; }
+.sd-labels .finde, .sdd .finde { color: #B45309; font-weight: 700; }
+.sp-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 16px; }
+.sp-dia { background: var(--bg); border-radius: var(--r-ctl); padding: 10px 4px; display: grid; justify-items: center; gap: 2px; }
+.sp-dia.finde { background: #FEF3C7; }
+.sp-dia span { font-size: 12px; color: var(--text-2); }
+.sp-dia strong { font-size: 15px; }
+.sp-dia small { font-size: 11px; color: var(--text-2); }
+.suc-buscar { width: 220px; height: 40px; }
+.suc-row { cursor: pointer; }
+.suc-row:hover td, .suc-row.abierta td { background: #F7F8FA; }
+.suc-detalle td { background: #F7F8FA; }
+.rank-bar { height: 8px; background: var(--track); border-radius: 999px; overflow: hidden; }
+.rank-bar div { height: 100%; background: #F59E0B; border-radius: 999px; }
+.sdd { display: flex; gap: 3px; overflow-x: auto; padding-bottom: 4px; }
+.sdd-dia { flex: 1 0 34px; display: grid; justify-items: center; gap: 2px; font-size: 11px; }
+.sdd-bar { width: 100%; height: 70px; display: flex; align-items: flex-end; }
+.sdd-bar div { width: 100%; border-radius: 3px 3px 0 0; }
+.sdd-dia small { font-size: 10px; color: var(--text-2); }
+@media (max-width: 760px) {
+  .suc-buscar { width: 100%; }
+  .sp-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .sd-chart, .sd-labels { gap: 1px; }
+}
+
 /* Clima */
 .clima-card { margin-bottom: 16px; }
 .clima-cmp { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; }

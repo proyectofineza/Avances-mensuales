@@ -22,9 +22,10 @@
     <div class="header-inner">
       <img class="header-logo" src="img/fineza.png" alt="Fineza">
       <nav class="tabs" id="tabs" hidden>
-        <a class="tab" href="#ventas" data-view="ventas">Cargar ventas</a>
-        <a class="tab" href="#usuarios" data-view="usuarios">Usuarios<span class="tab-badge" id="tab-badge" hidden></span></a>
+        <a class="tab solo-admin" href="#ventas" data-view="ventas">Cargar ventas</a>
+        <a class="tab solo-admin" href="#usuarios" data-view="usuarios">Usuarios<span class="tab-badge" id="tab-badge" hidden></span></a>
         <a class="tab" href="#dashboard" data-view="dashboard">Dashboard</a>
+        <a class="tab" href="#sucursales" data-view="sucursales">Sucursales</a>
       </nav>
       <div class="user-box">
         <span class="user-name" id="user-name"></span>
@@ -253,6 +254,52 @@
     <!-- Dashboard -->
     <section id="view-dashboard" hidden>
       <div id="dash"></div>
+    </section>
+
+    <!-- Ventas por sucursal (Baratote Minorista) -->
+    <section id="view-sucursales" hidden>
+      <div class="card-head dash-head">
+        <div>
+          <h1>Ventas por sucursal · Baratote Minorista</h1>
+          <p class="muted" id="suc-sub"></p>
+        </div>
+        <div class="suc-mes">
+          <label for="suc-mes" class="small">Mes</label>
+          <select id="suc-mes"></select>
+        </div>
+      </div>
+
+      <div class="card solo-admin" id="suc-carga" style="margin-bottom:20px">
+        <div class="card-head">
+          <div>
+            <h2>Cargar planilla</h2>
+            <p class="muted small">Columnas: <b>sucursal</b>, <b>fecha</b> y <b>monto</b>. Subí un archivo CSV o pegá las filas copiadas de Excel (con o sin títulos). Si cargás un día que ya estaba, se reemplaza ese día completo.</p>
+          </div>
+          <button class="btn btn-sm btn-danger" type="button" id="suc-borrar-mes" hidden>Borrar este mes</button>
+        </div>
+        <div class="suc-carga-grid">
+          <div>
+            <label for="suc-archivo">Archivo CSV</label>
+            <input type="file" id="suc-archivo" accept=".csv,.txt,text/csv,text/plain">
+          </div>
+          <div id="suc-mes-carga-box" hidden>
+            <label for="suc-mes-carga">Mes de la planilla</label>
+            <input type="month" id="suc-mes-carga">
+            <p class="muted small" style="margin:4px 0 0">La planilla trae solo el día: indicá a qué mes corresponde.</p>
+          </div>
+        </div>
+        <label for="suc-texto" style="margin-top:14px">O pegá desde Excel</label>
+        <textarea id="suc-texto" rows="5" placeholder="Sucursal&#9;Fecha&#9;Monto&#10;LUQUE 1&#9;22/10/2026&#9;3.033.467"></textarea>
+        <div class="actions">
+          <button class="btn" type="button" id="suc-leer">Revisar planilla</button>
+          <button class="btn btn-primary" type="button" id="suc-guardar" disabled>Guardar</button>
+          <span class="muted small" id="suc-preview"></span>
+        </div>
+        <div class="alert form-msg" id="suc-msg" hidden></div>
+        <ul class="suc-errores" id="suc-errores" hidden></ul>
+      </div>
+
+      <div id="suc-contenido"></div>
     </section>
   </main>
 
