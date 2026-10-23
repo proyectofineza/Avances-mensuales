@@ -95,11 +95,22 @@ let savePromise = Promise.resolve();
 
 function setupVentas() {
   const body = $('ventas-body');
-  body.innerHTML = UNIDADES.map((u) => `
-    <tr>
+  // Baratote va como fila de unidad (suma, solo lectura) y sus canales debajo.
+  const filaBaratote = `
+    <tr class="grupo-row">
+      <td>
+        <div class="unidad-nombre">Baratote</div>
+        <div class="unidad-meta">Unidad de negocio · ${CAL_CORTO['lun-dom']}</div>
+      </td>
+      <td class="r" id="bar-obj"></td>
+      <td class="r" id="bar-real"></td>
+      <td class="r" id="av-bar"></td>
+    </tr>`;
+  body.innerHTML = UNIDADES.map((u) => `${u.id === 'may' ? filaBaratote : ''}
+    <tr${u.grupo ? ' class="sub-row"' : ''}>
       <td>
         <div class="unidad-nombre">${esc(u.nombre)}</div>
-        <div class="unidad-meta">${u.grupo ? esc(u.grupo) + ' · ' : ''}${CAL_CORTO[u.calendario]}</div>
+        <div class="unidad-meta">${u.grupo ? 'Canal · ' : ''}${CAL_CORTO[u.calendario]}</div>
       </td>
       <td class="r"><input class="num" inputmode="numeric" data-campo="obj" data-id="${u.id}" aria-label="Objetivo mensual ${esc(u.nombre)}"></td>
       <td class="r"><input class="num" inputmode="numeric" data-campo="real" data-id="${u.id}" aria-label="Venta acumulada ${esc(u.nombre)}"></td>
@@ -177,6 +188,11 @@ function updateVentasCalc() {
     totObj += o; totReal += r;
     $(`av-${id}`).textContent = o > 0 ? fmtPct(r / o) : '—';
   }
+  const barObj = (d.obj.may || 0) + (d.obj.min || 0);
+  const barReal = (d.real.may || 0) + (d.real.min || 0);
+  $('bar-obj').textContent = fmtMiles(barObj);
+  $('bar-real').textContent = fmtMiles(barReal);
+  $('av-bar').textContent = barObj > 0 ? fmtPct(barReal / barObj) : '—';
   $('tot-obj').textContent = fmtMiles(totObj);
   $('tot-real').textContent = fmtMiles(totReal);
   $('tot-av').textContent = totObj > 0 ? fmtPct(totReal / totObj) : '—';
@@ -466,12 +482,19 @@ function renderDashboard() {
   }).join('');
   const labels = evol.map((e) => `<span>${fmtDiaMes(e.corte)}</span>`).join('');
 
-  const ritmoRows = UNIDADES.map((x) => {
-    const c = u[x.id];
+  // Baratote como unidad y sus canales como subcategorías.
+  const filasRitmo = [
+    { nombre: 'Baratote', c: r.baratote, clase: 'grupo-row' },
+    { nombre: 'Mayorista', c: u.may, clase: 'sub-row' },
+    { nombre: 'Minorista', c: u.min, clase: 'sub-row' },
+    { nombre: 'Fineglass', c: u.fgl, clase: '' },
+    { nombre: 'Fineboats', c: u.fbt, clase: '' },
+  ];
+  const ritmoRows = filasRitmo.map(({ nombre, c, clase }) => {
     const alto = c.necesarioDia > c.promedioDia;
     return `
-      <tr>
-        <td>${esc(x.nombre)}${x.grupo ? `<div class="unidad-meta">${esc(x.grupo)}</div>` : ''}</td>
+      <tr${clase ? ` class="${clase}"` : ''}>
+        <td>${esc(nombre)}</td>
         <td class="r">${fmtMiles(c.faltante / 1e6)}</td>
         <td class="r">${c.diasRestantes}</td>
         <td class="r">${fmtM1(c.promedioDia)}</td>
@@ -509,7 +532,7 @@ function renderDashboard() {
     </div>
 
     <div class="unidades">
-      ${unidadCard('Baratote', 'lun-dom', r.baratote, `<div class="canales">${canal(u.may)}${canal(u.min)}</div>`)}
+      ${unidadCard('Baratote', 'lun-dom', r.baratote, `<div class="canales"><div class="unidad-meta" style="font-weight:600">Por canal</div>${canal(u.may)}${canal(u.min)}</div>`)}
       ${unidadCard('Fineglass', 'lun-vie', u.fgl)}
       ${unidadCard('Fineboats', 'lun-dom', u.fbt)}
     </div>

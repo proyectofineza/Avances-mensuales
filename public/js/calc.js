@@ -72,6 +72,8 @@ function agregado(partes, corte) {
   const objetivo = partes.reduce((s, p) => s + p.objetivo, 0);
   const proyeccion = partes.reduce((s, p) => s + p.proyeccion, 0);
   const { operados, mes } = diasOperativos(corte, 'lun-dom');
+  const faltante = Math.max(objetivo - real, 0);
+  const diasRestantes = mes - operados;
   return {
     real,
     objetivo,
@@ -81,7 +83,10 @@ function agregado(partes, corte) {
     avance: objetivo > 0 ? real / objetivo : 0,
     proyeccionPct: objetivo > 0 ? proyeccion / objetivo : 0,
     ritmoIdeal: mes > 0 ? operados / mes : 0,
-    faltante: Math.max(objetivo - real, 0),
+    faltante,
+    diasRestantes,
+    necesarioDia: diasRestantes > 0 ? faltante / diasRestantes : 0,
+    promedioDia: operados > 0 ? real / operados : 0,
   };
 }
 

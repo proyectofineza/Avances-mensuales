@@ -232,6 +232,9 @@ tfoot td { border-top: 2px solid var(--border); border-bottom: 0; font-weight: 6
 .ventas-table input { min-width: 150px; }
 .unidad-nombre { font-weight: 600; }
 .unidad-meta { font-size: 13px; color: var(--text-2); }
+.grupo-row td { background: #F7F8FA; font-weight: 600; }
+.sub-row td:first-child { padding-left: 28px; }
+.sub-row .unidad-nombre { font-weight: 500; }
 
 /* Usuarios */
 .alta-grid {

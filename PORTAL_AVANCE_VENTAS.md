@@ -34,6 +34,8 @@ Ingreso con **cédula de identidad (CI) + PIN numérico**.
 
 Baratote se muestra como **general** (suma de Mayorista + Minorista) y **por canal**. Cada canal tiene su propio objetivo; el objetivo general de Baratote es la suma de ambos.
 
+En todas las tablas (Cargar ventas, Ritmo necesario) Baratote figura como **unidad de negocio** con sus totales, y Mayorista y Minorista debajo como **subcategorías**. La fila de Baratote es de solo lectura: se calcula sumando los canales.
+
 ## 4. Roles
 
 | Rol           | Puede                                                                 |

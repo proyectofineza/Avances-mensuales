@@ -37,6 +37,11 @@ assert.equal(r.total.proyeccion, suma);
 assert.equal(r.total.objetivo, 2_350e6);
 assert.equal(r.baratote.real, 1_100e6);
 assert.equal(r.total.ritmoIdeal, 22 / 31);
+// Baratote = suma de canales, con su propio ritmo necesario
+assert.equal(r.baratote.objetivo, 1_550e6);
+assert.equal(r.baratote.faltante, 450e6);
+assert.equal(r.baratote.necesarioDia, 50e6);
+assert.equal(r.baratote.promedioDia, 50e6);
 
 // Estados
 assert.equal(estado(1).texto, 'En camino');

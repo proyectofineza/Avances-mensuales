@@ -61,6 +61,13 @@ async function enviarTeams(published) {
         text: `Baratote ${fmtPct(r.baratote.avance)} · Fineglass ${fmtPct(r.unidades.fgl.avance)} · Fineboats ${fmtPct(r.unidades.fbt.avance)}`,
         wrap: true,
       },
+      {
+        type: 'TextBlock',
+        text: `Baratote por canal: Mayorista ${fmtPct(r.unidades.may.avance)} · Minorista ${fmtPct(r.unidades.min.avance)}`,
+        isSubtle: true,
+        spacing: 'None',
+        wrap: true,
+      },
     ],
     actions: process.env.PORTAL_URL
       ? [{ type: 'Action.OpenUrl', title: 'Abrir dashboard', url: process.env.PORTAL_URL }]
