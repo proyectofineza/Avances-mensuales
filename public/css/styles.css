@@ -79,6 +79,8 @@ input.num { text-align: right; }
 .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
 .btn-primary:hover { background: #1A45C2; }
 .btn:disabled { opacity: .55; cursor: default; }
+.btn-danger { color: #B91C1C; border-color: #F3B4B4; }
+.btn-danger:hover { background: #FEF2F2; }
 .btn-sm { height: 36px; padding: 0 12px; font-size: 14px; }
 .btn-link { border: 0; background: none; color: var(--primary); font: inherit; font-weight: 500; cursor: pointer; padding: 0; }
 

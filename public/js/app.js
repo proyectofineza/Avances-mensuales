@@ -459,6 +459,7 @@ function setupUsuarios() {
 
     if (accion === 'reset') { resetCi = ci; renderUsers(); $('reset-pin')?.focus(); return; }
     if (accion === 'cancelar') { resetCi = null; renderUsers(); return; }
+    if (accion === 'eliminar' && !confirm(`¿Eliminar a ${btn.dataset.nombre}? Esta acción no se puede deshacer: para volver a darle acceso habría que crearlo de nuevo.`)) return;
 
     btn.disabled = true;
     try {
@@ -468,6 +469,8 @@ function setupUsuarios() {
         if (!/^\d{4,6}$/.test(pin)) { showMsg(msgEl, 'El PIN debe tener de 4 a 6 dígitos.', false); btn.disabled = false; return; }
         res = await API.updateUser(ci, { pin });
         resetCi = null;
+      } else if (accion === 'eliminar') {
+        res = await API.eliminarUsuario(ci);
       } else {
         res = await API.updateUser(ci, { activo: accion === 'activar' });
       }
@@ -560,7 +563,8 @@ function renderUsers() {
     } else {
       const toggle = u.ci === state.user.ci
         ? '<span class="muted small">Sesión actual</span>'
-        : `<button class="btn btn-sm" data-accion="${u.activo ? 'desactivar' : 'activar'}" data-ci="${esc(u.ci)}">${u.activo ? 'Desactivar' : 'Activar'}</button>`;
+        : `<button class="btn btn-sm" data-accion="${u.activo ? 'desactivar' : 'activar'}" data-ci="${esc(u.ci)}">${u.activo ? 'Desactivar' : 'Activar'}</button>
+          <button class="btn btn-sm btn-danger" data-accion="eliminar" data-ci="${esc(u.ci)}" data-nombre="${esc(u.nombre)}">Eliminar</button>`;
       acciones = `
         <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
           <button class="btn btn-sm" data-accion="reset" data-ci="${esc(u.ci)}">Restablecer PIN</button>

@@ -35,14 +35,17 @@ export default handler(async (req, context) => {
 
   const ciRuta = () => String(context?.params?.ci || new URL(req.url).pathname.split('/').pop() || '').replace(/\D/g, '');
 
-  // Rechazar una solicitud pendiente: se borra (los usuarios aprobados se desactivan, no se borran).
+  // Eliminar un usuario o rechazar una solicitud pendiente.
   if (req.method === 'DELETE') {
     const ci = ciRuta();
     const user = users.find((u) => u.ci === ci);
     if (!user) throw new HttpError(404, 'Usuario no encontrado.');
-    if (!user.pendiente) throw new HttpError(400, 'Solo se pueden rechazar solicitudes pendientes. Para quitar el acceso, desactivá el usuario.');
+    if (user.ci === me.ci) throw new HttpError(400, 'No podés eliminar tu propio usuario.');
+    if (user.rol === 'admin' && user.activo && !users.some((u) => u.rol === 'admin' && u.activo && u.ci !== user.ci)) {
+      throw new HttpError(400, 'Tiene que quedar al menos un administrador activo.');
+    }
     await saveUsers(users.filter((u) => u.ci !== ci));
-    return json({ mensaje: `Se rechazó la solicitud de ${user.nombre}.` });
+    return json({ mensaje: user.pendiente ? `Se rechazó la solicitud de ${user.nombre}.` : `${user.nombre} fue eliminado.` });
   }
 
   if (req.method === 'PATCH') {

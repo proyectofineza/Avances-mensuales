@@ -31,4 +31,5 @@ export const testTeams = () => api('POST', 'teams');
 export const getUsers = () => api('GET', 'users');
 export const createUser = (user) => api('POST', 'users', user);
 export const updateUser = (ci, changes) => api('PATCH', `users/${encodeURIComponent(ci)}`, changes);
-export const rechazarSolicitud = (ci) => api('DELETE', `users/${encodeURIComponent(ci)}`);
+export const eliminarUsuario = (ci) => api('DELETE', `users/${encodeURIComponent(ci)}`);
+export const rechazarSolicitud = eliminarUsuario;
