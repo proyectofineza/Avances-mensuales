@@ -120,6 +120,63 @@ export function leerPlanilla(texto, mes) {
   return { filas: filas.slice(0, MAX_FILAS), errores, columnas: { iSuc, iFecha, iMonto, soloDia }, necesitaMes: false };
 }
 
+const diaSemana = (fecha) => new Date(`${fecha}T12:00:00Z`).getUTCDay();
+
+// Alertas del mes a partir del resumen (resumirMes):
+// - sinVentaReciente: sin venta en los 2 últimos días cargados (sin contar lunes, que muchas cierran).
+// - caidas / crecen: participación en la venta de los últimos 7 días vs los días anteriores del mes
+//   (comparar la participación evita que un fin de semana o la lluvia muevan a todas por igual).
+// - conDiasSinVenta: 3 o más días sin venta en el mes, sin contar lunes.
+export function alertasSucursales(res, { umbral = 0.2, ventana = 7, maximo = 10 } = {}) {
+  const fechas = res.dias.map((d) => d.fecha);
+  const habiles = fechas.filter((f) => diaSemana(f) !== 1);
+  const ultimas = habiles.slice(-2);
+  const venta = (s, f) => s.dias[f] || 0;
+
+  const sinVentaReciente = ultimas.length < 2 ? [] : res.sucursales
+    .filter((s) => ultimas.every((f) => !venta(s, f)))
+    .map((s) => ({ ...s, ultimaVenta: fechas.filter((f) => venta(s, f) > 0).at(-1) || null }));
+
+  const conDiasSinVenta = res.sucursales
+    .map((s) => ({ ...s, diasSinVenta: habiles.filter((f) => !venta(s, f)).length }))
+    .filter((s) => s.diasSinVenta >= 3)
+    .sort((a, b) => b.diasSinVenta - a.diasSinVenta);
+
+  let caidas = [], crecen = [], recientes = [], previas = [];
+  if (fechas.length >= ventana + 3) {
+    recientes = fechas.slice(-ventana);
+    previas = fechas.slice(0, -ventana);
+    const suma = (s, fs) => fs.reduce((t, f) => t + venta(s, f), 0);
+    const totRec = res.dias.filter((d) => recientes.includes(d.fecha)).reduce((t, d) => t + d.monto, 0);
+    const totPrev = res.dias.filter((d) => previas.includes(d.fecha)).reduce((t, d) => t + d.monto, 0);
+    const cambios = res.sucursales
+      .map((s) => {
+        const prev = suma(s, previas), rec = suma(s, recientes);
+        if (!prev || !totPrev || !totRec) return null;
+        return { ...s, variacion: (rec / totRec) / (prev / totPrev) - 1, promPrevio: prev / previas.length, promReciente: rec / recientes.length };
+      })
+      .filter(Boolean);
+    const sinVenta = new Set(sinVentaReciente.map((s) => s.sucursal)); // ya figuran en su propia lista
+    caidas = cambios.filter((s) => s.variacion <= -umbral && !sinVenta.has(s.sucursal))
+      .sort((a, b) => a.variacion - b.variacion).slice(0, maximo);
+    crecen = cambios.filter((s) => s.variacion >= umbral).sort((a, b) => b.variacion - a.variacion).slice(0, maximo);
+  }
+  return {
+    ultimas, sinVentaReciente, conDiasSinVenta, caidas, crecen,
+    reciente: recientes.length ? { desde: recientes[0], hasta: recientes.at(-1) } : null,
+    previo: previas.length ? { desde: previas[0], hasta: previas.at(-1) } : null,
+  };
+}
+
+// Peso de cada día de la semana (0 = domingo) según el promedio de venta de ese día.
+export function pesoSemana(dias) {
+  const suma = Array(7).fill(0), cuenta = Array(7).fill(0);
+  for (const d of dias) { const wd = diaSemana(d.fecha); suma[wd] += d.monto; cuenta[wd]++; }
+  const prom = suma.map((s, i) => (cuenta[i] ? s / cuenta[i] : 0));
+  const semana = prom.reduce((a, b) => a + b, 0);
+  return { peso: prom.map((p) => (semana ? p / semana : 0)), cuenta };
+}
+
 // Resumen de un mes: totales Minorista (sin NO_MINORISTA), por sucursal y por día.
 export function resumirMes(filas, excluir = NO_MINORISTA) {
   const fuera = new Set(excluir);

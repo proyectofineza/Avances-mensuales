@@ -55,4 +55,31 @@ assert.equal(res.sucursales[0].sucursal, 'ABASTO');
 assert.equal(res.sucursales[1].diasConVenta, 2);
 assert.deepEqual(res.dias, [{ fecha: '2026-10-01', monto: 300 }, { fecha: '2026-10-02', monto: 50 }]);
 
+// Alertas: 14 días de octubre 2026 (1 = jueves). A vende parejo, B se cae en la última
+// semana, C crece, D deja de vender los dos últimos días hábiles.
+import { alertasSucursales, pesoSemana } from '../public/js/sucursales.js';
+const filasA = [];
+for (let d = 1; d <= 14; d++) {
+  const fecha = `2026-10-${String(d).padStart(2, '0')}`;
+  const ultimaSemana = d > 7;
+  filasA.push({ sucursal: 'A', fecha, monto: 100 });
+  filasA.push({ sucursal: 'B', fecha, monto: ultimaSemana ? 40 : 100 });
+  filasA.push({ sucursal: 'C', fecha, monto: ultimaSemana ? 200 : 100 });
+  if (d < 13) filasA.push({ sucursal: 'D', fecha, monto: 100 });
+}
+const al = alertasSucursales(resumirMes(filasA));
+assert.deepEqual(al.ultimas, ['2026-10-13', '2026-10-14']); // 12 es lunes
+assert.deepEqual(al.sinVentaReciente.map((s) => s.sucursal), ['D']);
+assert.equal(al.sinVentaReciente[0].ultimaVenta, '2026-10-12');
+assert.deepEqual(al.caidas.map((s) => s.sucursal), ['B']);
+assert.ok(al.caidas[0].variacion < -0.4);
+assert.deepEqual(al.crecen.map((s) => s.sucursal), ['C']);
+assert.deepEqual(al.reciente, { desde: '2026-10-08', hasta: '2026-10-14' });
+assert.equal(al.conDiasSinVenta.length, 0);
+// Pocos días: no compara tendencias
+assert.equal(alertasSucursales(resumirMes(filasA.filter((f) => f.fecha <= '2026-10-05'))).caidas.length, 0);
+// Peso por día de la semana suma 1
+const ps = pesoSemana(resumirMes(filasA).dias);
+assert.ok(Math.abs(ps.peso.reduce((a, b) => a + b, 0) - 1) < 1e-9);
+
 console.log('sucursales: todas las pruebas pasaron');

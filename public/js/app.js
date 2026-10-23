@@ -5,7 +5,7 @@ import {
   mesAnterior, mismoMesAnioAnterior, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, fmtDiaMes,
   fmtFechaHora, nombreMes, fmtCI, hoyAsuncion,
 } from './calc.js';
-import { leerPlanilla, resumirMes, NO_MINORISTA } from './sucursales.js';
+import { leerPlanilla, resumirMes, alertasSucursales, pesoSemana, NO_MINORISTA } from './sucursales.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -615,22 +615,58 @@ function renderUsers() {
 
 // ---------- Ventas por sucursal ----------
 
-const suc = { datos: null, lectura: null, abierta: null, filtro: '' };
+// Preferencias de vista por navegador (si el almacenamiento no está disponible, se usa el valor por defecto).
+function leerPref(clave, porDefecto) {
+  try { return localStorage.getItem(clave) || porDefecto; } catch { return porDefecto; }
+}
+function guardarPref(clave, valor) {
+  try { localStorage.setItem(clave, valor); } catch { /* sin almacenamiento */ }
+}
+
+const suc = { datos: null, lectura: null, filtro: '', sub: leerPref('suc-sub', 'resumen'), rank: 'top', res: null, alertas: null };
 const fechaDeMes = (mes) => `${mes}-01`;
+const esFinde = (wd) => wd === 5 || wd === 6 || wd === 0;
+const wdDe = (fecha) => new Date(`${fecha}T12:00:00Z`).getUTCDay();
 
 function setupSucursales() {
   $('suc-mes').addEventListener('change', () => loadSucursales($('suc-mes').value));
+  $('suc-subtabs').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-sub]');
+    if (!b) return;
+    suc.sub = b.dataset.sub;
+    guardarPref('suc-sub', suc.sub);
+    renderSucursales();
+  });
   $('suc-contenido').addEventListener('input', (e) => {
     if (e.target.id !== 'suc-buscar') return;
     suc.filtro = e.target.value;
-    renderRanking();
+    renderRankingTabla();
   });
   $('suc-contenido').addEventListener('click', (e) => {
-    const tr = e.target.closest('tr[data-suc]');
-    if (!tr) return;
-    suc.abierta = suc.abierta === tr.dataset.suc ? null : tr.dataset.suc;
-    renderRanking();
+    const ir = e.target.closest('[data-ir]');
+    if (ir) {
+      suc.sub = ir.dataset.ir;
+      if (ir.dataset.rank) suc.rank = ir.dataset.rank;
+      guardarPref('suc-sub', suc.sub);
+      renderSucursales();
+      return;
+    }
+    const rank = e.target.closest('[data-rank]');
+    if (rank) {
+      suc.rank = rank.dataset.rank;
+      renderRankingTabla();
+      return;
+    }
+    const fila = e.target.closest('[data-suc]');
+    if (fila) abrirPanel(fila.dataset.suc);
   });
+  $('suc-contenido').addEventListener('keydown', (e) => {
+    const fila = e.target.closest('[data-suc]');
+    if (fila && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); abrirPanel(fila.dataset.suc); }
+  });
+  $('suc-panel-cerrar').addEventListener('click', cerrarPanel);
+  $('suc-panel-fondo').addEventListener('click', cerrarPanel);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('suc-panel').hidden) cerrarPanel(); });
   if (!isAdmin()) return;
 
   $('suc-mes-carga').value = hoyAsuncion().slice(0, 7);
@@ -729,7 +765,7 @@ async function borrarMesSucursales() {
 async function loadSucursales(mes) {
   try {
     suc.datos = await API.getSucursales(mes);
-    suc.abierta = null;
+    cerrarPanel();
     const sel = $('suc-mes');
     sel.innerHTML = suc.datos.meses.length
       ? [...suc.datos.meses].reverse().map((m) => `<option value="${m}"${m === suc.datos.mes ? ' selected' : ''}>${nombreMes(fechaDeMes(m))}</option>`).join('')
@@ -746,13 +782,35 @@ function renderSucursales() {
   const el = $('suc-contenido');
   if (!d?.mes || !d.filas.length) {
     $('suc-sub').textContent = '';
+    $('suc-subtabs').hidden = true;
+    if (isAdmin()) $('suc-carga').open = true;
     el.innerHTML = `<div class="card empty">Todavía no hay ventas por sucursal cargadas.${isAdmin() ? ' Cargá la primera planilla arriba.' : ''}</div>`;
     return;
   }
-  const res = resumirMes(d.filas);
-  suc.res = res;
+  suc.res = resumirMes(d.filas);
+  suc.alertas = alertasSucursales(suc.res);
   $('suc-sub').textContent = `${nombreMes(fechaDeMes(d.mes))} · actualizado ${fmtFechaHora(d.actualizado)}${d.por ? ' por ' + d.por : ''}`;
 
+  const nAlertas = suc.alertas.sinVentaReciente.length + suc.alertas.caidas.length;
+  $('suc-alertas-n').textContent = nAlertas;
+  $('suc-alertas-n').hidden = nAlertas === 0;
+  $('suc-subtabs').hidden = false;
+  if (!['resumen', 'ranking', 'calor', 'alertas'].includes(suc.sub)) suc.sub = 'resumen';
+  document.querySelectorAll('#suc-subtabs [data-sub]').forEach((b) => {
+    const activa = b.dataset.sub === suc.sub;
+    b.classList.toggle('active', activa);
+    b.setAttribute('aria-selected', String(activa));
+  });
+
+  if (suc.sub === 'ranking') { el.innerHTML = rankingHtml(); renderRankingTabla(); }
+  else if (suc.sub === 'calor') el.innerHTML = calorHtml();
+  else if (suc.sub === 'alertas') el.innerHTML = alertasHtml();
+  else el.innerHTML = resumenSucHtml();
+}
+
+function resumenSucHtml() {
+  const d = suc.datos;
+  const res = suc.res;
   const c = parseCorte(fechaDeMes(d.mes));
   const ultimo = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
   const porDia = new Map(res.dias.map((x) => [x.fecha, x.monto]));
@@ -772,24 +830,13 @@ function renderSucursales() {
     labels.push(`<span class="${finde ? 'finde' : ''}">${dd}</span>`);
   }
 
-  // Peso de cada día de la semana en este mes (promedio por día, sobre la semana).
-  const suma = Array(7).fill(0), cuenta = Array(7).fill(0);
-  for (const x of res.dias) {
-    const wd = new Date(`${x.fecha}T12:00:00Z`).getUTCDay();
-    suma[wd] += x.monto;
-    cuenta[wd]++;
-  }
-  const prom = suma.map((s, i) => (cuenta[i] ? s / cuenta[i] : 0));
-  const semana = prom.reduce((a, b) => a + b, 0);
-  const pesos = DIAS_SEMANA.map((x) => `
-    <div class="sp-dia${x.wd === 5 || x.wd === 6 || x.wd === 0 ? ' finde' : ''}">
-      <span>${x.nombre.slice(0, 3)}</span>
-      <strong>${semana ? fmtPct(prom[x.wd] / semana) : '—'}</strong>
-      <small>${cuenta[x.wd]} día${cuenta[x.wd] === 1 ? '' : 's'}</small>
-    </div>`).join('');
-  const finde = semana ? (prom[5] + prom[6] + prom[0]) / semana : 0;
+  const { peso, cuenta } = pesoSemana(res.dias);
+  const pesos = pesosSemanaHtml(peso, cuenta);
+  const finde = peso[5] + peso[6] + peso[0];
+  const top5 = res.sucursales.slice(0, 5);
+  const topMax = top5[0]?.total || 1;
 
-  el.innerHTML = `
+  return `
     <div class="kpis">
       <div class="card kpi" style="border-top:4px solid ${COLOR.min.fuerte}">
         <span class="kpi-label">Venta Minorista del mes</span>
@@ -826,55 +873,210 @@ function renderSucursales() {
 
     <div class="card" style="margin-top:16px">
       <div class="card-head">
-        <div>
-          <h2>Ranking de sucursales</h2>
-          <p class="muted small">Tocá una sucursal para ver su venta día por día.</p>
+        <h2>Las 5 que más venden</h2>
+        <button class="btn btn-sm" type="button" data-ir="ranking" data-rank="top">Ver ranking</button>
+      </div>
+      <div class="top5">${top5.map((s, i) => `
+        <div class="top5-fila" data-suc="${esc(s.sucursal)}" role="button" tabindex="0">
+          <span class="top5-n">${i + 1}</span>
+          <span class="top5-nombre">${esc(s.sucursal)}</span>
+          <span class="top5-bar"><span style="width:${((s.total / topMax) * 100).toFixed(1)}%"></span></span>
+          <b>${fmtMillones(s.total)}</b>
+        </div>`).join('')}</div>
+    </div>`;
+}
+
+function pesosSemanaHtml(peso, cuenta) {
+  return DIAS_SEMANA.map((x) => `
+    <div class="sp-dia${esFinde(x.wd) ? ' finde' : ''}">
+      <span>${x.nombre.slice(0, 3)}</span>
+      <strong>${cuenta[x.wd] ? fmtPct(peso[x.wd]) : '—'}</strong>
+      <small>${cuenta[x.wd]} día${cuenta[x.wd] === 1 ? '' : 's'}</small>
+    </div>`).join('');
+}
+
+// ---- Ranking: 10 que más venden, 10 que menos, o todas; el buscador busca en todas ----
+
+function rankingHtml() {
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div class="seg-btns" role="group" aria-label="Qué sucursales mostrar">
+          <button type="button" data-rank="top">Más venden</button>
+          <button type="button" data-rank="bottom">Menos venden</button>
+          <button type="button" data-rank="todas">Todas</button>
         </div>
         <input id="suc-buscar" class="suc-buscar" type="search" placeholder="Buscar sucursal" value="${esc(suc.filtro)}" aria-label="Buscar sucursal">
       </div>
       <div class="table-wrap" id="suc-ranking"></div>
+      <p class="muted small" id="suc-ranking-pie" style="margin:12px 0 0"></p>
     </div>`;
-  renderRanking();
 }
 
-function renderRanking() {
+function renderRankingTabla() {
   const res = suc.res;
-  if (!res) return;
+  if (!res || !$('suc-ranking')) return;
+  document.querySelectorAll('[data-rank]').forEach((b) => b.classList.toggle('active', b.dataset.rank === suc.rank));
+  const todas = res.sucursales.map((s, i) => ({ ...s, puesto: i + 1 }));
   const q = suc.filtro.trim().toUpperCase();
-  const lista = res.sucursales.map((s, i) => ({ ...s, puesto: i + 1 })).filter((s) => !q || s.sucursal.includes(q));
+  let lista;
+  if (q) lista = todas.filter((s) => s.sucursal.includes(q));
+  else if (suc.rank === 'bottom') lista = todas.slice(-10).reverse();
+  else if (suc.rank === 'todas') lista = todas;
+  else lista = todas.slice(0, 10);
   const top = res.sucursales[0]?.total || 1;
-  const filas = lista.map((s) => {
-    const abierta = suc.abierta === s.sucursal;
-    let detalle = '';
-    if (abierta) {
-      const maxDia = Math.max(...Object.values(s.dias), 1);
-      detalle = `<tr class="suc-detalle"><td colspan="7"><div class="sdd">${res.dias.map((x) => {
-        const v = s.dias[x.fecha] || 0;
-        const wd = new Date(`${x.fecha}T12:00:00Z`).getUTCDay();
-        const finde = wd === 5 || wd === 6 || wd === 0;
-        return `<div class="sdd-dia" title="${DIA_CORTO[wd]} ${fmtFecha(x.fecha)}: ${fmtMillones(v)}">
-          <div class="sdd-bar"><div style="height:${((v / maxDia) * 100).toFixed(1)}%;background:${finde ? COLOR.min.fuerte : '#FCD9A0'}"></div></div>
-          <span class="${finde ? 'finde' : ''}">${Number(x.fecha.slice(8))}</span>
-          <small>${v ? fmtM1(v) : '0'}</small>
-        </div>`;
-      }).join('')}</div><p class="muted small" style="margin:6px 0 0">Montos en millones por día.</p></td></tr>`;
-    }
-    return `
-      <tr data-suc="${esc(s.sucursal)}" class="suc-row${abierta ? ' abierta' : ''}">
-        <td class="muted">${s.puesto}</td>
-        <td><b>${esc(s.sucursal)}</b></td>
-        <td class="r">${fmtMillones(s.total)}</td>
-        <td class="r">${fmtPct(s.total / (res.total || 1))}</td>
-        <td class="r">${fmtMillones(s.total / Math.max(s.diasConVenta, 1))}</td>
-        <td class="r">${s.diasConVenta}</td>
-        <td style="min-width:120px"><div class="rank-bar"><div style="width:${((s.total / top) * 100).toFixed(1)}%"></div></div></td>
-      </tr>${detalle}`;
-  }).join('');
+  const filas = lista.map((s) => `
+    <tr data-suc="${esc(s.sucursal)}" class="suc-row" tabindex="0">
+      <td class="muted">${s.puesto}</td>
+      <td><b>${esc(s.sucursal)}</b></td>
+      <td class="r">${fmtMillones(s.total)}</td>
+      <td class="r">${fmtPct(s.total / (res.total || 1))}</td>
+      <td class="r">${fmtMillones(s.total / Math.max(s.diasConVenta, 1))}</td>
+      <td class="r">${s.diasConVenta}</td>
+      <td style="min-width:120px"><div class="rank-bar"><div style="width:${((s.total / top) * 100).toFixed(1)}%"></div></div></td>
+    </tr>`).join('');
   $('suc-ranking').innerHTML = `
     <table class="suc-tabla">
       <thead><tr><th>#</th><th>Sucursal</th><th class="r">Venta del mes</th><th class="r">% del total</th><th class="r">Prom./día</th><th class="r">Días</th><th></th></tr></thead>
       <tbody>${filas || '<tr><td colspan="7" class="muted">No hay sucursales con ese nombre.</td></tr>'}</tbody>
     </table>`;
+  $('suc-ranking-pie').innerHTML = q
+    ? `${lista.length} resultado${lista.length === 1 ? '' : 's'} para "${esc(suc.filtro.trim())}".`
+    : `Mostrando ${lista.length} de ${todas.length} sucursales. Tocá una para ver su detalle.${suc.rank !== 'todas' ? ' <button class="btn-link" type="button" data-rank="todas">Ver todas</button>' : ''}`;
+}
+
+// ---- Mapa de calor: sucursales × días, cada sucursal en su propia escala ----
+
+// Mezcla de dos colores hex (t entre 0 y 1).
+function mezclar(a, b, t) {
+  const n = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+  return `rgb(${[0, 1, 2].map((i) => Math.round(n(a, i) + (n(b, i) - n(a, i)) * t)).join(',')})`;
+}
+
+function calorHtml() {
+  const res = suc.res;
+  const fechas = res.dias.map((x) => x.fecha);
+  const cab = fechas.map((f) => `<span class="${esFinde(wdDe(f)) ? 'finde' : ''}" title="${DIA_CORTO[wdDe(f)]} ${fmtFecha(f)}">${Number(f.slice(8))}</span>`).join('');
+  const filas = res.sucursales.map((s) => {
+    const max = Math.max(...Object.values(s.dias), 1);
+    const celdas = fechas.map((f) => {
+      const v = s.dias[f] || 0;
+      const color = v ? mezclar('#FFF1DC', '#C2410C', Math.min(v / max, 1)) : '#E5E7EB';
+      return `<i style="background:${color}" title="${esc(s.sucursal)} · ${DIA_CORTO[wdDe(f)]} ${fmtFecha(f)}: ${v ? fmtMillones(v) : 'sin venta'}"></i>`;
+    }).join('');
+    return `<div class="calor-fila" data-suc="${esc(s.sucursal)}" role="button" tabindex="0"><span class="calor-nombre">${esc(s.sucursal)}</span>${celdas}</div>`;
+  }).join('');
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Mapa de calor</h2>
+          <p class="muted small">Cada fila es una sucursal (de la que más vende a la que menos) y cada columna un día. Cada sucursal en su propia escala: más oscuro es su mejor día y gris, sin venta. Tocá una fila para ver el detalle.</p>
+        </div>
+        <div class="calor-leyenda"><i style="background:#E5E7EB"></i>sin venta <i style="background:#FFF1DC"></i>bajo <i style="background:#C2410C"></i>su mejor día</div>
+      </div>
+      <div class="calor-wrap">
+        <div class="calor" style="--dias:${fechas.length}">
+          <div class="calor-fila calor-cab"><span class="calor-nombre"></span>${cab}</div>
+          ${filas}
+        </div>
+      </div>
+    </div>`;
+}
+
+// ---- Alertas ----
+
+function alertasHtml() {
+  const a = suc.alertas;
+  const item = (s, extra) => `
+    <li data-suc="${esc(s.sucursal)}" role="button" tabindex="0">
+      <span>${esc(s.sucursal)}</span>${extra}
+    </li>`;
+  const lista = (arr, render, vacio) => (arr.length ? `<ul class="alerta-lista">${arr.map(render).join('')}</ul>` : `<p class="muted small" style="margin:10px 0 0">${vacio}</p>`);
+  const rango = (r) => (r ? `${fmtDiaMes(r.desde)} al ${fmtDiaMes(r.hasta)}` : '');
+  const tendencia = a.reciente
+    ? `Participación en la venta del ${rango(a.reciente)} contra la del ${rango(a.previo)}.`
+    : 'Se calcula cuando hay al menos 10 días cargados en el mes.';
+  return `
+    <div class="alertas-grid">
+      <div class="card alerta risk">
+        <h3>Sin venta en los últimos días</h3>
+        <p class="muted small">Sin venta el ${a.ultimas.map(fmtDiaMes).join(' y el ') || '—'} (sin contar lunes). Si el último día está incompleto, puede incluir sucursales que todavía no informaron.</p>
+        ${lista(a.sinVentaReciente, (s) => item(s, `<small>${s.ultimaVenta ? 'última venta ' + fmtDiaMes(s.ultimaVenta) : 'sin ventas en el mes'}</small>`), 'Ninguna sucursal.')}
+      </div>
+      <div class="card alerta warn">
+        <h3>Vienen vendiendo menos</h3>
+        <p class="muted small">${tendencia} Caída de 20% o más.</p>
+        ${lista(a.caidas, (s) => item(s, `<b class="var-neg">${fmtVar(s.variacion)}</b>`), a.reciente ? 'Ninguna sucursal.' : '')}
+      </div>
+      <div class="card alerta ok">
+        <h3>Vienen creciendo</h3>
+        <p class="muted small">${tendencia} Suba de 20% o más.</p>
+        ${lista(a.crecen, (s) => item(s, `<b class="var-pos">${fmtVar(s.variacion)}</b>`), a.reciente ? 'Ninguna sucursal.' : '')}
+      </div>
+      <div class="card alerta">
+        <h3>Con varios días sin venta</h3>
+        <p class="muted small">3 o más días del mes sin venta, sin contar lunes.</p>
+        ${lista(a.conDiasSinVenta.slice(0, 15), (s) => item(s, `<small>${s.diasSinVenta} días</small>`), 'Ninguna sucursal.')}
+      </div>
+    </div>`;
+}
+
+// ---- Panel de detalle de una sucursal ----
+
+function abrirPanel(nombre) {
+  const res = suc.res;
+  const i = res?.sucursales.findIndex((s) => s.sucursal === nombre);
+  if (!res || i < 0) return;
+  const s = res.sucursales[i];
+  const a = suc.alertas;
+  const promSuc = res.total / res.sucursales.length;
+  const maxDia = Math.max(...Object.values(s.dias), 1);
+  const dias = res.dias.map((x) => {
+    const v = s.dias[x.fecha] || 0;
+    const wd = wdDe(x.fecha);
+    return `<div class="sdd-dia" title="${DIA_CORTO[wd]} ${fmtFecha(x.fecha)}: ${v ? fmtMillones(v) : 'sin venta'}">
+      <div class="sdd-bar"><div style="height:${((v / maxDia) * 100).toFixed(1)}%;background:${esFinde(wd) ? COLOR.min.fuerte : '#FCD9A0'}"></div></div>
+      <span class="${esFinde(wd) ? 'finde' : ''}">${Number(x.fecha.slice(8))}</span>
+      <small>${v ? fmtM1(v) : '0'}</small>
+    </div>`;
+  }).join('');
+  const propios = res.dias.map((x) => ({ fecha: x.fecha, monto: s.dias[x.fecha] || 0 }));
+  const { peso, cuenta } = pesoSemana(propios);
+  const marcas = [];
+  if (a.sinVentaReciente.some((x) => x.sucursal === nombre)) marcas.push('<span class="chip risk">Sin venta en los últimos días</span>');
+  const caida = a.caidas.find((x) => x.sucursal === nombre);
+  if (caida) marcas.push(`<span class="chip warn">Vende menos: ${fmtVar(caida.variacion)}</span>`);
+  const sube = a.crecen.find((x) => x.sucursal === nombre);
+  if (sube) marcas.push(`<span class="chip ok">Creciendo: ${fmtVar(sube.variacion)}</span>`);
+
+  $('suc-panel-titulo').textContent = nombre;
+  $('suc-panel-body').innerHTML = `
+    <p class="muted small" style="margin:0 0 12px">${nombreMes(fechaDeMes(suc.datos.mes))} · puesto ${i + 1} de ${res.sucursales.length}</p>
+    ${marcas.length ? `<div class="panel-marcas">${marcas.join('')}</div>` : ''}
+    <div class="panel-kpis">
+      <div><span>Venta del mes</span><strong>${fmtMillones(s.total)}</strong></div>
+      <div><span>% del total</span><strong>${fmtPct(s.total / (res.total || 1))}</strong></div>
+      <div><span>Promedio por día</span><strong>${fmtMillones(s.total / Math.max(s.diasConVenta, 1))}</strong></div>
+      <div><span>Días con venta</span><strong>${s.diasConVenta} de ${res.dias.length}</strong></div>
+    </div>
+    <p class="small" style="margin:12px 0 0">Vende ${varHtml(s.total / promSuc - 1)} que el promedio de las sucursales (${fmtMillones(promSuc)}).</p>
+    <h3 style="margin-top:20px">Venta por día</h3>
+    <div class="sdd">${dias}</div>
+    <p class="muted small" style="margin:6px 0 0">Montos en millones. Viernes a domingo en naranja fuerte.</p>
+    <h3 style="margin-top:20px">Peso por día de la semana</h3>
+    <div class="sp-grid">${pesosSemanaHtml(peso, cuenta)}</div>`;
+  $('suc-panel').hidden = false;
+  $('suc-panel-fondo').hidden = false;
+  document.body.classList.add('panel-abierto');
+  $('suc-panel-cerrar').focus();
+}
+
+function cerrarPanel() {
+  if ($('suc-panel').hidden) return;
+  $('suc-panel').hidden = true;
+  $('suc-panel-fondo').hidden = true;
+  document.body.classList.remove('panel-abierto');
 }
 
 // ---------- Dashboard ----------

@@ -342,6 +342,14 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Guardado en Blobs por mes: `sucursales/AAAA-MM` → `{ mes, filas: [{ sucursal, fecha, monto }], actualizado, por }`, índice `sucursales/index`. Al cargar, se **reemplazan completas las fechas incluidas** y se conserva el resto del mes. El admin puede borrar un mes.
 - Vista: venta Minorista del mes, sucursales con venta, promedio por día y mejor día; gráfico de venta por día (viernes a domingo resaltados); peso por día de la semana del mes; ranking de sucursales con buscador y detalle día por día al tocar una fila.
 - **CENTRAL** (Mayorista) se muestra aparte y no suma en Minorista (`NO_MINORISTA` en `public/js/sucursales.js`).
+- Organización de la vista (para no tener que bajar tanto):
+  - La tarjeta de carga empieza **plegada** (se abre sola si no hay datos).
+  - Pestañas internas **Resumen · Ranking · Mapa de calor · Alertas** (se recuerda la última elegida en el navegador).
+  - Resumen: indicadores, venta por día, peso por día de la semana y las 5 que más venden.
+  - Ranking: 10 que más venden / 10 que menos / todas; el buscador busca en todas.
+  - Mapa de calor: sucursales × días, cada sucursal en su propia escala (más oscuro = su mejor día; gris = sin venta).
+  - Alertas: sin venta en los 2 últimos días cargados sin contar lunes; caídas y subas de 20% o más comparando la participación en los últimos 7 días contra los días anteriores del mes (desde 10 días cargados); 3 o más días sin venta en el mes sin contar lunes. El número de alertas se muestra en la pestaña.
+  - El detalle de una sucursal se abre en un **panel lateral** (pantalla completa en celular): puesto, venta, % del total, promedio por día, días con venta, comparación con el promedio de sucursales, venta por día, peso por día de la semana y sus alertas.
 - La forma de fila `{ sucursal, fecha, monto }` es la que se va a migrar a una tabla en Supabase (etapa 5), donde se sumarán artículo, proveedor y marca.
 
 ## 13. Fuera de alcance (por ahora)
