@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es-PY">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ingresar · Portal de avance de ventas</title>
+  <link rel="icon" href="img/fineza.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="login-page">
+  <main class="login">
+    <img class="login-logo" src="img/fineza.png" alt="Fineza">
+    <p class="login-sub">Portal de avance de ventas</p>
+
+    <form class="login-card" id="login-form" novalidate>
+      <div>
+        <h1>Ingresar</h1>
+        <p class="muted" style="margin:4px 0 0">Usá tu número de cédula y tu PIN de acceso.</p>
+      </div>
+      <div>
+        <label for="ci">Cédula de identidad</label>
+        <input id="ci" name="ci" inputmode="numeric" autocomplete="username" required>
+      </div>
+      <div>
+        <label for="pin">PIN de acceso</label>
+        <input id="pin" name="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" required>
+      </div>
+      <div class="alert alert-error" id="login-error" hidden></div>
+      <button class="btn btn-primary" type="submit" id="login-btn">Ingresar</button>
+    </form>
+
+    <p class="unidades-title">NUESTRAS UNIDADES DE NEGOCIO</p>
+    <div class="unidades-logos">
+      <img src="img/baratote.png" alt="Baratote" style="height:24px">
+      <img src="img/fineglass.png" alt="Fine Glass Solutions" style="height:44px">
+      <img src="img/fineboats.png" alt="Fine Boats" style="height:48px">
+    </div>
+  </main>
+
+  <script type="module">
+    import { login, me } from './js/api.js';
+
+    const form = document.getElementById('login-form');
+    const ci = document.getElementById('ci');
+    const pin = document.getElementById('pin');
+    const error = document.getElementById('login-error');
+    const btn = document.getElementById('login-btn');
+
+    const destino = (rol) => (rol === 'admin' ? 'app.html#ventas' : 'app.html#dashboard');
+
+    me().then((u) => location.replace(destino(u.rol))).catch(() => {});
+
+    const soloDigitos = (el) => el.addEventListener('input', () => { el.value = el.value.replace(/\D/g, ''); });
+    soloDigitos(ci);
+    soloDigitos(pin);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      error.hidden = true;
+      if (!ci.value || !/^\d{4,6}$/.test(pin.value)) {
+        error.textContent = 'Cédula o PIN incorrectos.';
+        error.hidden = false;
+        return;
+      }
+      btn.disabled = true;
+      try {
+        const u = await login(ci.value, pin.value);
+        location.replace(destino(u.rol));
+      } catch (err) {
+        error.textContent = err.message;
+        error.hidden = false;
+        pin.value = '';
+        pin.focus();
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "portal-avance-ventas",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Portal de avance de ventas — FINEZA S.A.",
+  "scripts": {
+    "dev": "netlify dev",
+    "deploy": "netlify deploy --prod",
+    "test": "node tests/calc.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}

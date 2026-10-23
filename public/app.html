@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="es-PY">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portal de avance de ventas · Fineza</title>
+  <link rel="icon" href="img/fineza.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <img class="header-logo" src="img/fineza.png" alt="Fineza">
+      <nav class="tabs" id="tabs" hidden>
+        <a class="tab" href="#ventas" data-view="ventas">Cargar ventas</a>
+        <a class="tab" href="#usuarios" data-view="usuarios">Usuarios</a>
+        <a class="tab" href="#dashboard" data-view="dashboard">Dashboard</a>
+      </nav>
+      <div class="user-box">
+        <span class="user-name" id="user-name"></span>
+        <span class="chip chip-rol" id="user-rol"></span>
+        <button class="btn btn-salir btn-sm" id="btn-salir" type="button">Salir</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="notice-wrap" id="notice-wrap" hidden>
+    <div class="notice" id="notice" role="status">
+      <span id="notice-text"></span>
+      <button type="button" id="notice-close" aria-label="Cerrar aviso">&times;</button>
+    </div>
+  </div>
+
+  <main class="container">
+    <!-- Admin · Cargar ventas -->
+    <section id="view-ventas" hidden>
+      <div class="layout-side">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h1>Cargar ventas</h1>
+              <p class="muted">Actualizá la venta acumulada del mes y publicá. Los comerciales ven el cambio al instante.</p>
+            </div>
+            <span class="chip" id="draft-status"></span>
+          </div>
+
+          <div class="form-row">
+            <label for="corte">Fecha de corte</label>
+            <input type="date" id="corte">
+          </div>
+
+          <div class="table-wrap">
+            <table class="ventas-table">
+              <thead>
+                <tr>
+                  <th>Unidad</th>
+                  <th class="r">Objetivo mensual (Gs.)</th>
+                  <th class="r">Venta acumulada (Gs.)</th>
+                  <th class="r">Avance</th>
+                </tr>
+              </thead>
+              <tbody id="ventas-body"></tbody>
+              <tfoot>
+                <tr>
+                  <td>Total</td>
+                  <td class="r" id="tot-obj"></td>
+                  <td class="r" id="tot-real"></td>
+                  <td class="r" id="tot-av"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div class="actions">
+            <label class="check"><input type="checkbox" id="avisar-teams" checked> Avisar en el canal de Teams al publicar</label>
+            <span class="spacer"></span>
+            <button class="btn" type="button" id="btn-descartar">Descartar cambios</button>
+            <button class="btn btn-primary" type="button" id="btn-publicar">Publicar</button>
+          </div>
+          <div class="alert alert-error form-msg" id="ventas-error" hidden></div>
+          <p class="muted small" id="draft-saved" style="margin:10px 0 0"></p>
+        </div>
+
+        <aside class="side">
+          <div class="card">
+            <h2>Última publicación</h2>
+            <div id="ultima-pub"></div>
+            <a class="btn" href="#dashboard" style="display:inline-flex;align-items:center;text-decoration:none">Ver como comercial</a>
+          </div>
+          <div class="card">
+            <h2>Cómo se proyecta</h2>
+            <div class="formula">Proyección = venta acumulada ÷ días operados × días del mes</div>
+            <p class="muted small" style="margin:0">Baratote (Mayorista y Minorista) y Fineboats operan de lunes a domingo. Fineglass opera de lunes a viernes, así que solo se cuentan esos días. La proyección total es la suma de las proyecciones de cada unidad.</p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Admin · Usuarios -->
+    <section id="view-usuarios" hidden>
+      <div class="card" style="margin-bottom:20px">
+        <h2 style="margin-bottom:16px">Alta de usuario</h2>
+        <form class="alta-grid" id="alta-form" novalidate>
+          <div>
+            <label for="alta-ci">Cédula</label>
+            <input id="alta-ci" inputmode="numeric" autocomplete="off">
+          </div>
+          <div>
+            <label for="alta-nombre">Nombre y apellido</label>
+            <input id="alta-nombre" autocomplete="off">
+          </div>
+          <div>
+            <label for="alta-pin">PIN (4 a 6 dígitos)</label>
+            <input id="alta-pin" inputmode="numeric" maxlength="6" autocomplete="off">
+          </div>
+          <div>
+            <label for="alta-rol">Rol</label>
+            <select id="alta-rol">
+              <option value="comercial" selected>Comercial</option>
+              <option value="admin">Administrador</option>
+            </select>
+          </div>
+          <div>
+            <button class="btn btn-primary" type="submit">Dar de alta</button>
+          </div>
+        </form>
+        <div class="alert form-msg" id="alta-msg" hidden></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Usuarios</h2>
+          <span class="muted" id="users-count"></span>
+        </div>
+        <div class="alert form-msg" id="users-msg" hidden style="margin:0 0 14px"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Cédula</th><th>Nombre</th><th>Rol</th><th>Estado</th><th class="r">Acciones</th></tr>
+            </thead>
+            <tbody id="users-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dashboard -->
+    <section id="view-dashboard" hidden>
+      <div id="dash"></div>
+    </section>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

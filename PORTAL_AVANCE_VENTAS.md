@@ -1,0 +1,285 @@
+# Portal de Avance de Ventas — FINEZA S.A.
+
+Especificación para construir la versión real a partir del prototipo aprobado en el canvas de diseño. Este documento es la fuente de verdad: si algo no está acá, preguntar antes de inventarlo.
+
+---
+
+## 1. Objetivo
+
+Portal web interno donde:
+
+- El **administrador** carga los objetivos mensuales y la venta acumulada de cada unidad de negocio, y pulsa **Publicar**.
+- Al publicar, el **dashboard de los comerciales** se actualiza automáticamente y (opcional) se envía un **aviso a un canal de Microsoft Teams**.
+- Los **comerciales** solo pueden ver el dashboard.
+
+Ingreso con **cédula de identidad (CI) + PIN numérico**.
+
+## 2. Restricciones del proyecto
+
+- **Hosting: solo Netlify, plan gratis.** Nada de Supabase ni otra base externa.
+- Cuidar minutos de build y créditos: **sin paso de build** (HTML + CSS + JS vanilla, sin React/Vite). Deploy con Netlify CLI desde la PC (`netlify deploy --prod`), que empaqueta las funciones localmente.
+- Persistencia con **Netlify Blobs** (`@netlify/blobs`), lógica de servidor con **Netlify Functions** (Node 18+, ESM).
+- Entregables de cada iteración: **un único zip** con todo lo que hay que subir.
+- Todo el texto de la interfaz en **español (Paraguay)**, voseo ("Ingresá", "Usá", "Indicá").
+- Moneda: guaraníes. Formato `Gs. 1.930 M` (millones, separador de miles con punto, `toLocaleString('es-PY')`). Porcentajes con coma decimal: `70,4%`.
+
+## 3. Unidades de negocio
+
+| id    | Nombre visible     | Grupo     | Días operativos        |
+|-------|--------------------|-----------|------------------------|
+| `may` | Mayorista          | Baratote  | Lunes a domingo        |
+| `min` | Minorista          | Baratote  | Lunes a domingo        |
+| `fgl` | Fineglass          | —         | Lunes a viernes        |
+| `fbt` | Fineboats          | —         | Lunes a domingo        |
+
+Baratote se muestra como **general** (suma de Mayorista + Minorista) y **por canal**. Cada canal tiene su propio objetivo; el objetivo general de Baratote es la suma de ambos.
+
+## 4. Roles
+
+| Rol           | Puede                                                                 |
+|---------------|-----------------------------------------------------------------------|
+| `admin`       | Cargar ventas y publicar; alta/activar/desactivar usuarios; ver dashboard |
+| `comercial`   | Solo ver el dashboard                                                  |
+
+- Un usuario **inactivo** no puede ingresar (mensaje: "Tu usuario está desactivado. Consultá con el administrador.").
+- Un admin **no puede desactivarse a sí mismo** (en su fila se muestra "Sesión actual").
+- Debe existir siempre al menos un admin activo (validar en servidor).
+
+## 5. Reglas de cálculo
+
+Para cada unidad, con `corte` = fecha de corte publicada (YYYY-MM-DD):
+
+```
+diasOperados  = días operativos del mes desde el 1 hasta 'corte' inclusive
+diasMes       = días operativos totales del mes
+avance        = real / objetivo
+proyeccion    = real / diasOperados * diasMes
+proyeccionPct = proyeccion / objetivo
+ritmoIdeal    = diasOperados / diasMes
+faltante      = max(objetivo - real, 0)
+diasRestantes = diasMes - diasOperados
+necesarioDia  = faltante / diasRestantes      (0 si no quedan días)
+promedioDia   = real / diasOperados
+```
+
+"Días operativos" depende de la unidad (tabla de la sección 3). Fineglass solo cuenta lunes a viernes.
+
+**Totales**: real total = suma de las 4 unidades; objetivo total = suma; proyección total = **suma de las proyecciones de cada unidad** (no recalcular con días, porque Fineglass tiene otro calendario). El "ritmo ideal a hoy" del KPI total usa calendario lunes a domingo.
+
+**Estado** (según `proyeccionPct`):
+
+| Condición      | Texto       | Fondo     | Texto color |
+|----------------|-------------|-----------|-------------|
+| ≥ 100%         | En camino   | `#E3EBFC` | `#1E3A8A`   |
+| ≥ 90% y < 100% | Ajustado    | `#FDF0DC` | `#92400E`   |
+| < 90%          | En riesgo   | `#FBE4E8` | `#9F1239`   |
+
+En la tabla de ritmo, "Necesario/día" va en naranja `#92400E` si es mayor al promedio actual; si no, azul `#1E3A8A`.
+
+## 6. Pantallas
+
+Layout fluido, contenedor `max-width: 1280px`, padding 24px, todo usable en celular (los paneles laterales pasan abajo, las tablas anchas scrollean horizontalmente dentro de su caja).
+
+### 6.1 Inicio de sesión
+- Fondo blanco, centrado, ancho máx. 420px.
+- Arriba: logo **Fineza** (200px de ancho) y debajo "Portal de avance de ventas".
+- Tarjeta con: título "Ingresar", subtítulo "Usá tu número de cédula y tu PIN de acceso.", campo **Cédula de identidad** (solo dígitos), campo **PIN de acceso** (password, numérico, 4–6 dígitos), botón **Ingresar**.
+- Error: "Cédula o PIN incorrectos." en caja rosa.
+- Debajo: "NUESTRAS UNIDADES DE NEGOCIO" y los logos **Baratote** (alto 24px), **Fine Glass Solutions** (44px) y **Fine Boats** (48px), en fila, centrados, con wrap.
+- Quitar la caja de "usuarios de prueba" del prototipo.
+
+### 6.2 Encabezado (todas las pantallas internas)
+- Fondo gris `#E4E7EC`, borde inferior `#CDD2DA`.
+- Izquierda: **solo el logo Fineza** (alto 42px), sin texto al lado.
+- Centro (solo admin): pestañas **Cargar ventas · Usuarios · Dashboard**. Activa: fondo `#0B3F86`, texto blanco. Inactiva: transparente, texto `#374151`. Alto 40px.
+- Derecha: nombre del usuario, chip de rol (fondo blanco, texto `#0B3F86`), botón **Salir** (blanco, borde `#B4BBC6`).
+- Debajo del encabezado, aviso azul descartable cuando se publica: "Reporte publicado con corte al DD/MM/AAAA. Aviso enviado al canal de Teams [nombre]." o "... Sin aviso a Teams."
+
+### 6.3 Admin · Cargar ventas
+- Panel principal: título "Cargar ventas", subtítulo "Actualizá la venta acumulada del mes y publicá. Los comerciales ven el cambio al instante."
+- Chip de estado: "Cambios sin publicar" (naranja) / "Al día con lo publicado" (azul).
+- Campo **Fecha de corte** (date).
+- Tabla: Unidad (con grupo y "lun a lun" / "lun a vie") · Objetivo mensual (Gs.) · Venta acumulada (Gs.) · Avance (calculado en vivo). Inputs con separador de miles, solo dígitos.
+- Checkbox **"Avisar en el canal de Teams al publicar"** (marcado por defecto).
+- Botones **Descartar cambios** (vuelve a lo publicado) y **Publicar** (primario).
+- Validación: fecha obligatoria; objetivo > 0 en todas las unidades. Mensaje: "Falta el objetivo mensual de X."
+- Panel lateral "Última publicación": corte, fecha/hora de publicación, quién publicó, avance total, botón **Ver como comercial** (va al Dashboard).
+- Panel lateral "Cómo se proyecta" con la fórmula en una línea y la aclaración de calendarios.
+- El borrador se guarda en el servidor (para no perderlo si se cierra el navegador), separado de lo publicado. Los comerciales nunca ven el borrador.
+
+### 6.4 Admin · Usuarios
+- Formulario "Alta de usuario": Cédula, Nombre y apellido, PIN (4 a 6 dígitos), Rol (Comercial por defecto / Administrador), botón **Dar de alta**.
+- Validaciones: cédula ≥ 5 dígitos y no repetida; nombre obligatorio; PIN 4–6 dígitos. Éxito: "X fue dado de alta como Comercial."
+- Lista: Cédula (con puntos) · Nombre · Rol · Estado (chip Activo/Inactivo) · acción **Activar/Desactivar**. Encabezado con "N usuarios · M activos".
+- Agregar (no estaba en el prototipo): acción **Restablecer PIN** por usuario.
+
+### 6.5 Dashboard (comercial y admin)
+1. Título "Avance de ventas · Octubre 2026" (mes del corte) + "Corte al DD/MM/AAAA · Publicado DD/MM/AAAA HH:MM por Nombre".
+2. **4 KPIs** en grilla (`auto-fit, minmax(230px, 1fr)`):
+   - Venta acumulada (al corte)
+   - Objetivo del mes ("Faltan Gs. X M")
+   - Avance sobre objetivo ("Ritmo ideal a hoy X%")
+   - Proyección al cierre — tarjeta oscura `#111827`, texto blanco: monto, "% del objetivo · Estado"
+3. **Tarjetas por unidad** (`auto-fit, minmax(340px, 1fr)`): Baratote, Fineglass, Fineboats.
+   - Título, "Opera lunes a lunes · día X de Y", chip de estado.
+   - % de avance grande (34px) + "de avance · proyecta X%".
+   - **Barra de avance** (alto 14px, escala 0–120%): fondo `#EEF0F3`, proyección en `#BFD0F7`, real en `#1D4ED8` encima, línea vertical negra del objetivo (100%) en la posición 83,3%.
+   - Fila Real · Proyección · Objetivo.
+   - Baratote además muestra los canales Mayorista y Minorista con barra fina (8px) y "X% · proy. Y% · real de objetivo".
+   - Leyenda debajo de las tarjetas: Venta real / Proyección al cierre / Objetivo (100%).
+4. Fila inferior con dos paneles:
+   - **Evolución del avance total**: columnas, una por publicación del mes (máx. 8 últimas), alto 200px, la última en `#1D4ED8` y las anteriores en `#93A9E8`, % arriba de cada columna, fecha DD/MM abajo, y una **línea naranja `#B45309`** en cada columna marcando el ritmo ideal a esa fecha. Escala: 100% del objetivo = 82% del alto.
+   - **Ritmo necesario para llegar**: tabla Unidad · Faltante · Días · Prom./día · Necesario/día (montos en millones). Nota al pie explicando el color naranja.
+
+Los gráficos se dibujan con HTML/CSS (divs con alto/ancho en %), sin librería de gráficos.
+
+## 7. Sistema visual
+
+- Tipografía: **IBM Plex Sans** (Google Fonts, 400/500/600/700), `font-variant-numeric: tabular-nums`.
+- Colores:
+
+| Uso                     | Color     |
+|-------------------------|-----------|
+| Fondo de página         | `#F3F4F6` |
+| Superficie / tarjetas   | `#FFFFFF` |
+| Bordes                  | `#E2E5EA` |
+| Bordes de inputs        | `#C9CED6` |
+| Texto principal         | `#111827` |
+| Texto secundario        | `#5B6472` |
+| Azul primario (botones, barras) | `#1D4ED8` |
+| Azul Fineza (pestaña activa) | `#0B3F86` |
+| Proyección (barra clara) | `#BFD0F7` |
+| Ritmo ideal             | `#B45309` |
+| Encabezado              | `#E4E7EC` |
+
+- Radios: tarjetas 12px, inputs/botones 8px, chips 999px.
+- Inputs y botones de 44–46px de alto (táctil).
+- Sin emojis, sin degradados.
+
+## 8. Logos
+
+En la carpeta `logos/` de este paquete (PNG recortados, fondo transparente o blanco):
+
+- `fineza.png` — encabezado y login
+- `baratote.png`, `fineglass.png`, `fineboats.png` — fila de unidades del login
+
+Copiarlos a `public/img/`.
+
+## 9. Arquitectura
+
+```
+portal-avance-ventas/
+├── netlify.toml
+├── package.json            # dependencias: @netlify/blobs
+├── public/                 # se publica tal cual, sin build
+│   ├── index.html          # login
+│   ├── app.html            # app (encabezado + vistas por hash: #ventas, #usuarios, #dashboard)
+│   ├── css/styles.css
+│   ├── js/api.js           # fetch a /api/*
+│   ├── js/calc.js          # reglas de la sección 5 (reutilizable)
+│   ├── js/app.js
+│   └── img/                # logos
+└── netlify/functions/
+    ├── login.mjs
+    ├── logout.mjs
+    ├── me.mjs
+    ├── dashboard.mjs       # GET datos publicados + historial del mes
+    ├── draft.mjs           # GET/PUT borrador (admin)
+    ├── publish.mjs         # POST publicar (admin) + aviso Teams
+    └── users.mjs           # GET/POST/PATCH usuarios (admin)
+```
+
+`netlify.toml`:
+```toml
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+```
+
+### 9.1 Datos (Netlify Blobs, store `ventas`)
+
+| Clave             | Contenido |
+|-------------------|-----------|
+| `users`           | `[{ ci, nombre, rol, activo, pinHash, pinSalt, creado, intentosFallidos, bloqueadoHasta }]` |
+| `draft`           | `{ corte, obj: {may,min,fgl,fbt}, real: {...}, actualizado, por }` |
+| `published`       | `{ corte, obj, real, publicadoEn, por }` |
+| `history/AAAA-MM` | `[{ corte, real, obj }]` — una entrada por fecha de corte; si se republica el mismo corte, se reemplaza |
+
+Montos como enteros en guaraníes.
+
+### 9.2 API
+
+| Método | Ruta              | Rol    | Descripción |
+|--------|-------------------|--------|-------------|
+| POST   | `/api/login`      | —      | `{ci, pin}` → cookie de sesión |
+| POST   | `/api/logout`     | todos  | borra cookie |
+| GET    | `/api/me`         | todos  | `{ci, nombre, rol}` |
+| GET    | `/api/dashboard`  | todos  | `published` + `history` del mes del corte |
+| GET    | `/api/draft`      | admin  | borrador (si no hay, copia de publicado) |
+| PUT    | `/api/draft`      | admin  | guarda borrador |
+| POST   | `/api/publish`    | admin  | `{avisarTeams}` → copia borrador a publicado, actualiza historial, envía aviso |
+| GET    | `/api/users`      | admin  | lista (sin hashes) |
+| POST   | `/api/users`      | admin  | alta |
+| PATCH  | `/api/users/:ci`  | admin  | `{activo}` o `{pin}` |
+
+El dashboard del comercial refresca solo cada 60 s (y al volver a la pestaña) para ver publicaciones nuevas sin recargar.
+
+### 9.3 Seguridad
+- PIN guardado con `crypto.scrypt` + salt aleatorio; comparación con `timingSafeEqual`.
+- Sesión: cookie `HttpOnly; Secure; SameSite=Lax`, token firmado con HMAC-SHA256 (`SESSION_SECRET`), expira en 12 h. El rol se verifica en **cada** función, nunca solo en el front.
+- Bloqueo tras 5 PIN fallidos durante 15 minutos.
+- Primer admin: se crea desde variables de entorno si `users` está vacío.
+
+### 9.4 Variables de entorno (Netlify → Site settings → Environment variables)
+
+| Variable              | Uso |
+|-----------------------|-----|
+| `SESSION_SECRET`      | firma de sesiones (cadena larga aleatoria) |
+| `ADMIN_CI`            | cédula del primer administrador |
+| `ADMIN_PIN`           | PIN inicial del primer administrador |
+| `ADMIN_NOMBRE`        | nombre del primer administrador |
+| `TEAMS_WEBHOOK_URL`   | URL del flujo de Teams (si falta, no se envía aviso) |
+| `TEAMS_CANAL`         | nombre del canal para el mensaje de confirmación |
+| `PORTAL_URL`          | URL pública del sitio para el botón del aviso |
+
+### 9.5 Aviso a Teams
+- Crear en Teams, en el canal elegido: **Workflows → "Publicar en un canal cuando se recibe una solicitud de webhook"**, copiar la URL → `TEAMS_WEBHOOK_URL`. (Los conectores clásicos "Incoming Webhook" de Office 365 están siendo retirados; usar Workflows.)
+- `publish.mjs` hace `POST` con una **Adaptive Card**:
+  - Título: "Reporte de ventas actualizado"
+  - "Corte al DD/MM/AAAA · publicado por Nombre"
+  - Dos datos: Avance total X% · Proyección al cierre Y%
+  - Línea: "Baratote X% · Fineglass Y% · Fineboats Z%"
+  - Botón "Abrir dashboard" → `PORTAL_URL`
+- Si el envío falla, la publicación igual queda hecha y el aviso de la app dice "Publicado, pero no se pudo enviar el aviso a Teams."
+
+## 10. Criterios de aceptación
+
+1. Un comercial no puede acceder a `/api/draft`, `/api/publish` ni `/api/users` (403), aunque manipule el front.
+2. Al publicar, otro navegador con un comercial ve los datos nuevos en ≤ 60 s sin recargar.
+3. La proyección de Fineglass usa solo lunes a viernes; Baratote y Fineboats, todos los días.
+4. Republicar la misma fecha de corte reemplaza el punto del historial, no lo duplica.
+5. Usuario inactivo o PIN incorrecto no ingresa; 5 fallos bloquean 15 min.
+6. Todo funciona en celular (≥ 360px) sin scroll horizontal de la página.
+7. Sin paso de build: `public/` se sirve tal cual.
+
+## 11. Deploy
+
+```bash
+npm install
+npm i -g netlify-cli
+netlify login
+netlify init            # o netlify link si el sitio ya existe
+netlify deploy --prod
+```
+
+Cargar las variables de entorno antes del primer deploy. Probar localmente con `netlify dev`.
+
+## 12. Fuera de alcance (por ahora)
+- Integración automática con el sistema de ventas (la carga es manual).
+- Objetivos por comercial individual.
+- Historial de meses anteriores en el dashboard (se guarda, pero no se muestra).
