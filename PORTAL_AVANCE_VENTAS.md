@@ -324,6 +324,12 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Dashboard: tarjeta "Clima para lo que queda del mes" con un recuadro por día (máxima, lluvia, peso del día en el mes de Minorista), los viernes a domingo resaltados y los días con lluvia ≥ 5 mm en azul.
 - Proyección de Minorista **ajustada por lluvia**, marcada **Referencial**: a lo que falta del mes (según la ponderación) se le aplica ×0,89 en días con lluvia ≥ 5 mm y ×1,08 en días secos; días sin pronóstico quedan igual. Factores del análisis de octubre 2026 (lluvia vs venta por sucursal, cada día contra el promedio de su día de la semana, 19 días sin lunes: r = −0,50). No reemplaza la proyección principal ni suma en el total. No aplica con días en manual.
 
+### 12.9 Solicitud de acceso con aprobación
+- En el ingreso, "¿No tenés usuario? Solicitá acceso": el comercial carga cédula, nombre y apellido y PIN (dos veces). `POST /api/solicitud` (público) crea el usuario con `pendiente: true`, `activo: false`, rol Comercial.
+- Mientras está pendiente no puede ingresar: "Tu solicitud todavía está pendiente…".
+- Admin · Usuarios: tarjeta "Solicitudes pendientes" con **Aprobar** (`PATCH /api/users/:ci {aprobar: true}`) y **Rechazar** (`DELETE /api/users/:ci`, solo para pendientes). La pestaña Usuarios muestra el número de pendientes.
+- Protección: máximo 5 solicitudes por hora por conexión (IP) y 100 pendientes en total. Si la cédula ya tiene usuario o una solicitud, se avisa sin crear otra.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

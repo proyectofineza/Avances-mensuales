@@ -19,6 +19,7 @@ export async function api(method, path, body) {
 
 export const login = (ci, pin) => api('POST', 'login', { ci, pin });
 export const logout = () => api('POST', 'logout');
+export const solicitarAcceso = (datos) => api('POST', 'solicitud', datos);
 export const me = () => api('GET', 'me');
 export const getDashboard = () => api('GET', 'dashboard');
 export const getDraft = () => api('GET', 'draft');
@@ -30,3 +31,4 @@ export const testTeams = () => api('POST', 'teams');
 export const getUsers = () => api('GET', 'users');
 export const createUser = (user) => api('POST', 'users', user);
 export const updateUser = (ci, changes) => api('PATCH', `users/${encodeURIComponent(ci)}`, changes);
+export const rechazarSolicitud = (ci) => api('DELETE', `users/${encodeURIComponent(ci)}`);

@@ -16,7 +16,7 @@
       <img class="header-logo" src="img/fineza.png" alt="Fineza">
       <nav class="tabs" id="tabs" hidden>
         <a class="tab" href="#ventas" data-view="ventas">Cargar ventas</a>
-        <a class="tab" href="#usuarios" data-view="usuarios">Usuarios</a>
+        <a class="tab" href="#usuarios" data-view="usuarios">Usuarios<span class="tab-badge" id="tab-badge" hidden></span></a>
         <a class="tab" href="#dashboard" data-view="dashboard">Dashboard</a>
       </nav>
       <div class="user-box">
@@ -178,6 +178,25 @@
 
     <!-- Admin · Usuarios -->
     <section id="view-usuarios" hidden>
+      <div class="card pend-card" id="pend-card" hidden style="margin-bottom:20px">
+        <div class="card-head">
+          <div>
+            <h2>Solicitudes pendientes</h2>
+            <p class="muted small">Comerciales que pidieron acceso desde la pantalla de ingreso. Al aprobar, ya pueden entrar con el PIN que eligieron.</p>
+          </div>
+          <span class="chip warn" id="pend-count"></span>
+        </div>
+        <div class="alert form-msg" id="pend-msg" hidden style="margin:0 0 14px"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Cédula</th><th>Nombre</th><th>Solicitado</th><th class="r">Acciones</th></tr>
+            </thead>
+            <tbody id="pend-body"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="card" style="margin-bottom:20px">
         <h2 style="margin-bottom:16px">Alta de usuario</h2>
         <form class="alta-grid" id="alta-form" novalidate>

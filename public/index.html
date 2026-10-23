@@ -30,6 +30,33 @@
       </div>
       <div class="alert alert-error" id="login-error" hidden></div>
       <button class="btn btn-primary" type="submit" id="login-btn">Ingresar</button>
+      <p class="muted small" style="margin:0;text-align:center">¿No tenés usuario? <button class="btn-link" type="button" id="ir-solicitud">Solicitá acceso</button></p>
+    </form>
+
+    <form class="login-card" id="solicitud-form" novalidate hidden>
+      <div>
+        <h1>Solicitar acceso</h1>
+        <p class="muted" style="margin:4px 0 0">Completá tus datos. Vas a poder ingresar cuando el administrador apruebe tu solicitud.</p>
+      </div>
+      <div>
+        <label for="sol-ci">Cédula de identidad</label>
+        <input id="sol-ci" inputmode="numeric" autocomplete="username" required>
+      </div>
+      <div>
+        <label for="sol-nombre">Nombre y apellido</label>
+        <input id="sol-nombre" autocomplete="name" maxlength="80" required>
+      </div>
+      <div>
+        <label for="sol-pin">Elegí un PIN (4 a 6 números)</label>
+        <input id="sol-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" required>
+      </div>
+      <div>
+        <label for="sol-pin2">Repetí el PIN</label>
+        <input id="sol-pin2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" required>
+      </div>
+      <div class="alert" id="sol-msg" hidden></div>
+      <button class="btn btn-primary" type="submit" id="sol-btn">Enviar solicitud</button>
+      <p class="muted small" style="margin:0;text-align:center"><button class="btn-link" type="button" id="ir-login">Volver a ingresar</button></p>
     </form>
 
     <p class="unidades-title">NUESTRAS UNIDADES DE NEGOCIO</p>
@@ -41,7 +68,7 @@
   </main>
 
   <script type="module">
-    import { login, me } from './js/api.js';
+    import { login, me, solicitarAcceso } from './js/api.js';
 
     const form = document.getElementById('login-form');
     const ci = document.getElementById('ci');
@@ -56,6 +83,48 @@
     const soloDigitos = (el) => el.addEventListener('input', () => { el.value = el.value.replace(/\D/g, ''); });
     soloDigitos(ci);
     soloDigitos(pin);
+
+    // Solicitud de acceso
+    const solForm = document.getElementById('solicitud-form');
+    const solMsg = document.getElementById('sol-msg');
+    const solBtn = document.getElementById('sol-btn');
+    const campo = (id) => document.getElementById(id);
+    ['sol-ci', 'sol-pin', 'sol-pin2'].forEach((id) => soloDigitos(campo(id)));
+
+    const mostrar = (cual) => {
+      form.hidden = cual !== 'login';
+      solForm.hidden = cual !== 'solicitud';
+      error.hidden = true;
+      solMsg.hidden = true;
+      (cual === 'login' ? ci : campo('sol-ci')).focus();
+    };
+    campo('ir-solicitud').addEventListener('click', () => mostrar('solicitud'));
+    campo('ir-login').addEventListener('click', () => mostrar('login'));
+
+    const solAviso = (texto, ok) => {
+      solMsg.textContent = texto;
+      solMsg.className = `alert ${ok ? 'alert-ok' : 'alert-error'}`;
+      solMsg.hidden = false;
+    };
+
+    solForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const datos = { ci: campo('sol-ci').value, nombre: campo('sol-nombre').value.trim(), pin: campo('sol-pin').value };
+      if (datos.ci.length < 5) return solAviso('La cédula debe tener al menos 5 dígitos.', false);
+      if (!datos.nombre) return solAviso('Indicá tu nombre y apellido.', false);
+      if (!/^\d{4,6}$/.test(datos.pin)) return solAviso('El PIN debe tener de 4 a 6 dígitos.', false);
+      if (datos.pin !== campo('sol-pin2').value) return solAviso('Los dos PIN no coinciden.', false);
+      solBtn.disabled = true;
+      try {
+        const res = await solicitarAcceso(datos);
+        solForm.reset();
+        solAviso(res.mensaje, true);
+      } catch (err) {
+        solAviso(err.message, false);
+      } finally {
+        solBtn.disabled = false;
+      }
+    });
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

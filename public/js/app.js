@@ -479,6 +479,26 @@ function setupUsuarios() {
     }
   });
 
+  $('pend-body').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-accion]');
+    if (!btn) return;
+    const { ci, accion, nombre } = btn.dataset;
+    const msgEl = $('pend-msg');
+    if (accion === 'rechazar' && !confirm(`¿Rechazar la solicitud de ${nombre}? Se borra y tendría que volver a pedir acceso.`)) return;
+    btn.disabled = true;
+    try {
+      const res = accion === 'aprobar' ? await API.updateUser(ci, { aprobar: true }) : await API.rechazarSolicitud(ci);
+      showMsg(msgEl, res.mensaje, true);
+      await loadUsuarios();
+    } catch (err) {
+      btn.disabled = false;
+      handleError(err, msgEl);
+    }
+  });
+
+  // Contador de solicitudes en la pestaña, aunque se entre por otra vista.
+  API.getUsers().then((users) => { state.users = users; actualizarBadge(); }).catch(() => {});
+
   $('users-body').addEventListener('input', (e) => {
     if (e.target.id === 'reset-pin') e.target.value = e.target.value.replace(/\D/g, '');
   });
@@ -496,8 +516,36 @@ async function loadUsuarios() {
   }
 }
 
+function actualizarBadge() {
+  const n = state.users.filter((u) => u.pendiente).length;
+  $('tab-badge').textContent = n;
+  $('tab-badge').hidden = n === 0;
+}
+
+function renderPendientes() {
+  const pend = state.users.filter((u) => u.pendiente).sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
+  $('pend-card').hidden = pend.length === 0 && $('pend-msg').hidden;
+  $('pend-count').textContent = `${pend.length} pendiente${pend.length === 1 ? '' : 's'}`;
+  $('pend-body').innerHTML = pend.length
+    ? pend.map((u) => `
+      <tr>
+        <td style="white-space:nowrap">${fmtCI(u.ci)}</td>
+        <td>${esc(u.nombre)}</td>
+        <td style="white-space:nowrap">${fmtFechaHora(u.creado)}</td>
+        <td class="r">
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-primary btn-sm" data-accion="aprobar" data-ci="${esc(u.ci)}" data-nombre="${esc(u.nombre)}">Aprobar</button>
+            <button class="btn btn-sm" data-accion="rechazar" data-ci="${esc(u.ci)}" data-nombre="${esc(u.nombre)}">Rechazar</button>
+          </div>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="muted">No quedan solicitudes pendientes.</td></tr>';
+}
+
 function renderUsers() {
-  const users = [...state.users].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  actualizarBadge();
+  renderPendientes();
+  const users = state.users.filter((u) => !u.pendiente).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   const activos = users.filter((u) => u.activo).length;
   $('users-count').textContent = `${users.length} usuario${users.length === 1 ? '' : 's'} · ${activos} activo${activos === 1 ? '' : 's'}`;
   $('users-body').innerHTML = users.map((u) => {

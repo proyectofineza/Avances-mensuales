@@ -50,5 +50,5 @@ export async function saveUsers(users) {
 }
 
 export function publicUser(u) {
-  return { ci: u.ci, nombre: u.nombre, rol: u.rol, activo: u.activo, creado: u.creado };
+  return { ci: u.ci, nombre: u.nombre, rol: u.rol, activo: u.activo, pendiente: Boolean(u.pendiente), creado: u.creado };
 }

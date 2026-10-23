@@ -35,6 +35,7 @@ export default handler(async (req) => {
     throw new HttpError(401, ERROR_CRED);
   }
 
+  if (user.pendiente) throw new HttpError(403, 'Tu solicitud todavía está pendiente. Vas a poder ingresar cuando el administrador la apruebe.');
   if (!user.activo) throw new HttpError(403, 'Tu usuario está desactivado. Consultá con el administrador.');
 
   if (user.intentosFallidos || user.bloqueadoHasta) {

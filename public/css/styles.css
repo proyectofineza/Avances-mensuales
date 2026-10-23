@@ -163,6 +163,12 @@ input.num { text-align: right; }
 }
 .tab:hover { background: rgba(255, 255, 255, .5); }
 .tab.active { background: var(--fineza); color: #fff; }
+.tab-badge {
+  margin-left: 6px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  background: #DC2626; color: #fff; font-size: 12px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.pend-card { border: 1px solid #F5C77E; }
 .user-box { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .user-name { font-weight: 500; }
 .chip-rol { background: #fff; color: var(--fineza); }
