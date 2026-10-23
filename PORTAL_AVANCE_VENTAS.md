@@ -300,6 +300,15 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Evolución: columnas apiladas por unidad.
 - "Composición de la venta": torta (dona) con la venta acumulada por canal, hecha con CSS `conic-gradient`.
 
+### 12.4 Proyección al cierre destacada
+- Reemplaza la tarjeta oscura de KPIs por una sección oscura de ancho completo, arriba del dashboard: monto proyectado grande, estado, brecha contra el objetivo, venta necesaria por día vs promedio actual, medidor semicircular (0–120%, marca blanca en 100%) y variación vs mes anterior y año anterior.
+- Debajo, una mini tarjeta por unidad (Baratote, sus canales, Fineglass, Fineboats) con proyección, % del objetivo y variación vs mes anterior.
+
+### 12.5 Prueba del aviso a Teams
+- `GET /api/teams` (admin): si `TEAMS_WEBHOOK_URL` está configurado y el canal.
+- `POST /api/teams` (admin): envía la tarjeta con lo publicado, marcada "AVISO DE PRUEBA".
+- Panel "Aviso a Teams" en Cargar ventas con el estado y el botón **Enviar aviso de prueba**.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

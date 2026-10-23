@@ -322,6 +322,78 @@ tfoot td { border-top: 2px solid var(--border); border-bottom: 0; font-weight: 6
 .chart-labels { display: flex; gap: 10px; margin-top: 6px; }
 .chart-labels span { flex: 1; text-align: center; font-size: 12px; color: var(--text-2); min-width: 0; }
 
+/* Proyección al cierre (sección destacada) */
+.proy-hero {
+  background: #111827;
+  color: #fff;
+  border-radius: 16px;
+  padding: 28px;
+  margin-bottom: 20px;
+}
+.proy-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr);
+  gap: 28px;
+  align-items: center;
+}
+.proy-label { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #9CA3AF; }
+.proy-amount { font-size: 52px; font-weight: 700; line-height: 1.05; margin: 6px 0 12px; letter-spacing: -.01em; }
+.proy-state { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: #D1D5DB; font-size: 14px; }
+.proy-brecha { margin: 14px 0 4px; font-size: 16px; color: #E5E7EB; }
+.proy-ritmo { margin: 0; font-size: 14px; color: #9CA3AF; }
+.proy-ritmo b { color: #E5E7EB; font-weight: 600; }
+.hl-ok { color: #4ADE80; }
+.hl-risk { color: #F87171; }
+
+.gauge { position: relative; width: 240px; height: 132px; margin: 0 auto; overflow: hidden; }
+.gauge-arc { position: absolute; left: 0; top: 0; width: 240px; height: 240px; border-radius: 50%; }
+.gauge-hole { position: absolute; left: 28px; top: 28px; width: 184px; height: 184px; border-radius: 50%; background: #111827; }
+.gauge-target { position: absolute; left: 119px; top: 0; width: 2px; height: 120px; transform-origin: 1px 120px; transform: rotate(60deg); }
+.gauge-target::before { content: ''; position: absolute; left: 0; top: -4px; width: 2px; height: 36px; background: #fff; }
+.gauge-text { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; display: grid; }
+.gauge-text strong { font-size: 34px; font-weight: 700; line-height: 1; }
+.gauge-text span { font-size: 12px; color: #9CA3AF; margin-top: 4px; }
+
+.proy-cmps { display: grid; gap: 12px; }
+.proy-cmp { background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1); border-radius: 12px; padding: 12px 14px; display: grid; gap: 2px; }
+.proy-cmp span { font-size: 12px; color: #9CA3AF; }
+.proy-cmp b { font-size: 26px; font-weight: 700; line-height: 1.15; }
+.proy-cmp small { font-size: 12px; color: #9CA3AF; }
+.proy-cmp .var-na { font-size: 18px; color: #6B7280; }
+
+.proy-units {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, .12);
+}
+.proy-unit { background: rgba(255, 255, 255, .05); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; min-width: 0; }
+.pu-name { font-size: 13px; font-weight: 600; color: #E5E7EB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pu-name small { color: #9CA3AF; font-weight: 500; font-size: 12px; }
+.pu-value { font-size: 20px; font-weight: 700; }
+.pu-bar { position: relative; height: 6px; background: rgba(255, 255, 255, .14); border-radius: 999px; overflow: hidden; }
+.pu-bar div { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; }
+.pu-bar i { position: absolute; top: 0; bottom: 0; left: 83.333%; width: 2px; background: #fff; }
+.pu-pct { font-size: 12px; color: #9CA3AF; }
+.pu-ok { color: #60A5FA; }
+.pu-warn { color: #FBBF24; }
+.pu-risk { color: #F87171; }
+
+@media (max-width: 1100px) {
+  .proy-top { grid-template-columns: minmax(0, 1fr) auto; }
+  .proy-cmps { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  .proy-hero { padding: 20px 16px; }
+  .proy-top { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .proy-amount { font-size: 38px; }
+  .proy-cmp b { font-size: 20px; }
+  .proy-units { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pu-name small { display: none; }
+}
+
 /* Cargar ventas: días y comparativa */
 .main-col { display: grid; gap: 20px; min-width: 0; }
 .dias-input { width: 80px; min-width: 0; }

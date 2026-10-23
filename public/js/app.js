@@ -200,6 +200,33 @@ function setupVentas() {
   });
 
   $('btn-publicar').addEventListener('click', publicar);
+
+  $('btn-teams-test').addEventListener('click', async () => {
+    const btn = $('btn-teams-test');
+    const msgEl = $('teams-msg');
+    btn.disabled = true;
+    try {
+      const res = await API.testTeams();
+      showMsg(msgEl, `Aviso de prueba enviado${res.canal ? ' al canal ' + res.canal : ''}. Revisá Teams.`, true);
+    } catch (err) {
+      handleError(err, msgEl);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+async function loadTeamsEstado() {
+  const el = $('teams-estado');
+  try {
+    const t = await API.getTeams();
+    el.innerHTML = t.configurado
+      ? `<span class="chip ok">Configurado</span> ${t.canal ? 'Canal: ' + esc(t.canal) : ''}`
+      : '<span class="chip warn">Sin configurar</span> Falta cargar TEAMS_WEBHOOK_URL en Netlify.';
+    $('btn-teams-test').disabled = !t.configurado;
+  } catch {
+    el.textContent = 'No se pudo verificar la configuración.';
+  }
 }
 
 // Formatea con separador de miles manteniendo la posición del cursor.
@@ -224,6 +251,7 @@ async function loadVentas() {
     else $('draft-saved').textContent = '';
     fillVentasForm();
     renderUltimaPub();
+    loadTeamsEstado();
   } catch (err) {
     handleError(err, $('ventas-error'));
   }
@@ -660,6 +688,73 @@ function comparativaHtml(r, corte) {
     </div>`;
 }
 
+// Medidor semicircular 0–120%; la marca blanca es el objetivo (100%).
+const GAUGE_COLOR = { ok: '#60A5FA', warn: '#FBBF24', risk: '#F87171' };
+
+function gauge(p, clase) {
+  const ang = (Math.min(Math.max(p, 0), 1.2) / 1.2) * 180;
+  return `
+    <div class="gauge" role="img" aria-label="Proyección ${fmtPct(p)} del objetivo">
+      <div class="gauge-arc" style="background:conic-gradient(from 270deg, ${GAUGE_COLOR[clase]} 0deg ${ang.toFixed(1)}deg, rgba(255,255,255,.14) ${ang.toFixed(1)}deg 180deg, transparent 180deg 360deg)"></div>
+      <div class="gauge-hole"></div>
+      <div class="gauge-target"></div>
+      <div class="gauge-text"><strong>${fmtPct(p)}</strong><span>del objetivo</span></div>
+    </div>`;
+}
+
+// Sección destacada: proyección al cierre del mes.
+function proyeccionHtml(r, corte) {
+  const t = r.total;
+  const est = estado(t.proyeccionPct);
+  const brecha = t.proyeccion - t.objetivo;
+  const brechaTxt = brecha >= 0
+    ? `Supera el objetivo por <b class="hl-ok">${fmtMillones(brecha)}</b>`
+    : `Al ritmo actual faltarían <b class="hl-risk">${fmtMillones(-brecha)}</b> para el objetivo`;
+
+  const cmp = (lbl, v, base) => `
+    <div class="proy-cmp">
+      <span>vs ${esc(lbl)}</span>
+      ${v === null ? '<b class="var-na">Sin dato</b>' : `<b class="${v >= 0 ? 'hl-ok' : 'hl-risk'}">${fmtVar(v)}</b>`}
+      <small>${base > 0 ? `Cierre ${fmtMillones(base)}` : 'Cargalo en Cargar ventas'}</small>
+    </div>`;
+
+  const unidad = (nombre, c, color, sub = false) => {
+    const e = estado(c.proyeccionPct);
+    return `
+      <div class="proy-unit${sub ? ' sub' : ''}">
+        <div class="pu-name"><i class="dot" style="background:${color}"></i>${sub ? '<small>Baratote ·</small> ' : ''}${esc(nombre)}</div>
+        <div class="pu-value">${fmtMillones(c.proyeccion)}</div>
+        <div class="pu-bar"><div style="width:${barW(c.proyeccionPct).toFixed(2)}%;background:${color}"></div><i></i></div>
+        <div class="pu-pct"><b class="pu-${e.clase}">${fmtPct(c.proyeccionPct)}</b> del obj. · ${fmtVar(c.varAnt)} vs mes ant.</div>
+      </div>`;
+  };
+
+  return `
+    <section class="proy-hero" aria-label="Proyección al cierre">
+      <div class="proy-top">
+        <div class="proy-main">
+          <span class="proy-label">Proyección al cierre · ${esc(nombreMes(corte))}</span>
+          <div class="proy-amount">${fmtMillones(t.proyeccion)}</div>
+          <div class="proy-state"><span class="chip ${est.clase}">${est.texto}</span><span>Objetivo ${fmtMillones(t.objetivo)}</span></div>
+          <p class="proy-brecha">${brechaTxt}</p>
+          <p class="proy-ritmo">Para llegar hacen falta <b>${fmtMillones(t.necesarioDia)}</b> por día · hoy el promedio es <b>${fmtMillones(t.promedioDia)}</b> por día</p>
+        </div>
+        ${gauge(t.proyeccionPct, est.clase)}
+        <div class="proy-cmps">
+          ${cmp(mesAnterior(corte), t.varAnt, t.ant)}
+          ${cmp(mismoMesAnioAnterior(corte), t.varAa, t.aa)}
+        </div>
+      </div>
+      <div class="proy-units">
+        ${unidad('Baratote', r.baratote, COLOR.bar.fuerte)}
+        ${unidad('Mayorista', r.unidades.may, COLOR.may.fuerte, true)}
+        ${unidad('Minorista', r.unidades.min, COLOR.min.fuerte, true)}
+        ${unidad('Fineglass', r.unidades.fgl, COLOR.fgl.fuerte)}
+        ${unidad('Fineboats', r.unidades.fbt, '#60A5FA')}
+      </div>
+    </section>`;
+}
+
 function renderDashboard() {
   const el = $('dash');
   const p = state.published;
@@ -670,8 +765,6 @@ function renderDashboard() {
   const r = calcularReporte(p);
   const t = r.total;
   const u = r.unidades;
-  const est = estado(t.proyeccionPct);
-
   const filasRitmo = [
     { nombre: 'Baratote', c: r.baratote, clase: 'grupo-row' },
     { nombre: 'Mayorista', c: u.may, clase: 'sub-row' },
@@ -691,15 +784,13 @@ function renderDashboard() {
       </tr>`;
   }).join('');
 
-  const cmpKpi = t.varAnt !== null || t.varAa !== null
-    ? `<span class="kpi-sub">vs ${esc(mesAnterior(p.corte))}: ${fmtVar(t.varAnt)} · vs ${esc(mismoMesAnioAnterior(p.corte))}: ${fmtVar(t.varAa)}</span>`
-    : '';
-
   el.innerHTML = `
     <div class="dash-head">
       <h1>Avance de ventas · ${nombreMes(p.corte)}</h1>
       <p class="muted">Corte al ${fmtFecha(p.corte)} · Publicado ${fmtFechaHora(p.publicadoEn)} por ${esc(p.por)}${r.manual ? ' · Días cargados a mano' : ''}</p>
     </div>
+
+    ${proyeccionHtml(r, p.corte)}
 
     <div class="kpis">
       <div class="card kpi" style="border-top:4px solid #1D4ED8">
@@ -716,12 +807,6 @@ function renderDashboard() {
         <span class="kpi-label">Avance sobre objetivo</span>
         <span class="kpi-value">${fmtPct(t.avance)}</span>
         <span class="kpi-sub">Ritmo ideal a hoy ${fmtPct(t.ritmoIdeal)}</span>
-      </div>
-      <div class="card kpi dark">
-        <span class="kpi-label">Proyección al cierre</span>
-        <span class="kpi-value">${fmtMillones(t.proyeccion)}</span>
-        <span class="kpi-sub">${fmtPct(t.proyeccionPct)} del objetivo · ${est.texto}</span>
-        ${cmpKpi}
       </div>
     </div>
 

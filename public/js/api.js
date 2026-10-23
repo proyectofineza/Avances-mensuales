@@ -24,6 +24,8 @@ export const getDashboard = () => api('GET', 'dashboard');
 export const getDraft = () => api('GET', 'draft');
 export const saveDraft = (draft) => api('PUT', 'draft', draft);
 export const publish = (avisarTeams) => api('POST', 'publish', { avisarTeams });
+export const getTeams = () => api('GET', 'teams');
+export const testTeams = () => api('POST', 'teams');
 export const getUsers = () => api('GET', 'users');
 export const createUser = (user) => api('POST', 'users', user);
 export const updateUser = (ci, changes) => api('PATCH', `users/${encodeURIComponent(ci)}`, changes);
