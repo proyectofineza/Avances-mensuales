@@ -75,11 +75,31 @@ assert.equal(cmp.baratote.ant, 1_400e6);
 assert.equal(cmp.total.aa, 1_880e6);
 assert.equal(cmp.total.varAa, cmp.total.proyeccion / 1_880e6 - 1);
 
+// Minorista ponderado por día de la semana (solo en automático)
+import { fraccionPonderada, PESOS_MINORISTA } from '../public/js/calc.js';
+const f22 = fraccionPonderada('2026-10-22', PESOS_MINORISTA);
+assert.equal(r.unidades.min.proyeccion, 400e6 / f22);
+assert.equal(r.unidades.min.ritmoIdeal, f22);
+assert.equal(r.unidades.min.ponderada, true);
+assert.equal(r.unidades.may.ponderada, false);
+assert.equal(fraccionPonderada('2026-10-31', PESOS_MINORISTA), 1);
+// Pesos iguales = proyección lineal
+const iguales = { lun: 1, mar: 1, mie: 1, jue: 1, vie: 1, sab: 1, dom: 1 };
+const lin = calcularReporte({ ...base, pesos: iguales });
+assert.ok(Math.abs(lin.unidades.min.proyeccion - 400e6 / 22 * 31) < 1e-3);
+// En manual se usan los días cargados, sin ponderar
+assert.equal(man.unidades.min.proyeccion, 400e6 / 20 * 26);
+// Cortar un sábado proyecta menos que lineal (ya pasó un día fuerte)
+const sab = calcularReporte({ ...base, corte: '2026-10-03' });
+assert.ok(sab.unidades.min.proyeccion < 400e6 / 3 * 31);
+
 // Normalización y validación
 const n = normalizarReporte({ corte: '2026-10-22', obj: { may: '5' }, dias: { modo: 'manual', fgl: { mes: 40, curso: -2 } } });
 assert.equal(n.obj.may, 5);
 assert.equal(n.obj.fgl, 0);
 assert.deepEqual(n.dias.fgl, { mes: 31, curso: 0 });
+assert.deepEqual(n.pesos, PESOS_MINORISTA);
+assert.equal(normalizarReporte({ pesos: { sab: 150, dom: 20.04 } }).pesos.sab, 100);
 assert.equal(validarReporte(normalizarReporte({ ...base, corte: '' })), 'Indicá la fecha de corte.');
 assert.equal(validarReporte(normalizarReporte(base)), null);
 const malDias = normalizarReporte({ ...base, dias: { modo: 'manual', may: { mes: 26, curso: 30 }, min: { mes: 26, curso: 20 }, fgl: { mes: 20, curso: 15 }, fbt: { mes: 30, curso: 22 } } });

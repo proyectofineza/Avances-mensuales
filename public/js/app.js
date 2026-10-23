@@ -1,6 +1,7 @@
 import * as API from './api.js';
 import {
-  UNIDADES, IDS, calcularReporte, estado, diasOperativos, diasUnidad, normalizarReporte, validarReporte,
+  UNIDADES, IDS, DIAS_SEMANA, PESOS_MINORISTA,
+  calcularReporte, estado, diasOperativos, diasUnidad, normalizarReporte, validarReporte,
   mesAnterior, mismoMesAnioAnterior, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, fmtDiaMes,
   fmtFechaHora, nombreMes, fmtCI, hoyAsuncion,
 } from './calc.js';
@@ -111,7 +112,7 @@ function unidadCell(u) {
   return `
       <td>
         <div class="unidad-nombre">${esc(u.nombre)}</div>
-        <div class="unidad-meta">${u.grupo ? 'Canal · ' : ''}${CAL_CORTO[u.calendario]}</div>
+        <div class="unidad-meta">${u.grupo ? 'Canal · ' : ''}${CAL_CORTO[u.calendario]}${u.ponderado ? ' · ponderado' : ''}</div>
       </td>`;
 }
 
@@ -151,11 +152,26 @@ function setupVentas() {
       <td class="r">${montoInput('data-comp="aa"', u.id, `Venta año anterior ${u.nombre}`)}</td>`,
   );
 
+  $('pesos-grid').innerHTML = DIAS_SEMANA.map((d) => `
+    <label class="peso">
+      <span>${d.nombre}</span>
+      <span class="peso-input"><input class="num" inputmode="decimal" maxlength="5" data-peso="${d.k}" aria-label="Peso del ${d.nombre} en %"><i>%</i></span>
+    </label>`).join('');
+
+  $('btn-pesos-reset').addEventListener('click', () => {
+    state.draft.pesos = { ...PESOS_MINORISTA };
+    fillPesos();
+    onDraftChange();
+  });
+
   $('view-ventas').addEventListener('input', (e) => {
     const el = e.target;
     const id = el.dataset.id;
     const numero = () => Number(el.value.replace(/\D/g, '')) || 0;
-    if (el.dataset.campo) {
+    if (el.dataset.peso) {
+      el.value = el.value.replace(/[^\d,.]/g, '');
+      state.draft.pesos[el.dataset.peso] = Number(el.value.replace(',', '.')) || 0;
+    } else if (el.dataset.campo) {
       formatearInput(el);
       state.draft[el.dataset.campo][id] = numero();
     } else if (el.dataset.comp) {
@@ -269,7 +285,16 @@ function fillVentasForm() {
     el.value = v ? fmtMiles(v) : '';
   });
   fillDias();
+  fillPesos();
   updateVentasCalc();
+}
+
+const fmtPeso = (v) => String(Math.round((Number(v) || 0) * 10) / 10).replace('.', ',');
+
+function fillPesos() {
+  document.querySelectorAll('#pesos-grid input').forEach((el) => {
+    el.value = fmtPeso(state.draft.pesos[el.dataset.peso]);
+  });
 }
 
 // En automático muestra los días del calendario (solo lectura); en manual, los cargados.
@@ -309,8 +334,16 @@ function updateVentasCalc() {
 
   for (const u of UNIDADES) {
     const x = diasUnidad(d, u);
-    $(`ri-${u.id}`).textContent = x.mes > 0 ? fmtPct(x.operados / x.mes) : '—';
+    const ritmo = x.fraccion ?? (x.mes > 0 ? x.operados / x.mes : null);
+    $(`ri-${u.id}`).textContent = ritmo === null ? '—' : fmtPct(ritmo);
   }
+
+  const p = d.pesos;
+  const totPesos = DIAS_SEMANA.reduce((s, x) => s + (Number(p[x.k]) || 0), 0);
+  const finde = (Number(p.vie) || 0) + (Number(p.sab) || 0) + (Number(p.dom) || 0);
+  $('pesos-total').innerHTML = totPesos > 0
+    ? `Total ${fmtPeso(totPesos)}%${Math.abs(totPesos - 100) > 0.5 ? ' <span class="necesario-alto">(no suma 100%: se reparte en proporción)</span>' : ''} · Viernes a domingo: <b>${fmtPct(finde / totPesos)}</b> de la semana`
+    : '<span class="necesario-alto">Cargá al menos un peso.</span>';
 
   const montoOVacio = (v) => (v ? fmtMiles(v) : '—');
   $('comp-bar-ant').textContent = montoOVacio(suma(d.comp.ant, BAR));
@@ -532,22 +565,25 @@ const chipEstado = (p) => { const e = estado(p); return `<span class="chip ${e.c
 const varClase = (v) => (v === null ? 'var-na' : v >= 0 ? 'var-pos' : 'var-neg');
 const varHtml = (v) => `<b class="${varClase(v)}">${fmtVar(v)}</b>`;
 
+// Etiqueta para unidades cuya proyección lineal es solo orientativa (Fineboats).
+const tagRef = (c) => (c.referencial ? ' <span class="tag-ref" title="Sus ventas no siguen un ritmo diario: tomá la proyección como orientativa.">Referencial</span>' : '');
+
 function unidadCard(titulo, calendario, c, color, manual, extra = '') {
   const dias = manual ? 'Días cargados a mano' : `Opera ${CAL_LARGO[calendario]}`;
   return `
     <div class="card u-card" style="border-top:4px solid ${color.fuerte}">
       <div class="u-head">
         <div>
-          <h3>${esc(titulo)}</h3>
+          <h3>${esc(titulo)}${tagRef(c)}</h3>
           <p>${dias} · día ${c.diasOperados} de ${c.diasMes}</p>
         </div>
         ${chipEstado(c.proyeccionPct)}
       </div>
-      <div class="u-big"><strong style="color:${color.fuerte}">${fmtPct(c.avance)}</strong><span>de avance · proyecta ${fmtPct(c.proyeccionPct)}</span></div>
+      <div class="u-big"><strong style="color:${color.fuerte}">${fmtPct(c.avance)}</strong><span>de avance · proyecta ${fmtPct(c.proyeccionPct)}${c.referencial ? ' (referencial)' : ''}</span></div>
       ${bar(c.avance, c.proyeccionPct, color)}
       <div class="u-stats">
         <div><span>Real</span><strong>${fmtMillones(c.real)}</strong></div>
-        <div><span>Proyección</span><strong>${fmtMillones(c.proyeccion)}</strong></div>
+        <div><span>Proyección${c.referencial ? ' (ref.)' : ''}</span><strong>${fmtMillones(c.proyeccion)}</strong></div>
         <div><span>Objetivo</span><strong>${fmtMillones(c.objetivo)}</strong></div>
       </div>
       ${extra}
@@ -558,7 +594,7 @@ function canal(c) {
   return `
     <div>
       <div class="canal-head">
-        <strong><i class="dot" style="background:${COLOR[c.id].fuerte}"></i>${esc(c.nombre)}</strong>
+        <strong><i class="dot" style="background:${COLOR[c.id].fuerte}"></i>${esc(c.nombre)}${c.ponderada ? ' <span class="tag-ref" title="Proyección ponderada por el peso de cada día de la semana.">Ponderada</span>' : ''}</strong>
         <span>${fmtPct(c.avance)} · proy. ${fmtPct(c.proyeccionPct)} · ${fmtMillones(c.real)} de ${fmtMillones(c.objetivo)}</span>
       </div>
       ${bar(c.avance, c.proyeccionPct, COLOR[c.id], true)}
@@ -668,7 +704,7 @@ function comparativaHtml(r, corte) {
     return `
       <div class="cmp-row ${clase}">
         <div class="cmp-head">
-          <strong><i class="dot" style="background:${color.fuerte}"></i>${esc(nombre)}</strong>
+          <strong><i class="dot" style="background:${color.fuerte}"></i>${esc(nombre)}${tagRef(c)}</strong>
           <span>vs mes ant. ${varHtml(c.varAnt)} · vs año ant. ${varHtml(c.varAa)}</span>
         </div>
         ${b('Proyección', c.proyeccion, color.fuerte)}
@@ -722,7 +758,7 @@ function proyeccionHtml(r, corte) {
     const e = estado(c.proyeccionPct);
     return `
       <div class="proy-unit${sub ? ' sub' : ''}">
-        <div class="pu-name"><i class="dot" style="background:${color}"></i>${sub ? '<small>Baratote ·</small> ' : ''}${esc(nombre)}</div>
+        <div class="pu-name"><i class="dot" style="background:${color}"></i>${sub ? '<small>Baratote ·</small> ' : ''}${esc(nombre)}${tagRef(c)}</div>
         <div class="pu-value">${fmtMillones(c.proyeccion)}</div>
         <div class="pu-bar"><div style="width:${barW(c.proyeccionPct).toFixed(2)}%;background:${color}"></div><i></i></div>
         <div class="pu-pct"><b class="pu-${e.clase}">${fmtPct(c.proyeccionPct)}</b> del obj. · ${fmtVar(c.varAnt)} vs mes ant.</div>
@@ -752,6 +788,7 @@ function proyeccionHtml(r, corte) {
         ${unidad('Fineglass', r.unidades.fgl, COLOR.fgl.fuerte)}
         ${unidad('Fineboats', r.unidades.fbt, '#60A5FA')}
       </div>
+      <p class="proy-nota">${r.unidades.min.ponderada ? 'Minorista se proyecta según el peso de cada día de la semana (el fin de semana pesa más). ' : ''}La proyección de Fineboats es referencial: sus ventas no siguen un ritmo diario. Igual suma en la proyección total.</p>
     </section>`;
 }
 

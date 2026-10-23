@@ -24,7 +24,7 @@ export default handler(async (req) => {
   // Historial del mes: un punto por fecha de corte (se reemplaza si se republica).
   const key = `history/${published.corte.slice(0, 7)}`;
   const history = (await getJSON(key, [])).filter((h) => h.corte !== published.corte);
-  history.push({ corte: published.corte, real: published.real, obj: published.obj, dias: published.dias });
+  history.push({ corte: published.corte, real: published.real, obj: published.obj, dias: published.dias, pesos: published.pesos });
   history.sort((a, b) => a.corte.localeCompare(b.corte));
   await setJSON(key, history);
 

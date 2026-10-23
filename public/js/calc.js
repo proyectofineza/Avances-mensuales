@@ -3,9 +3,11 @@
 
 export const UNIDADES = [
   { id: 'may', nombre: 'Mayorista', grupo: 'Baratote', calendario: 'lun-dom' },
-  { id: 'min', nombre: 'Minorista', grupo: 'Baratote', calendario: 'lun-dom' },
+  // Minorista: la venta se concentra en el fin de semana, se proyecta ponderando cada día.
+  { id: 'min', nombre: 'Minorista', grupo: 'Baratote', calendario: 'lun-dom', ponderado: true },
   { id: 'fgl', nombre: 'Fineglass', grupo: null, calendario: 'lun-vie' },
-  { id: 'fbt', nombre: 'Fineboats', grupo: null, calendario: 'lun-dom' },
+  // Fineboats: ventas impredecibles, la proyección lineal se muestra como referencial.
+  { id: 'fbt', nombre: 'Fineboats', grupo: null, calendario: 'lun-dom', referencial: true },
 ];
 
 export const IDS = UNIDADES.map((u) => u.id);
@@ -42,23 +44,57 @@ export function diasOperativos(corte, calendario = 'lun-dom') {
   return { operados, mes };
 }
 
+// Peso de cada día de la semana en la venta de Minorista (%). Valores iniciales
+// del análisis de ventas por sucursal de octubre 2026 (sin CENTRAL).
+export const DIAS_SEMANA = [
+  { k: 'lun', nombre: 'Lunes', wd: 1 },
+  { k: 'mar', nombre: 'Martes', wd: 2 },
+  { k: 'mie', nombre: 'Miércoles', wd: 3 },
+  { k: 'jue', nombre: 'Jueves', wd: 4 },
+  { k: 'vie', nombre: 'Viernes', wd: 5 },
+  { k: 'sab', nombre: 'Sábado', wd: 6 },
+  { k: 'dom', nombre: 'Domingo', wd: 0 },
+];
+export const PESOS_MINORISTA = { lun: 1.4, mar: 9.3, mie: 9.8, jue: 8.8, vie: 18.8, sab: 27.7, dom: 24.2 };
+
+// Parte del mes ya transcurrida según los pesos (0–1), o null si no hay corte.
+export function fraccionPonderada(corte, pesos = PESOS_MINORISTA) {
+  const c = parseCorte(corte);
+  if (!c) return null;
+  const porWd = Object.fromEntries(DIAS_SEMANA.map((d) => [d.wd, Number(pesos[d.k]) || 0]));
+  const ultimo = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
+  let hecho = 0, total = 0;
+  for (let d = 1; d <= ultimo; d++) {
+    const w = porWd[new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay()];
+    total += w;
+    if (d <= c.d) hecho += w;
+  }
+  return total > 0 ? hecho / total : null;
+}
+
 // Días que usa la proyección de una unidad: los del calendario (automático)
-// o los que cargó el administrador (manual).
+// o los que cargó el administrador (manual). En automático, una unidad ponderada
+// agrega la fracción del mes transcurrida según el peso de cada día.
 export function diasUnidad(data, u) {
   if (data.dias?.modo === 'manual') {
     const m = data.dias[u.id] || {};
     const mes = Math.max(Number(m.mes) || 0, 0);
     if (mes > 0) return { operados: Math.min(Math.max(Number(m.curso) || 0, 0), mes), mes };
   }
-  return diasOperativos(data.corte, u.calendario);
+  const dias = diasOperativos(data.corte, u.calendario);
+  if (u.ponderado) dias.fraccion = fraccionPonderada(data.corte, data.pesos || PESOS_MINORISTA);
+  return dias;
 }
 
-// dias = { operados, mes }
+// dias = { operados, mes, fraccion? }; con fraccion la proyección es real / fraccion.
 export function calcUnidad(real, objetivo, dias) {
   real = Number(real) || 0;
   objetivo = Number(objetivo) || 0;
   const { operados, mes } = dias;
-  const proyeccion = operados > 0 ? (real / operados) * mes : real;
+  const ponderada = dias.fraccion !== undefined && dias.fraccion !== null;
+  let proyeccion;
+  if (ponderada) proyeccion = dias.fraccion > 0 ? real / dias.fraccion : real;
+  else proyeccion = operados > 0 ? (real / operados) * mes : real;
   const faltante = Math.max(objetivo - real, 0);
   const diasRestantes = mes - operados;
   return {
@@ -69,7 +105,8 @@ export function calcUnidad(real, objetivo, dias) {
     avance: objetivo > 0 ? real / objetivo : 0,
     proyeccion,
     proyeccionPct: objetivo > 0 ? proyeccion / objetivo : 0,
-    ritmoIdeal: mes > 0 ? operados / mes : 0,
+    ritmoIdeal: ponderada ? dias.fraccion : mes > 0 ? operados / mes : 0,
+    ponderada,
     faltante,
     diasRestantes,
     necesarioDia: diasRestantes > 0 ? faltante / diasRestantes : 0,
@@ -154,8 +191,18 @@ export function normalizarReporte(src = {}) {
     obj: montos(src.obj),
     real: montos(src.real),
     dias,
+    pesos: normalizarPesos(src.pesos),
     comp: { ant: montos(src.comp?.ant), aa: montos(src.comp?.aa) },
   };
+}
+
+// Pesos 0–100 con un decimal; si no hay ninguno cargado, los valores iniciales.
+export function normalizarPesos(src) {
+  const pesos = Object.fromEntries(DIAS_SEMANA.map((d) => {
+    const v = Math.round(Math.min(Math.max(Number(src?.[d.k]) || 0, 0), 100) * 10) / 10;
+    return [d.k, v];
+  }));
+  return Object.values(pesos).some((v) => v > 0) ? pesos : { ...PESOS_MINORISTA };
 }
 
 // Devuelve el mensaje de error o null si se puede publicar.

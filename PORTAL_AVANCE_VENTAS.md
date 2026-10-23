@@ -309,6 +309,16 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - `POST /api/teams` (admin): envía la tarjeta con lo publicado, marcada "AVISO DE PRUEBA".
 - Panel "Aviso a Teams" en Cargar ventas con el estado y el botón **Enviar aviso de prueba**.
 
+### 12.6 Minorista ponderado por día de la semana
+- La venta minorista se concentra de viernes a domingo, así que en modo automático su proyección es `real / fracción`, donde `fracción` = suma de pesos de los días ya transcurridos ÷ suma de pesos de todos los días del mes. El ritmo ideal de Minorista es esa misma fracción.
+- Pesos iniciales (% de la semana), del análisis de ventas por sucursal de octubre 2026, sin CENTRAL: lun 1,4 · mar 9,3 · mié 9,8 · jue 8,8 · vie 18,8 · sáb 27,7 · dom 24,2 (viernes a domingo ≈ 70,7%).
+- Prueba con esos datos (proyectar el acumulado al día 22 desde cada corte): error promedio lineal 10,6% vs ponderado 2,7%.
+- El admin edita los pesos en Cargar ventas ("Peso por día de la semana · Minorista"); si no suman 100 se reparten en proporción. Se guardan como `pesos` en draft/published/history.
+- En modo manual de días no se pondera: se usan los días cargados.
+
+### 12.7 Fineboats referencial
+- Fineboats mantiene la proyección lineal, pero marcada como **Referencial** en todo el dashboard, porque sus ventas no siguen un ritmo diario. Igual suma en la proyección total.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.
