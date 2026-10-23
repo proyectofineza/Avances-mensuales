@@ -330,6 +330,12 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Admin · Usuarios: tarjeta "Solicitudes pendientes" con **Aprobar** (`PATCH /api/users/:ci {aprobar: true}`) y **Rechazar** (`DELETE /api/users/:ci`, solo para pendientes). La pestaña Usuarios muestra el número de pendientes.
 - Protección: máximo 5 solicitudes por hora por conexión (IP) y 100 pendientes en total. Si la cédula ya tiene usuario o una solicitud, se avisa sin crear otra.
 
+### 12.10 Auditoría de conexiones
+- Por usuario, en Blobs `actividad/<ci>`: `ultimoIngreso` (login con PIN), `ultimaActividad` (abrir el portal o ver el dashboard; se registra como mucho cada 10 min) e `ingresos` (cantidad de logins).
+- Clave separada por usuario para no reescribir la lista `users` en cada visita.
+- Admin · Usuarios: columna **Última conexión** ("recién", "hace 3 h", "ayer 14:20" o fecha y hora; en naranja si pasaron más de 7 días; "Nunca ingresó"), con la cantidad de ingresos y el detalle al pasar el mouse.
+- Al eliminar un usuario se borra también su registro de actividad.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

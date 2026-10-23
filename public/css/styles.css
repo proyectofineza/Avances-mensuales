@@ -171,6 +171,7 @@ input.num { text-align: right; }
   display: inline-flex; align-items: center; justify-content: center;
 }
 .pend-card { border: 1px solid #F5C77E; }
+.conexion-vieja { color: #92400E; }
 .user-box { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .user-name { font-weight: 500; }
 .chip-rol { background: #fff; color: var(--fineza); }

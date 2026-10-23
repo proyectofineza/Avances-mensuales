@@ -49,6 +49,29 @@ export async function saveUsers(users) {
   await setJSON('users', users);
 }
 
+// ---- Auditoría de conexiones ----
+// Una clave por usuario (actividad/<ci>) para no reescribir la lista de usuarios
+// en cada visita: { ultimoIngreso, ultimaActividad, ingresos }.
+const ACTIVIDAD_CADA_MS = 10 * 60e3;
+
+export async function registrarIngreso(ci) {
+  const a = await getJSON(`actividad/${ci}`, {});
+  const ahora = new Date().toISOString();
+  await setJSON(`actividad/${ci}`, { ...a, ultimoIngreso: ahora, ultimaActividad: ahora, ingresos: (a.ingresos || 0) + 1 });
+}
+
+// Marca actividad como mucho cada 10 minutos por usuario.
+export async function registrarActividad(ci) {
+  const a = await getJSON(`actividad/${ci}`, {});
+  if (a.ultimaActividad && Date.now() - Date.parse(a.ultimaActividad) < ACTIVIDAD_CADA_MS) return;
+  await setJSON(`actividad/${ci}`, { ...a, ultimaActividad: new Date().toISOString() });
+}
+
+export async function getActividades(cis) {
+  const lista = await Promise.all(cis.map((ci) => getJSON(`actividad/${ci}`, null)));
+  return Object.fromEntries(cis.map((ci, i) => [ci, lista[i]]));
+}
+
 export function publicUser(u) {
   return { ci: u.ci, nombre: u.nombre, rol: u.rol, activo: u.activo, pendiente: Boolean(u.pendiente), creado: u.creado };
 }

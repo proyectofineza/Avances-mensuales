@@ -1,5 +1,5 @@
 import { handler, json, readBody, requireUser, HttpError, hashPin } from '../lib/auth.mjs';
-import { getUsers, saveUsers, publicUser } from '../lib/store.mjs';
+import { getUsers, saveUsers, publicUser, getActividades, deleteKey } from '../lib/store.mjs';
 
 const ROL_TEXTO = { admin: 'Administrador', comercial: 'Comercial' };
 
@@ -8,7 +8,13 @@ export default handler(async (req, context) => {
   const users = await getUsers();
 
   if (req.method === 'GET') {
-    return json(users.map(publicUser));
+    const actividad = await getActividades(users.map((u) => u.ci));
+    return json(users.map((u) => ({
+      ...publicUser(u),
+      ultimoIngreso: actividad[u.ci]?.ultimoIngreso || null,
+      ultimaActividad: actividad[u.ci]?.ultimaActividad || null,
+      ingresos: actividad[u.ci]?.ingresos || 0,
+    })));
   }
 
   if (req.method === 'POST') {
@@ -45,6 +51,7 @@ export default handler(async (req, context) => {
       throw new HttpError(400, 'Tiene que quedar al menos un administrador activo.');
     }
     await saveUsers(users.filter((u) => u.ci !== ci));
+    await deleteKey(`actividad/${ci}`);
     return json({ mensaje: user.pendiente ? `Se rechazó la solicitud de ${user.nombre}.` : `${user.nombre} fue eliminado.` });
   }
 

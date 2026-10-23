@@ -519,6 +519,29 @@ async function loadUsuarios() {
   }
 }
 
+// "hace 5 min", "hace 3 h", "ayer 14:20", o fecha y hora completas.
+function haceCuanto(iso) {
+  const min = Math.floor((Date.now() - Date.parse(iso)) / 60e3);
+  if (min < 1) return 'recién';
+  if (min < 60) return `hace ${min} min`;
+  if (min < 12 * 60) return `hace ${Math.floor(min / 60)} h`;
+  const [fecha, hora] = fmtFechaHora(iso).split(' ');
+  const ayer = fmtFechaHora(new Date(Date.now() - 86400e3).toISOString()).split(' ')[0];
+  const hoy = fmtFechaHora(new Date().toISOString()).split(' ')[0];
+  if (fecha === hoy) return `hoy ${hora}`;
+  if (fecha === ayer) return `ayer ${hora}`;
+  return `${fecha} ${hora}`;
+}
+
+function conexionHtml(u) {
+  const ultima = [u.ultimaActividad, u.ultimoIngreso].filter(Boolean).sort().pop();
+  if (!ultima) return '<span class="muted small">Nunca ingresó</span>';
+  const detalle = `Último ingreso con PIN: ${u.ultimoIngreso ? fmtFechaHora(u.ultimoIngreso) : '—'} · Última actividad: ${u.ultimaActividad ? fmtFechaHora(u.ultimaActividad) : '—'}`;
+  const dias = (Date.now() - Date.parse(ultima)) / 86400e3;
+  return `<div title="${esc(detalle)}"${dias > 7 ? ' class="conexion-vieja"' : ''}>${haceCuanto(ultima)}</div>
+    <div class="muted small">${u.ingresos} ingreso${u.ingresos === 1 ? '' : 's'}</div>`;
+}
+
 function actualizarBadge() {
   const n = state.users.filter((u) => u.pendiente).length;
   $('tab-badge').textContent = n;
@@ -577,6 +600,7 @@ function renderUsers() {
         <td>${esc(u.nombre)}</td>
         <td>${ROL_TEXTO[u.rol] || esc(u.rol)}</td>
         <td><span class="chip ${u.activo ? 'ok' : 'off'}">${u.activo ? 'Activo' : 'Inactivo'}</span></td>
+        <td style="white-space:nowrap">${conexionHtml(u)}</td>
         <td class="r">${acciones}</td>
       </tr>`;
   }).join('');

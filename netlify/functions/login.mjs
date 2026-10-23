@@ -1,5 +1,5 @@
 import { handler, json, readBody, HttpError, verifyPin, createSessionCookie } from '../lib/auth.mjs';
-import { getUsers, saveUsers } from '../lib/store.mjs';
+import { getUsers, saveUsers, registrarIngreso } from '../lib/store.mjs';
 
 const MAX_INTENTOS = 5;
 const BLOQUEO_MIN = 15;
@@ -44,6 +44,7 @@ export default handler(async (req) => {
     await saveUsers(users);
   }
 
+  await registrarIngreso(user.ci);
   return json({ ci: user.ci, nombre: user.nombre, rol: user.rol }, 200, { 'set-cookie': createSessionCookie(user.ci) });
 });
 
