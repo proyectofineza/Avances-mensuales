@@ -42,10 +42,22 @@ export function diasOperativos(corte, calendario = 'lun-dom') {
   return { operados, mes };
 }
 
-export function calcUnidad(real, objetivo, corte, calendario) {
+// Días que usa la proyección de una unidad: los del calendario (automático)
+// o los que cargó el administrador (manual).
+export function diasUnidad(data, u) {
+  if (data.dias?.modo === 'manual') {
+    const m = data.dias[u.id] || {};
+    const mes = Math.max(Number(m.mes) || 0, 0);
+    if (mes > 0) return { operados: Math.min(Math.max(Number(m.curso) || 0, 0), mes), mes };
+  }
+  return diasOperativos(data.corte, u.calendario);
+}
+
+// dias = { operados, mes }
+export function calcUnidad(real, objetivo, dias) {
   real = Number(real) || 0;
   objetivo = Number(objetivo) || 0;
-  const { operados, mes } = diasOperativos(corte, calendario);
+  const { operados, mes } = dias;
   const proyeccion = operados > 0 ? (real / operados) * mes : real;
   const faltante = Math.max(objetivo - real, 0);
   const diasRestantes = mes - operados;
@@ -66,12 +78,22 @@ export function calcUnidad(real, objetivo, corte, calendario) {
 }
 
 // Suma de unidades: la proyección es la suma de proyecciones de cada una.
-// El ritmo ideal y los días usan calendario lunes a domingo.
-function agregado(partes, corte) {
+// Automático: ritmo ideal y días con calendario lunes a domingo.
+// Manual: días de la unidad con mayor objetivo y ritmo ideal ponderado por objetivo.
+function agregado(partes, corte, manual) {
   const real = partes.reduce((s, p) => s + p.real, 0);
   const objetivo = partes.reduce((s, p) => s + p.objetivo, 0);
   const proyeccion = partes.reduce((s, p) => s + p.proyeccion, 0);
-  const { operados, mes } = diasOperativos(corte, 'lun-dom');
+  let operados, mes, ritmoIdeal;
+  if (manual) {
+    const ref = partes.reduce((a, p) => (p.objetivo > a.objetivo ? p : a), partes[0]);
+    operados = ref.diasOperados;
+    mes = ref.diasMes;
+    ritmoIdeal = objetivo > 0 ? partes.reduce((s, p) => s + p.objetivo * p.ritmoIdeal, 0) / objetivo : ref.ritmoIdeal;
+  } else {
+    ({ operados, mes } = diasOperativos(corte, 'lun-dom'));
+    ritmoIdeal = mes > 0 ? operados / mes : 0;
+  }
   const faltante = Math.max(objetivo - real, 0);
   const diasRestantes = mes - operados;
   return {
@@ -82,7 +104,7 @@ function agregado(partes, corte) {
     diasMes: mes,
     avance: objetivo > 0 ? real / objetivo : 0,
     proyeccionPct: objetivo > 0 ? proyeccion / objetivo : 0,
-    ritmoIdeal: mes > 0 ? operados / mes : 0,
+    ritmoIdeal,
     faltante,
     diasRestantes,
     necesarioDia: diasRestantes > 0 ? faltante / diasRestantes : 0,
@@ -90,16 +112,82 @@ function agregado(partes, corte) {
   };
 }
 
-// Cálculo completo a partir de { corte, obj, real }.
+// Comparativa: proyección del mes actual vs venta de cierre del mes anterior
+// y del mismo mes del año anterior. var = null si no hay dato.
+function comparar(c, ant, aa) {
+  c.ant = ant;
+  c.aa = aa;
+  c.varAnt = ant > 0 ? c.proyeccion / ant - 1 : null;
+  c.varAa = aa > 0 ? c.proyeccion / aa - 1 : null;
+}
+
+// Cálculo completo a partir de { corte, obj, real, dias?, comp? }.
 export function calcularReporte(data) {
   const corte = data.corte;
+  const manual = data.dias?.modo === 'manual';
+  const ant = data.comp?.ant || {};
+  const aa = data.comp?.aa || {};
   const unidades = {};
   for (const u of UNIDADES) {
-    unidades[u.id] = { ...u, ...calcUnidad(data.real?.[u.id], data.obj?.[u.id], corte, u.calendario) };
+    unidades[u.id] = { ...u, ...calcUnidad(data.real?.[u.id], data.obj?.[u.id], diasUnidad(data, u)) };
+    comparar(unidades[u.id], Number(ant[u.id]) || 0, Number(aa[u.id]) || 0);
   }
-  const baratote = agregado([unidades.may, unidades.min], corte);
-  const total = agregado(Object.values(unidades), corte);
-  return { corte, unidades, baratote, total };
+  const suma = (src, ids) => ids.reduce((s, id) => s + (Number(src[id]) || 0), 0);
+  const baratote = agregado([unidades.may, unidades.min], corte, manual);
+  comparar(baratote, suma(ant, ['may', 'min']), suma(aa, ['may', 'min']));
+  const total = agregado(Object.values(unidades), corte, manual);
+  comparar(total, suma(ant, IDS), suma(aa, IDS));
+  return { corte, manual, unidades, baratote, total };
+}
+
+// Deja un reporte con la forma esperada (montos enteros ≥ 0, días 0–31).
+export function normalizarReporte(src = {}) {
+  const montos = (o = {}) => Object.fromEntries(IDS.map((id) => {
+    const n = Math.round(Number(o[id]) || 0);
+    return [id, n > 0 ? n : 0];
+  }));
+  const dia = (v) => Math.min(Math.max(Math.round(Number(v) || 0), 0), 31);
+  const dias = { modo: src.dias?.modo === 'manual' ? 'manual' : 'auto' };
+  for (const id of IDS) dias[id] = { mes: dia(src.dias?.[id]?.mes), curso: dia(src.dias?.[id]?.curso) };
+  return {
+    corte: parseCorte(src.corte) ? src.corte : '',
+    obj: montos(src.obj),
+    real: montos(src.real),
+    dias,
+    comp: { ant: montos(src.comp?.ant), aa: montos(src.comp?.aa) },
+  };
+}
+
+// Devuelve el mensaje de error o null si se puede publicar.
+export function validarReporte(d) {
+  if (!d.corte || !parseCorte(d.corte)) return 'Indicá la fecha de corte.';
+  const falta = UNIDADES.find((u) => !(d.obj?.[u.id] > 0));
+  if (falta) return `Falta el objetivo mensual de ${falta.nombre}.`;
+  if (d.dias?.modo === 'manual') {
+    for (const u of UNIDADES) {
+      const x = d.dias[u.id] || {};
+      if (!(x.mes >= 1)) return `Indicá los días del mes de ${u.nombre}.`;
+      if (!(x.curso >= 1) || x.curso > x.mes) return `Revisá el día en curso de ${u.nombre}: tiene que estar entre 1 y ${x.mes}.`;
+    }
+  }
+  return null;
+}
+
+// Nombres de los meses de comparación.
+export function mesAnterior(corte) {
+  const c = parseCorte(corte);
+  if (!c) return '';
+  return c.m === 1 ? `${MESES[11]} ${c.y - 1}` : `${MESES[c.m - 2]} ${c.y}`;
+}
+
+export function mismoMesAnioAnterior(corte) {
+  const c = parseCorte(corte);
+  return c ? `${MESES[c.m - 1]} ${c.y - 1}` : '';
+}
+
+export function fmtVar(v) {
+  if (v === null || v === undefined) return '—';
+  return (v >= 0 ? '+' : '−') + fmtPct(Math.abs(v));
 }
 
 export function estado(proyeccionPct) {

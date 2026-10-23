@@ -38,6 +38,7 @@
     <!-- Admin · Cargar ventas -->
     <section id="view-ventas" hidden>
       <div class="layout-side">
+        <div class="main-col">
         <div class="card">
           <div class="card-head">
             <div>
@@ -73,8 +74,65 @@
               </tfoot>
             </table>
           </div>
+        </div>
 
-          <div class="actions">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Días para la proyección</h2>
+              <p class="muted small">Automático usa el calendario de cada unidad según la fecha de corte. En manual cargás vos los días del mes y el día en curso.</p>
+            </div>
+            <div class="seg" role="radiogroup" aria-label="Cálculo de días">
+              <label><input type="radio" name="dias-modo" value="auto"><span>Automático</span></label>
+              <label><input type="radio" name="dias-modo" value="manual"><span>Manual</span></label>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="dias-table">
+              <thead>
+                <tr>
+                  <th>Unidad</th>
+                  <th class="r">Días del mes</th>
+                  <th class="r">Día en curso</th>
+                  <th class="r">Ritmo ideal</th>
+                </tr>
+              </thead>
+              <tbody id="dias-body"></tbody>
+            </table>
+          </div>
+          <p class="muted small" style="margin:10px 0 0">Día en curso = días operados hasta la fecha de corte, inclusive.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Comparativa</h2>
+              <p class="muted small">Venta total de cierre de cada mes. La proyección del mes actual se compara contra estos montos. Dejá vacío lo que no tengas.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="ventas-table">
+              <thead>
+                <tr>
+                  <th>Unidad</th>
+                  <th class="r">Mes anterior · <span id="lbl-ant"></span></th>
+                  <th class="r">Año anterior · <span id="lbl-aa"></span></th>
+                </tr>
+              </thead>
+              <tbody id="comp-body"></tbody>
+              <tfoot>
+                <tr>
+                  <td>Total</td>
+                  <td class="r" id="comp-tot-ant"></td>
+                  <td class="r" id="comp-tot-aa"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="actions" style="margin-top:0">
             <label class="check"><input type="checkbox" id="avisar-teams" checked> Avisar en el canal de Teams al publicar</label>
             <span class="spacer"></span>
             <button class="btn" type="button" id="btn-descartar">Descartar cambios</button>
@@ -82,6 +140,7 @@
           </div>
           <div class="alert alert-error form-msg" id="ventas-error" hidden></div>
           <p class="muted small" id="draft-saved" style="margin:10px 0 0"></p>
+        </div>
         </div>
 
         <aside class="side">
@@ -92,8 +151,8 @@
           </div>
           <div class="card">
             <h2>Cómo se proyecta</h2>
-            <div class="formula">Proyección = venta acumulada ÷ días operados × días del mes</div>
-            <p class="muted small" style="margin:0">Baratote (Mayorista y Minorista) y Fineboats operan de lunes a domingo. Fineglass opera de lunes a viernes, así que solo se cuentan esos días. La proyección total es la suma de las proyecciones de cada unidad.</p>
+            <div class="formula">Proyección = venta acumulada ÷ día en curso × días del mes</div>
+            <p class="muted small" style="margin:0">En automático, Baratote (Mayorista y Minorista) y Fineboats operan de lunes a domingo y Fineglass de lunes a viernes. En manual se usan los días que cargues para cada unidad. La proyección total es la suma de las proyecciones de cada unidad.</p>
           </div>
         </aside>
       </div>

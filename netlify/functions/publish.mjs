@@ -1,23 +1,23 @@
 import { handler, json, readBody, requireUser, HttpError } from '../lib/auth.mjs';
 import { getJSON, setJSON, deleteKey } from '../lib/store.mjs';
-import { UNIDADES, parseCorte, calcularReporte, fmtFecha, fmtPct } from '../../public/js/calc.js';
+import {
+  calcularReporte, normalizarReporte, validarReporte, mesAnterior, mismoMesAnioAnterior,
+  fmtFecha, fmtPct, fmtVar,
+} from '../../public/js/calc.js';
 
 export default handler(async (req) => {
   if (req.method !== 'POST') throw new HttpError(405, 'Método no permitido.');
   const user = await requireUser(req, ['admin']);
   const body = await readBody(req);
 
-  const draft = (await getJSON('draft')) || (await getJSON('published'));
-  if (!draft) throw new HttpError(400, 'No hay datos para publicar.');
-  if (!draft.corte || !parseCorte(draft.corte)) throw new HttpError(400, 'Indicá la fecha de corte.');
-  for (const u of UNIDADES) {
-    if (!(draft.obj?.[u.id] > 0)) throw new HttpError(400, `Falta el objetivo mensual de ${u.nombre}.`);
-  }
+  const fuente = (await getJSON('draft')) || (await getJSON('published'));
+  if (!fuente) throw new HttpError(400, 'No hay datos para publicar.');
+  const draft = normalizarReporte(fuente);
+  const error = validarReporte(draft);
+  if (error) throw new HttpError(400, error);
 
   const published = {
-    corte: draft.corte,
-    obj: draft.obj,
-    real: draft.real,
+    ...draft,
     publicadoEn: new Date().toISOString(),
     por: user.nombre,
   };
@@ -26,7 +26,7 @@ export default handler(async (req) => {
   // Historial del mes: un punto por fecha de corte (se reemplaza si se republica).
   const key = `history/${published.corte.slice(0, 7)}`;
   const history = (await getJSON(key, [])).filter((h) => h.corte !== published.corte);
-  history.push({ corte: published.corte, real: published.real, obj: published.obj });
+  history.push({ corte: published.corte, real: published.real, obj: published.obj, dias: published.dias });
   history.sort((a, b) => a.corte.localeCompare(b.corte));
   await setJSON(key, history);
 
@@ -68,6 +68,11 @@ async function enviarTeams(published) {
         spacing: 'None',
         wrap: true,
       },
+      ...(r.total.varAnt !== null || r.total.varAa !== null ? [{
+        type: 'TextBlock',
+        text: `Proyección vs ${mesAnterior(published.corte)}: ${fmtVar(r.total.varAnt)} · vs ${mismoMesAnioAnterior(published.corte)}: ${fmtVar(r.total.varAa)}`,
+        wrap: true,
+      }] : []),
     ],
     actions: process.env.PORTAL_URL
       ? [{ type: 'Action.OpenUrl', title: 'Abrir dashboard', url: process.env.PORTAL_URL }]

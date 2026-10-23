@@ -322,6 +322,61 @@ tfoot td { border-top: 2px solid var(--border); border-bottom: 0; font-weight: 6
 .chart-labels { display: flex; gap: 10px; margin-top: 6px; }
 .chart-labels span { flex: 1; text-align: center; font-size: 12px; color: var(--text-2); min-width: 0; }
 
+/* Cargar ventas: días y comparativa */
+.main-col { display: grid; gap: 20px; min-width: 0; }
+.dias-input { width: 80px; min-width: 0; }
+.dias-table input:disabled { background: #F7F8FA; color: var(--text-2); border-color: var(--border); }
+.seg { display: inline-flex; border: 1px solid var(--input-border); border-radius: var(--r-ctl); overflow: hidden; }
+.seg label { margin: 0; cursor: pointer; }
+.seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.seg span { display: inline-flex; align-items: center; height: 40px; padding: 0 16px; font-weight: 500; color: #374151; }
+.seg input:checked + span { background: var(--fineza); color: #fff; }
+.seg input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+/* Colores de unidad */
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 999px; margin-right: 8px; vertical-align: 0; }
+.col-stack { width: 100%; max-width: 48px; display: flex; flex-direction: column-reverse; border-radius: 6px 6px 0 0; overflow: hidden; }
+.col-stack > div { width: 100%; }
+.col:not(.last) .col-stack { opacity: .72; }
+
+/* Torta */
+.donut-wrap { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; margin-top: 16px; }
+.donut { width: 180px; height: 180px; border-radius: 50%; position: relative; flex: none; margin: 0 auto; }
+.donut-hole {
+  position: absolute; inset: 30px; background: var(--surface); border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+}
+.donut-hole strong { font-size: 18px; font-weight: 600; }
+.donut-hole span { font-size: 12px; color: var(--text-2); }
+.donut-legend { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 220px; display: grid; gap: 10px; }
+.donut-legend li { display: grid; grid-template-columns: 1fr auto 56px; gap: 10px; align-items: center; font-size: 14px; white-space: nowrap; }
+.sw.pair { width: 7px; border-radius: 3px 0 0 3px; margin-right: -8px; }
+.sw.pair + .sw { width: 7px; border-radius: 0 3px 3px 0; }
+.donut-legend li.sub { padding-left: 22px; font-size: 13px; color: var(--text-2); }
+.donut-legend li > span:first-child { display: inline-flex; align-items: center; gap: 8px; }
+.donut-legend strong { text-align: right; }
+
+/* Comparativa */
+.cmp-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0; }
+.cmp-kpis div { background: var(--bg); border-radius: var(--r-ctl); padding: 10px 12px; display: grid; gap: 2px; }
+.cmp-kpis span { font-size: 12px; color: var(--text-2); }
+.cmp-kpis b { font-size: 22px; }
+.cmp-list { display: grid; gap: 14px; }
+.cmp-row { display: grid; gap: 5px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.cmp-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.cmp-row.sub { padding-left: 18px; }
+.cmp-row.total { border-top: 2px solid var(--border); padding-top: 12px; }
+.cmp-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 14px; margin-bottom: 2px; }
+.cmp-head span { font-size: 13px; color: var(--text-2); }
+.cmp-bar { display: grid; grid-template-columns: 76px 1fr 96px; gap: 8px; align-items: center; font-size: 12px; }
+.cmp-bar .lbl { color: var(--text-2); }
+.cmp-bar .val { text-align: right; font-weight: 500; }
+.cmp-bar .track { height: 10px; background: var(--track); border-radius: 999px; overflow: hidden; }
+.cmp-bar .track div { height: 100%; border-radius: 999px; }
+.var-pos { color: #15803D; }
+.var-neg { color: #B91C1C; }
+.var-na { color: var(--text-2); }
+
 .necesario-alto { color: #92400E; font-weight: 600; }
 .necesario-ok { color: #1E3A8A; font-weight: 600; }
 .nota { font-size: 13px; color: var(--text-2); margin: 12px 0 0; }
@@ -345,4 +400,7 @@ tfoot td { border-top: 2px solid var(--border); border-bottom: 0; font-weight: 6
   .unidades, .dash-bottom { grid-template-columns: minmax(0, 1fr); }
   .kpi-value { font-size: 24px; }
   .chart-cols, .chart-labels { gap: 4px; }
+  .cmp-bar { grid-template-columns: 64px 1fr 84px; }
+  .cmp-kpis b { font-size: 18px; }
+  .seg span { padding: 0 12px; }
 }

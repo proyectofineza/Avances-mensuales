@@ -281,7 +281,26 @@ netlify deploy --prod
 
 Cargar las variables de entorno antes del primer deploy. Probar localmente con `netlify dev`.
 
-## 12. Fuera de alcance (por ahora)
+## 12. Agregados posteriores
+
+### 12.1 Días para la proyección (automático o manual)
+- En Cargar ventas, tarjeta "Días para la proyección" con selector **Automático / Manual**.
+- Automático: días según calendario de cada unidad (sección 5).
+- Manual: el admin carga por unidad **Días del mes** y **Día en curso** (días operados hasta el corte). Al pasar a manual se precargan los del calendario.
+- Validación manual: días del mes ≥ 1 y día en curso entre 1 y los días del mes.
+- En manual, Baratote y el total usan los días de la unidad con mayor objetivo, y el ritmo ideal total es el promedio de cada unidad ponderado por objetivo.
+- Se guarda en `draft`/`published`/`history` como `dias: { modo, may: {mes, curso}, ... }`.
+
+### 12.2 Comparativa
+- El admin carga por unidad la venta de cierre del **mes anterior** y del **mismo mes del año anterior** (`comp: { ant: {...}, aa: {...} }`). Vacío = sin dato.
+- El dashboard compara la **proyección al cierre** del mes actual contra ambos: variación % por unidad, Baratote (con sus canales) y total, con barras. La tarjeta de Proyección y el aviso de Teams muestran la variación total.
+
+### 12.3 Colores y torta
+- Color por unidad: Mayorista `#DC2626`, Minorista `#F59E0B`, Fineglass `#0D9488`, Fineboats `#1D4ED8` (Baratote usa el rojo). Tono claro para la proyección.
+- Evolución: columnas apiladas por unidad.
+- "Composición de la venta": torta (dona) con la venta acumulada por canal, hecha con CSS `conic-gradient`.
+
+## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.
 - Historial de meses anteriores en el dashboard (se guarda, pero no se muestra).
