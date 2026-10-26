@@ -1105,3 +1105,7 @@ body.panel-abierto { overflow: hidden; }
   .zona:not([open]) .zona-lista { display: none; }
   * { animation: none !important; transition: none !important; }
 }
+
+/* Panel: marcar la sucursal como cerrada (admin) */
+.panel-cierre { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border); display: grid; gap: 8px; justify-items: start; }
+.panel-cierre p { margin: 0; }

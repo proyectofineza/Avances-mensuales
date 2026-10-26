@@ -70,7 +70,8 @@ export default handler(async (req) => {
       else {
         const mes = [...porMes.keys()].sort().at(-1);
         const { filas } = await getJSON(`sucursales/${mes}`, { filas: [] });
-        teams = await enviarTarjeta(tarjetaAlertasSucursales(mes, alertasSucursales(resumirMes(filas)), user.nombre));
+        const cerradas = (await getJSON('sucursales-cerradas', { filas: [] })).filas.map((f) => f.sucursal);
+        teams = await enviarTarjeta(tarjetaAlertasSucursales(mes, alertasSucursales(resumirMes(filas), { cerradas }), user.nombre));
       }
     }
     return json({ ok: true, resumen, teams });

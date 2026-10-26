@@ -192,5 +192,19 @@ assert.deepEqual(zonas.map((z) => [z.zona, z.total, z.sucursales.length]), [['LU
 
 const ctl = controlMaestro([{ sucursal: 'A' }, { sucursal: 'B' }, { sucursal: 'CENTRAL' }], ['A', 'C', 'CENTRAL']);
 assert.deepEqual(ctl, { faltan: ['B'], nuevas: ['C'] });
+assert.deepEqual(controlMaestro([{ sucursal: 'A' }, { sucursal: 'B' }], ['A'], undefined, ['B']), { faltan: [], nuevas: [] }); // B cerrada
+
+// Sucursales cerradas: no generan alertas
+const filasCierre = [];
+for (let d = 1; d <= 20; d++) {
+  const fecha = `2026-10-${String(d).padStart(2, '0')}`;
+  filasCierre.push({ sucursal: 'ABIERTA', fecha, monto: 100 });
+  if (d <= 12) filasCierre.push({ sucursal: 'INGAVI 2', fecha, monto: 100 });
+}
+const resCierre = resumirMes(filasCierre);
+assert.ok(alertasSucursales(resCierre).sinVentaReciente.some((s) => s.sucursal === 'INGAVI 2'));
+const alCierre = alertasSucursales(resCierre, { cerradas: ['INGAVI 2'] });
+assert.equal(alCierre.sinVentaReciente.length + alCierre.caidas.length + alCierre.conDiasSinVenta.length, 0);
+assert.equal(resCierre.total, 3200); // lo vendido antes del cierre sigue contando
 
 console.log('sucursales: todas las pruebas pasaron');

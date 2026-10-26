@@ -398,6 +398,10 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - **Ranking**: filtros por zona y encargado, columna de zona, y con objetivos cargados **Avance** (vendido hasta el último día completo / objetivo) y **Proyección** (ponderada por día de la semana, con color de estado) más el orden **Lejos del objetivo**. El panel de la sucursal muestra zona, encargado y su objetivo.
 - Al revisar una planilla de ventas, si hay listado, avisa qué sucursales del listado **faltan el último día** de la planilla (aclara si es lunes) y cuáles **no figuran** en el listado.
 
+### 12.18.1 Sucursales cerradas
+- En el panel de la sucursal (admin): **Marcar como cerrada** con fecha (sugiere el día después de su última venta) o **Volver a abrir**. Se guarda en el Blob `sucursales-cerradas`; `POST /api/sucursales-config { tipo: 'cerrada', sucursal, fecha | null }`, y el `GET` devuelve `cerradas`.
+- Lo que vendió sigue contando en los totales del mes. Deja de aparecer en las alertas (pantalla, vista rápida y aviso a Teams), no se mide contra objetivo y no se avisa si falta en la planilla. En el ranking, las zonas y el panel lleva la etiqueta **Cerrada**.
+
 ### 12.19 Aviso de alertas por Teams
 - Al guardar la planilla de ventas por sucursal, la casilla **Avisar por Teams las alertas de sucursales** (aparece solo si Teams está configurado) manda una tarjeta con las sin venta reciente, las que caen y las que crecen del mes cargado, y botón a Sucursales (`PORTAL_URL`). `POST /api/sucursales` acepta `avisarTeams` y devuelve `teams: { ok, detalle }`.
 - Las notificaciones push en el teléfono quedan para más adelante.

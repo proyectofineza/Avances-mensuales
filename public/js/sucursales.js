@@ -127,11 +127,14 @@ const diaSemana = (fecha) => new Date(`${fecha}T12:00:00Z`).getUTCDay();
 // - caidas / crecen: participación en la venta de los últimos 7 días vs los días anteriores del mes
 //   (comparar la participación evita que un fin de semana o la lluvia muevan a todas por igual).
 // - conDiasSinVenta: 3 o más días sin venta en el mes, sin contar lunes.
-export function alertasSucursales(res, { umbral = 0.2, ventana = 7, maximo = 10 } = {}) {
+// Las sucursales cerradas (nombres en `cerradas`) no generan alertas.
+export function alertasSucursales(res, { umbral = 0.2, ventana = 7, maximo = 10, cerradas = [] } = {}) {
   const fechas = res.dias.map((d) => d.fecha);
   const habiles = fechas.filter((f) => diaSemana(f) !== 1);
   const ultimas = habiles.slice(-2);
   const venta = (s, f) => s.dias[f] || 0;
+  const fuera = new Set(cerradas);
+  res = { ...res, sucursales: res.sucursales.filter((s) => !fuera.has(s.sucursal)) };
 
   const sinVentaReciente = ultimas.length < 2 ? [] : res.sucursales
     .filter((s) => ultimas.every((f) => !venta(s, f)))
@@ -422,10 +425,10 @@ export function resumenZonas(res, maestro = []) {
 }
 
 // Diferencias entre el listado maestro y lo que trae una planilla de ventas.
-export function controlMaestro(maestro, nombresPlanilla, excluir = NO_MINORISTA) {
+export function controlMaestro(maestro, nombresPlanilla, excluir = NO_MINORISTA, cerradas = []) {
   const enPlanilla = new Set(nombresPlanilla);
   const enMaestro = new Set(maestro.map((m) => m.sucursal));
-  const fuera = new Set(excluir);
+  const fuera = new Set([...excluir, ...cerradas]);
   return {
     faltan: [...enMaestro].filter((n) => !enPlanilla.has(n) && !fuera.has(n)).sort(),
     nuevas: [...enPlanilla].filter((n) => !enMaestro.has(n) && !fuera.has(n)).sort(),

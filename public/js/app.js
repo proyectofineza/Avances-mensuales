@@ -8,7 +8,7 @@ import {
 import { armarContexto, textoParaCopiar, informeAHtml, MAX_TEXTO } from './informe.js';
 import {
   leerPlanilla, resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, ultimoDiaCompleto, ultimasSemanas, NO_MINORISTA,
-  leerMaestro, leerObjetivos, avanceSucursales, resumenZonas, controlMaestro, zonaSugerida,
+  leerMaestro, leerObjetivos, parseFecha, avanceSucursales, resumenZonas, controlMaestro, zonaSugerida,
 } from './sucursales.js';
 
 const $ = (id) => document.getElementById(id);
@@ -731,7 +731,7 @@ const suc = {
   // Mapa de calor: escala ('propio' = vs. lo habitual de la sucursal, 'monto') y si muestra todas.
   calor: { modo: 'propio', todas: false },
   // Listado maestro y objetivos del mes (/api/sucursales-config); filtros del ranking.
-  config: { maestro: null, objetivos: null }, info: new Map(), cfgObj: null, avance: new Map(), zona: '', encargado: '',
+  config: { maestro: null, objetivos: null }, info: new Map(), cerradas: new Map(), cfgObj: null, avance: new Map(), zona: '', encargado: '',
   // Análisis del mes abierto: respuesta de /api/informe, último error y texto que se está editando.
   informe: { mes: null, datos: null, error: null, borrador: null },
 };
@@ -744,6 +744,10 @@ const pluralDia = (nombre) => (nombre.endsWith('s') ? nombre : `${nombre}s`);
 const pesosDelMes = (mes) => (suc.published?.corte?.startsWith(mes) && suc.published.pesos) || PESOS_MINORISTA;
 // Zona de una sucursal: la del listado maestro o, si no hay listado, la sugerida por el nombre.
 const zonaDe = (nombre) => suc.info.get(nombre)?.zona || (suc.info.size ? 'SIN ZONA' : zonaSugerida(nombre));
+
+const chipCerrada = (nombre) => (suc.cerradas.has(nombre)
+  ? ` <span class="chip" title="Cerrada desde el ${fmtFecha(suc.cerradas.get(nombre))}: no genera alertas ni se mide contra objetivo">Cerrada</span>`
+  : '');
 
 // Estado contra el objetivo de la sucursal (proyección ponderada al cierre).
 function avanceChip(nombre) {
@@ -838,6 +842,10 @@ function setupSucursales() {
   $('suc-contenido').addEventListener('keydown', (e) => {
     const fila = e.target.closest('[data-suc]');
     if (fila && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); abrirPanel(fila.dataset.suc); }
+  });
+  $('suc-panel-body').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cerrar]');
+    if (b) marcarCerrada(b.dataset.nombre, b.dataset.cerrar || null);
   });
   $('suc-panel-cerrar').addEventListener('click', cerrarPanel);
   $('suc-panel-fondo').addEventListener('click', cerrarPanel);
@@ -1131,8 +1139,9 @@ function pintarControlMaestro(filas, ultima) {
   const el = $('suc-control');
   const maestro = suc.config?.maestro?.filas;
   if (!maestro?.length) { el.hidden = true; return; }
-  const { faltan } = controlMaestro(maestro, filas.filter((f) => f.fecha === ultima).map((f) => f.sucursal));
-  const { nuevas } = controlMaestro(maestro, filas.map((f) => f.sucursal));
+  const cerradas = [...suc.cerradas.keys()];
+  const { faltan } = controlMaestro(maestro, filas.filter((f) => f.fecha === ultima).map((f) => f.sucursal), NO_MINORISTA, cerradas);
+  const { nuevas } = controlMaestro(maestro, filas.map((f) => f.sucursal), NO_MINORISTA, cerradas);
   const nombres = (arr) => esc(arr.slice(0, 25).join(', ')) + (arr.length > 25 ? ` y ${arr.length - 25} más` : '');
   const partes = [];
   if (faltan.length) partes.push(`<p><b>Faltan ${faltan.length} sucursal${faltan.length === 1 ? '' : 'es'} del listado el ${DIA_CORTO[wdDe(ultima)]} ${fmtFecha(ultima)}</b>${wdDe(ultima) === 1 ? ' (es lunes: varias no abren)' : ''}: ${nombres(faltan)}.</p>`);
@@ -1188,6 +1197,7 @@ async function loadSucursales(mes) {
     suc.published = dash?.published || null; // objetivo de Minorista para el avance acumulado
     suc.config = await API.getSucursalesConfig(datos.mes || hoyAsuncion().slice(0, 7)).catch(() => ({ maestro: null, objetivos: null }));
     suc.info = new Map((suc.config.maestro?.filas || []).map((m) => [m.sucursal, m]));
+    suc.cerradas = new Map((suc.config.cerradas || []).map((c) => [c.sucursal, c.fecha]));
     if (isAdmin()) {
       if ($('cfg-obj-mes').value === datos.mes) suc.cfgObj = suc.config.objetivos;
       else if (!suc.cfgObj) cargarObjetivosConfig();
@@ -1217,8 +1227,9 @@ function renderSucursales() {
     return;
   }
   suc.res = resumirMes(d.filas);
-  suc.alertas = alertasSucursales(suc.res);
-  suc.avance = avanceSucursales(suc.res, suc.config?.objetivos?.filas, ultimoDiaCompleto(suc.res.dias).fecha, pesosDelMes(d.mes));
+  suc.alertas = alertasSucursales(suc.res, { cerradas: suc.cerradas.keys() });
+  const objetivos = (suc.config?.objetivos?.filas || []).filter((o) => !suc.cerradas.has(o.sucursal));
+  suc.avance = avanceSucursales(suc.res, objetivos, ultimoDiaCompleto(suc.res.dias).fecha, pesosDelMes(d.mes));
   $('suc-sub').textContent = `${nombreMes(fechaDeMes(d.mes))} · actualizado ${fmtFechaHora(d.actualizado)}${d.por ? ' por ' + d.por : ''}`;
 
   const nAlertas = suc.alertas.sinVentaReciente.length + suc.alertas.caidas.length;
@@ -1464,7 +1475,7 @@ function renderRankingTabla() {
     return `
     <tr data-suc="${esc(s.sucursal)}" class="suc-row" tabindex="0">
       <td class="muted">${s.puesto}</td>
-      <td><b>${esc(s.sucursal)}</b></td>
+      <td><b>${esc(s.sucursal)}</b>${chipCerrada(s.sucursal)}</td>
       ${hayZona ? `<td class="opc muted">${esc(zonaDe(s.sucursal))}</td>` : ''}
       <td class="r">${fmtMillones(s.total)}</td>
       ${hayObj ? `<td class="r">${a ? fmtPct(a.avance) : '—'}</td><td class="r">${a ? avanceChip(s.sucursal) : '<span class="muted small">sin objetivo</span>'}</td>` : ''}
@@ -1517,7 +1528,7 @@ function zonasHtml() {
       </summary>
       <ul class="zona-lista">${z.sucursales.map((s) => `
         <li data-suc="${esc(s.sucursal)}" role="button" tabindex="0">
-          <span>${esc(s.sucursal)}</span>${avanceChip(s.sucursal)}<b>${fmtMillones(s.total)}</b>
+          <span>${esc(s.sucursal)}${chipCerrada(s.sucursal)}</span>${avanceChip(s.sucursal)}<b>${fmtMillones(s.total)}</b>
         </li>`).join('')}</ul>
     </details>`;
   }).join('');
@@ -2089,6 +2100,9 @@ function abrirPanel(nombre) {
   const propios = res.dias.map((x) => ({ fecha: x.fecha, monto: s.dias[x.fecha] || 0 }));
   const { peso, cuenta } = pesoSemana(propios);
   const marcas = [];
+  const cierre = suc.cerradas.get(nombre);
+  const ultimaVenta = Object.keys(s.dias).filter((f) => s.dias[f] > 0).sort().at(-1);
+  if (cierre) marcas.push(`<span class="chip">Cerrada desde el ${fmtFecha(cierre)}</span>`);
   if (a.sinVentaReciente.some((x) => x.sucursal === nombre)) marcas.push('<span class="chip risk">Sin venta en los últimos días</span>');
   const caida = a.caidas.find((x) => x.sucursal === nombre);
   if (caida) marcas.push(`<span class="chip warn">Vende menos: ${fmtVar(caida.variacion)}</span>`);
@@ -2130,11 +2144,42 @@ function abrirPanel(nombre) {
     <div class="sdd">${dias}</div>
     <p class="muted small" style="margin:6px 0 0">Montos en millones. Viernes a domingo en naranja fuerte.</p>
     <h3 style="margin-top:20px">Peso por día de la semana</h3>
-    <div class="sp-grid">${pesosSemanaHtml(peso, cuenta)}</div>`;
+    <div class="sp-grid">${pesosSemanaHtml(peso, cuenta)}</div>
+    ${isAdmin() ? `
+    <div class="panel-cierre">
+      ${cierre
+        ? `<p class="muted small">Cerrada: lo que vendió cuenta en el mes, pero no genera alertas, no se mide contra objetivo ni se avisa si falta en la planilla.</p>
+           <button class="btn btn-sm" type="button" data-cerrar="" data-nombre="${esc(nombre)}">Volver a abrir</button>`
+        : `<p class="muted small">Si la sucursal cerró, marcala para que deje de aparecer en las alertas y en los avisos de la planilla. Lo que vendió sigue contando en el mes.</p>
+           <button class="btn btn-sm btn-danger" type="button" data-cerrar="${ultimaVenta ? sumarDias(ultimaVenta, 1) : hoyAsuncion()}" data-nombre="${esc(nombre)}">Marcar como cerrada</button>`}
+      <div class="alert form-msg" id="panel-cierre-msg" hidden></div>
+    </div>` : ''}`;
   $('suc-panel').hidden = false;
   $('suc-panel-fondo').hidden = false;
   document.body.classList.add('panel-abierto');
   $('suc-panel-cerrar').focus();
+}
+
+// Marca la sucursal como cerrada desde una fecha (por defecto, el día después de su última venta) o la reabre.
+async function marcarCerrada(nombre, sugerida) {
+  let fecha = null;
+  if (sugerida) {
+    const txt = prompt(`¿Desde qué fecha está cerrada ${nombre}? (día/mes/año)`, fmtFecha(sugerida));
+    if (txt === null) return;
+    fecha = parseFecha(txt);
+    if (!fecha) { showMsg($('panel-cierre-msg'), 'Fecha inválida. Escribila como 23/10/2026.', false); return; }
+  } else if (!confirm(`¿Volver a abrir ${nombre}? Va a generar alertas de nuevo si no vende.`)) return;
+  try {
+    const r = await API.marcarCerrada(nombre, fecha);
+    suc.config.cerradas = r.cerradas;
+    suc.cerradas = new Map(r.cerradas.map((c) => [c.sucursal, c.fecha]));
+    renderSucursales();
+    abrirPanel(nombre);
+    state.sucAlertas = undefined; // la vista rápida del dashboard se vuelve a calcular
+    showNotice(fecha ? `${nombre} quedó marcada como cerrada desde el ${fmtFecha(fecha)}.` : `${nombre} volvió a abrir.`);
+  } catch (err) {
+    handleError(err, $('panel-cierre-msg'));
+  }
 }
 
 function cerrarPanel() {
@@ -2168,7 +2213,9 @@ async function cargarAlertasSucursales() {
   sucAlertasPedido = Date.now();
   try {
     const d = await API.getSucursales();
-    state.sucAlertas = d.filas?.length ? { mes: d.mes, ...alertasSucursales(resumirMes(d.filas)) } : null;
+    const cfg = d.mes ? await API.getSucursalesConfig(d.mes).catch(() => ({})) : {};
+    const cerradas = (cfg.cerradas || []).map((c) => c.sucursal);
+    state.sucAlertas = d.filas?.length ? { mes: d.mes, ...alertasSucursales(resumirMes(d.filas), { cerradas }) } : null;
   } catch {
     state.sucAlertas = null;
   }
