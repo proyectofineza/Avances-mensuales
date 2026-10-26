@@ -248,8 +248,6 @@ El dashboard del comercial refresca solo cada 60 s (y al volver a la pestaña) p
 | `TEAMS_WEBHOOK_URL`   | URL del flujo de Teams (si falta, no se envía aviso) |
 | `TEAMS_CANAL`         | nombre del canal para el mensaje de confirmación |
 | `PORTAL_URL`          | URL pública del sitio para el botón del aviso |
-| `ANTHROPIC_API_KEY`   | clave de la API de Claude para el Informe IA (si falta, no se generan informes) |
-
 ### 9.5 Aviso a Teams
 - Crear en Teams, en el canal elegido: **Workflows → "Publicar en un canal cuando se recibe una solicitud de webhook"**, copiar la URL → `TEAMS_WEBHOOK_URL`. (Los conectores clásicos "Incoming Webhook" de Office 365 están siendo retirados; usar Workflows.)
 - `publish.mjs` hace `POST` con una **Adaptive Card**:
@@ -356,12 +354,12 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
   - El detalle de una sucursal se abre en un **panel lateral** (pantalla completa en celular): puesto, venta, % del total, promedio por día, días con venta, comparación con el promedio de sucursales, venta por día, peso por día de la semana y sus alertas.
 - La forma de fila `{ sucursal, fecha, monto }` es la que se va a migrar a una tabla en Supabase (etapa 5), donde se sumarán artículo, proveedor y marca.
 
-### 12.12 Informe de situación con IA
-- Pestaña **Informe IA** en Sucursales (admin y comerciales). Al guardar una planilla, si la IA está configurada, el informe del mes se genera solo; el admin también puede generarlo o regenerarlo con un botón. Si se cargan datos nuevos después, se avisa que el informe quedó desactualizado.
-- `GET /api/informe?mes=AAAA-MM` (todos) y `POST /api/informe { mes }` (admin). Se guarda en Blobs `informes/AAAA-MM` → `{ mes, texto, generado, por, basadoEn, modelo, uso }`.
-- Modelo **Claude Opus 5.5** (`claude-opus-5-5`) con `effort: low` y respuesta en streaming, para entrar en el límite de 60 s de las funciones de Netlify; con el respaldo automático del servidor (`fallbacks: "default"`) si el modelo declina.
-- Se envían solo datos agregados (`netlify/lib/informe.mjs` → `armarContexto`): totales, venta por día, peso por día de la semana, top y últimas 10, alertas, último día contra la semana anterior, mismos días del mes y, si son del mismo mes, los objetivos y la proyección publicados. Unas 2.000 palabras de datos por informe.
-- Requiere la variable de entorno `ANTHROPIC_API_KEY` (cuenta de API en console.anthropic.com con saldo). Sin ella el portal funciona igual y la pestaña explica que falta activarlo.
+### 12.12 Análisis del mes con IA (sin costo de API)
+- Pestaña **Informe IA** en Sucursales. El portal **no llama a ninguna IA**: el administrador usa su propia suscripción de chat.
+- Paso 1 (admin): **Copiar para Claude** copia al portapapeles las instrucciones del informe y un resumen del mes en JSON (`public/js/informe.js` → `armarContexto` + `textoParaCopiar`): totales, venta por día, peso por día de la semana, top y últimas 10, alertas, último día contra la semana anterior, mismos días del mes y, si son del mismo mes, los objetivos y la proyección publicados. No incluye las planillas completas. Botón **Abrir Claude** (claude.ai).
+- Paso 2 (admin): pega la respuesta, ve la vista previa y la **publica**; puede reemplazarla o borrarla.
+- Comerciales: ven el análisis publicado con formato (títulos `#`, viñetas `-` o `1.`, **negrita**), quién y cuándo lo publicó, y un aviso si se cargaron datos después.
+- `GET /api/informe?mes=AAAA-MM` (todos), `POST /api/informe { mes, texto }` y `DELETE /api/informe?mes=` (admin). Blobs `informes/AAAA-MM` → `{ mes, texto, publicado, por, basadoEn }`. Máximo 20.000 caracteres.
 
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).

@@ -7,13 +7,12 @@
   "scripts": {
     "dev": "netlify dev",
     "deploy": "netlify deploy --prod",
-    "test": "node tests/calc.test.mjs && node tests/sucursales.test.mjs"
+    "test": "node tests/calc.test.mjs && node tests/sucursales.test.mjs && node tests/informe.test.mjs"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.3.0",
     "@netlify/blobs": "^8.1.0"
   }
 }

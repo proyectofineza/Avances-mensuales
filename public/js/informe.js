@@ -1,20 +1,19 @@
-// Informe de situación generado con Claude a partir de datos ya agregados.
+// Informe de situación: el portal arma un resumen de los datos del mes para que el
+// administrador lo consulte en su chat de IA, y después publica el análisis que pega.
 // No se envían las filas crudas: solo totales, rankings, alertas y comparaciones.
-import Anthropic from '@anthropic-ai/sdk';
 import {
   resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, ultimoDiaCompleto, NO_MINORISTA,
-} from '../../public/js/sucursales.js';
-import { calcularReporte, nombreMes, mesAnterior, mismoMesAnioAnterior, DIAS_SEMANA } from '../../public/js/calc.js';
+} from './sucursales.js';
+import { calcularReporte, nombreMes, mesAnterior, mismoMesAnioAnterior, DIAS_SEMANA } from './calc.js';
 
-const MODELO = 'claude-opus-5-5';
+export const MAX_TEXTO = 20000;
+
 const M = (v) => Math.round((Number(v) || 0) / 1e5) / 10; // millones con un decimal
 const P = (v) => (v === null || v === undefined ? null : Math.round(v * 1000) / 10); // porcentaje con un decimal
 const DIA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const diaDe = (fecha) => DIA[new Date(`${fecha}T12:00:00Z`).getUTCDay()];
 
-export const configurado = () => Boolean(process.env.ANTHROPIC_API_KEY);
-
-// Contexto del informe. filas: ventas por sucursal del mes; published: reporte publicado (opcional).
+// Datos del mes ya resumidos. filas: ventas por sucursal del mes; published: reporte publicado (opcional).
 export function armarContexto({ mes, filas, published }) {
   const res = resumirMes(filas);
   const alertas = alertasSucursales(res);
@@ -52,11 +51,12 @@ export function armarContexto({ mes, filas, published }) {
     const c = compararDias(filas, ultimo, filas, antes);
     if (c.total.b > 0) {
       const conVar = c.sucursales.filter((s) => s.variacion !== null && s.b >= 1e6);
+      const fila = (s) => ({ sucursal: s.sucursal, venta: M(s.a), antes: M(s.b), variacion: P(s.variacion) });
       ctx.ultimoDiaVsSemanaAnterior = {
         dia: diaDe(ultimo), fecha: ultimo, contra: antes,
         venta: M(c.total.a), ventaAntes: M(c.total.b), variacion: P(c.total.variacion),
-        mayoresCaidas: [...conVar].sort((a, b) => a.variacion - b.variacion).slice(0, 5).map((s) => ({ sucursal: s.sucursal, venta: M(s.a), antes: M(s.b), variacion: P(s.variacion) })),
-        mayoresSubas: [...conVar].sort((a, b) => b.variacion - a.variacion).slice(0, 5).map((s) => ({ sucursal: s.sucursal, venta: M(s.a), antes: M(s.b), variacion: P(s.variacion) })),
+        mayoresCaidas: [...conVar].sort((a, b) => a.variacion - b.variacion).slice(0, 5).map(fila),
+        mayoresSubas: [...conVar].sort((a, b) => b.variacion - a.variacion).slice(0, 5).map(fila),
       };
     }
     const sem = mismoDiaSemana(filas, new Date(`${ultimo}T12:00:00Z`).getUTCDay());
@@ -79,52 +79,48 @@ export function armarContexto({ mes, filas, published }) {
   return ctx;
 }
 
-const SISTEMA = `Sos un analista comercial de FINEZA S.A. Escribís para el gerente comercial y los comerciales de Baratote Minorista, en español de Paraguay con voseo ("mirá", "revisá"), claro y directo, sin tecnicismos.
+// Instrucciones que acompañan los datos al copiarlos para el chat de IA.
+const INSTRUCCIONES = `Sos un analista comercial de FINEZA S.A. Escribí para el gerente comercial y los comerciales de Baratote Minorista, en español de Paraguay con voseo ("mirá", "revisá"), claro y directo, sin tecnicismos.
 
-Recibís datos ya calculados del mes en JSON. Escribí un informe breve de la situación con estas secciones, en este orden y con estos títulos exactos:
+Abajo van los datos del mes ya calculados, en JSON. Escribí un informe breve de la situación con estas secciones, en este orden y con estos títulos exactos:
 ## Resumen
 ## Lo que hay que mirar
 ## Sucursales destacadas
 ## Recomendaciones
 
 Reglas:
-- Usá solo los datos recibidos. No inventes causas, cifras ni sucursales; si algo puede tener varias explicaciones, decilo como posibilidad.
+- Usá solo estos datos. No inventes causas, cifras ni sucursales; si algo puede tener varias explicaciones, decilo como posibilidad.
 - Montos como "Gs. 1.234 M" (millones, punto de miles) y porcentajes con coma decimal ("12,5%").
 - Si el último día parece incompleto, aclaralo y no saques conclusiones de ese día.
 - Una venta baja en lunes es normal (muchas sucursales cierran).
 - En "Lo que hay que mirar" y "Recomendaciones" usá viñetas que empiecen con "- ", como máximo 5 por sección.
 - Si hay objetivos publicados, decí si Minorista va camino a cumplir el objetivo y cuánto falta.
-- Entre 250 y 450 palabras. Podés usar **negrita** para resaltar. Nada de tablas ni emojis.`;
+- Entre 250 y 450 palabras. Podés usar **negrita** para resaltar. Sin tablas ni emojis.
+- Respondé solo con el informe, sin introducción ni despedida.`;
 
-// Genera el informe. Devuelve { texto, uso, modelo }. Lanza Error con mensaje para mostrar al admin.
-export async function generarInforme(contexto) {
-  if (!configurado()) throw new Error('Falta configurar ANTHROPIC_API_KEY en Netlify y volver a publicar el sitio.');
-  // Netlify corta las funciones a los 60 s: se deja margen y sin reintentos.
-  const client = new Anthropic({ timeout: 52_000, maxRetries: 0 });
-  let msg;
-  try {
-    msg = await client.beta.messages.stream({
-      model: MODELO,
-      max_tokens: 8000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      output_config: { effort: 'low' },
-      system: SISTEMA,
-      messages: [{ role: 'user', content: `Datos de ${contexto.mes}:\n${JSON.stringify(contexto)}` }],
-    }).finalMessage();
-  } catch (err) {
-    console.error('Error generando el informe', err);
-    if (err instanceof Anthropic.AuthenticationError) throw new Error('La clave ANTHROPIC_API_KEY no es válida. Revisala en Netlify.');
-    if (err instanceof Anthropic.PermissionDeniedError) throw new Error('La clave de la API no tiene permiso para usar este modelo.');
-    if (err instanceof Anthropic.RateLimitError) throw new Error('Se alcanzó el límite de uso de la API. Probá de nuevo en unos minutos.');
-    if (err instanceof Anthropic.APIConnectionTimeoutError) throw new Error('El informe tardó demasiado. Probá de nuevo.');
-    if (err instanceof Anthropic.APIError && err.status === 400 && /credit|billing/i.test(err.message)) throw new Error('La cuenta de la API no tiene saldo. Cargá crédito en console.anthropic.com.');
-    if (err instanceof Anthropic.APIError) throw new Error(`La API respondió con un error (${err.status ?? 'sin código'}). Probá de nuevo.`);
-    throw new Error('No se pudo conectar con la API para generar el informe.');
+export function textoParaCopiar(contexto) {
+  return `${INSTRUCCIONES}\n\nDatos de ${contexto.mes}:\n${JSON.stringify(contexto)}`;
+}
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Convierte el análisis pegado (títulos "#", viñetas "- " o "1. ", **negrita**) en HTML seguro.
+export function informeAHtml(texto) {
+  const out = [];
+  let lista = null; // 'ul' | 'ol'
+  const cerrar = () => { if (lista) { out.push(`</${lista}>`); lista = null; } };
+  const abrir = (tipo) => { if (lista !== tipo) { cerrar(); out.push(`<${tipo}>`); lista = tipo; } };
+  const enLinea = (s) => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\s][^*]*?)\*(?!\*)/g, '$1<i>$2</i>');
+  for (const linea of esc(texto).split(/\r?\n/)) {
+    const t = linea.trim();
+    if (!t) { cerrar(); continue; }
+    if (/^#{1,4}\s+/.test(t)) { cerrar(); out.push(`<h3>${enLinea(t.replace(/^#{1,4}\s+/, ''))}</h3>`); continue; }
+    if (/^[-*•]\s+/.test(t)) { abrir('ul'); out.push(`<li>${enLinea(t.replace(/^[-*•]\s+/, ''))}</li>`); continue; }
+    if (/^\d+[.)]\s+/.test(t)) { abrir('ol'); out.push(`<li>${enLinea(t.replace(/^\d+[.)]\s+/, ''))}</li>`); continue; }
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) { cerrar(); continue; }
+    cerrar();
+    out.push(`<p>${enLinea(t)}</p>`);
   }
-  if (msg.stop_reason === 'refusal') throw new Error('El modelo no pudo generar el informe con estos datos.');
-  let texto = msg.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-  if (!texto) throw new Error('El informe salió vacío. Probá de nuevo.');
-  if (msg.stop_reason === 'max_tokens') texto += '\n\n(El informe quedó cortado.)';
-  return { texto, modelo: msg.model, uso: { entrada: msg.usage.input_tokens, salida: msg.usage.output_tokens } };
+  cerrar();
+  return out.join('');
 }

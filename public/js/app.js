@@ -5,6 +5,7 @@ import {
   mesAnterior, mismoMesAnioAnterior, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, fmtDiaMes,
   fmtFechaHora, nombreMes, fmtCI, hoyAsuncion,
 } from './calc.js';
+import { armarContexto, textoParaCopiar, informeAHtml, MAX_TEXTO } from './informe.js';
 import {
   leerPlanilla, resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, ultimoDiaCompleto, NO_MINORISTA,
 } from './sucursales.js';
@@ -630,8 +631,8 @@ const suc = {
   // Comparar días: modo 'par' (un día contra otro) o 'semana' (todos los mismos días del mes).
   cmp: { modo: 'par', a: null, b: null, wd: null, orden: 'caidas', filtro: '' },
   cache: {}, // filas por mes, para comparar contra otros meses
-  // Informe IA del mes abierto: datos de /api/informe, si se está generando y el último error.
-  informe: { mes: null, datos: null, generando: false, error: null },
+  // Análisis del mes abierto: respuesta de /api/informe, último error y texto que se está editando.
+  informe: { mes: null, datos: null, error: null, borrador: null },
 };
 const fechaDeMes = (mes) => `${mes}-01`;
 const esFinde = (wd) => wd === 5 || wd === 6 || wd === 0;
@@ -653,6 +654,10 @@ function setupSucursales() {
     } else if (e.target.id === 'cmp-buscar') {
       suc.cmp.filtro = e.target.value;
       renderComparacion();
+    } else if (e.target.id === 'inf-texto') {
+      // Vista previa mientras se pega o edita, sin repintar el editor.
+      suc.informe.borrador = e.target.value;
+      $('inf-preview').innerHTML = e.target.value.trim() ? informeAHtml(e.target.value) : '<p class="muted">Acá vas a ver cómo queda.</p>';
     }
   });
   $('suc-contenido').addEventListener('change', (e) => {
@@ -676,7 +681,13 @@ function setupSucursales() {
     }
     const orden = e.target.closest('[data-corden]');
     if (orden) { suc.cmp.orden = orden.dataset.corden; renderComparacion(); return; }
-    if (e.target.closest('[data-informe-generar]')) { generarInformeMes(suc.datos.mes); return; }
+    const inf = e.target.closest('[data-inf]');
+    if (inf) {
+      if (inf.dataset.inf === 'copiar') copiarParaIA();
+      else if (inf.dataset.inf === 'publicar') publicarInforme();
+      else if (inf.dataset.inf === 'borrar') borrarInformeMes();
+      return;
+    }
     const ir = e.target.closest('[data-ir]');
     if (ir) {
       suc.sub = ir.dataset.ir;
@@ -778,8 +789,9 @@ async function guardarPlanilla() {
     $('suc-preview').textContent = '';
     $('suc-errores').hidden = true;
     const mes = res.resumen.at(-1).mes;
+    suc.informe.mes = null; // que el análisis se vuelva a pedir (puede haber quedado desactualizado)
     await loadSucursales(mes);
-    informeAutomatico(mes, msgEl);
+    msgEl.textContent += ' Para actualizar el análisis del mes, andá a la pestaña Informe IA.';
   } catch (err) {
     btn.disabled = false;
     handleError(err, msgEl);
@@ -1026,8 +1038,11 @@ function calorHtml() {
 
 // ---- Informe IA ----
 
+// El administrador copia un resumen de los datos, lo consulta en su chat de IA y pega
+// acá la respuesta; los comerciales ven el análisis publicado.
+
 async function cargarInforme(mes) {
-  suc.informe = { mes, datos: null, generando: suc.informe.generando && suc.informe.mes === mes, error: null };
+  suc.informe = { mes, datos: null, error: null, borrador: null };
   try {
     suc.informe.datos = await API.getInforme(mes);
   } catch (err) {
@@ -1036,94 +1051,124 @@ async function cargarInforme(mes) {
   if (suc.sub === 'informe' && suc.datos?.mes === mes) $('suc-contenido').innerHTML = informeHtml();
 }
 
-// Genera el informe (al tocar el botón o después de guardar una planilla).
-async function generarInformeMes(mes) {
-  if (!isAdmin() || (suc.informe.generando && suc.informe.mes === mes)) return;
-  suc.informe = { ...suc.informe, mes, generando: true, error: null };
-  const pintar = () => { if (suc.sub === 'informe' && suc.datos?.mes === mes) $('suc-contenido').innerHTML = informeHtml(); };
-  pintar();
+function pintarInforme() {
+  if (suc.sub === 'informe') $('suc-contenido').innerHTML = informeHtml();
+}
+
+// Copia al portapapeles el texto para el chat: instrucciones + datos del mes resumidos.
+async function copiarParaIA() {
+  const estado = $('inf-copiado');
+  estado.textContent = 'Preparando…';
+  let texto;
   try {
-    suc.informe.datos = await API.generarInforme(mes);
+    const dash = await API.getDashboard();
+    texto = textoParaCopiar(armarContexto({ mes: suc.datos.mes, filas: suc.datos.filas, published: dash.published }));
   } catch (err) {
-    suc.informe.error = err.message;
-  } finally {
-    suc.informe.generando = false;
+    estado.textContent = '';
+    handleError(err, $('inf-msg'));
+    return;
   }
-  pintar();
+  const area = $('inf-copia');
+  area.value = texto;
+  try {
+    await navigator.clipboard.writeText(texto);
+  } catch {
+    // Sin permiso de portapapeles: se copia desde el cuadro de texto.
+    area.closest('details').open = true;
+    area.select();
+    document.execCommand('copy');
+  }
+  estado.textContent = 'Copiado. Pegalo en tu chat de Claude.';
 }
 
-// Después de guardar una planilla: si la IA está activada, se genera el informe con los datos nuevos.
-async function informeAutomatico(mes, msgEl) {
-  let datos = null;
-  try { datos = await API.getInforme(mes); } catch { return; }
-  suc.informe = { mes, datos, generando: false, error: null };
-  if (!datos.configurado) return;
-  msgEl.textContent += ' Generando el informe con IA: lo vas a ver en la pestaña Informe IA.';
-  await generarInformeMes(mes);
+async function publicarInforme() {
+  const msgEl = $('inf-msg');
+  const texto = $('inf-texto').value.trim();
+  if (!texto) { showMsg(msgEl, 'Pegá el análisis antes de publicarlo.', false); return; }
+  if (texto.length > MAX_TEXTO) { showMsg(msgEl, `El análisis es muy largo (máximo ${fmtMiles(MAX_TEXTO)} caracteres).`, false); return; }
+  try {
+    suc.informe.datos = await API.publicarInforme(suc.datos.mes, texto);
+    suc.informe.borrador = null;
+    pintarInforme();
+    showMsg($('inf-msg'), 'Análisis publicado. Los comerciales ya lo pueden ver.', true);
+  } catch (err) {
+    handleError(err, msgEl);
+  }
 }
 
-// Convierte el texto del informe (títulos "## ", viñetas "- " y **negrita**) en HTML seguro.
-function informeATexto(texto) {
-  const lineas = esc(texto).split(/\r?\n/);
-  const out = [];
-  let enLista = false;
-  const cerrarLista = () => { if (enLista) { out.push('</ul>'); enLista = false; } };
-  const enLinea = (s) => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-  for (const l of lineas) {
-    const t = l.trim();
-    if (!t) { cerrarLista(); continue; }
-    if (/^#{1,3}\s+/.test(t)) { cerrarLista(); out.push(`<h3>${enLinea(t.replace(/^#{1,3}\s+/, ''))}</h3>`); continue; }
-    if (/^[-*•]\s+/.test(t)) {
-      if (!enLista) { out.push('<ul>'); enLista = true; }
-      out.push(`<li>${enLinea(t.replace(/^[-*•]\s+/, ''))}</li>`);
-      continue;
-    }
-    cerrarLista();
-    out.push(`<p>${enLinea(t)}</p>`);
+async function borrarInformeMes() {
+  if (!confirm('¿Borrar el análisis publicado de este mes? Los comerciales dejan de verlo.')) return;
+  try {
+    await API.borrarInforme(suc.datos.mes);
+    suc.informe.datos = { informe: null, desactualizado: false };
+    suc.informe.borrador = '';
+    pintarInforme();
+    showMsg($('inf-msg'), 'Se borró el análisis.', true);
+  } catch (err) {
+    handleError(err, $('inf-msg'));
   }
-  cerrarLista();
-  return out.join('');
 }
 
 function informeHtml() {
   const s = suc.informe;
+  if (s.mes !== suc.datos.mes || (!s.datos && !s.error)) return '<div class="card empty">Cargando el análisis…</div>';
   const mesNombre = nombreMes(fechaDeMes(suc.datos.mes));
   const info = s.datos?.informe;
-  const boton = (texto, primario = false) => (isAdmin()
-    ? `<button class="btn${primario ? ' btn-primary' : ''}" type="button" data-informe-generar ${s.generando ? 'disabled' : ''}>${texto}</button>`
-    : '');
 
-  if (s.mes !== suc.datos.mes || (!s.datos && !s.error && !s.generando)) {
-    return '<div class="card empty">Cargando el informe…</div>';
-  }
-  let cuerpo;
-  if (s.generando) {
-    cuerpo = '<div class="informe-cargando"><span class="spinner" aria-hidden="true"></span>Generando el informe con IA… puede tardar hasta un minuto.</div>';
-  } else if (info) {
-    cuerpo = `<div class="informe-texto">${informeATexto(info.texto)}</div>`;
-  } else if (s.datos && !s.datos.configurado) {
-    cuerpo = isAdmin()
-      ? '<p class="muted">Los informes con IA todavía no están activados. Hay que cargar la variable <b>ANTHROPIC_API_KEY</b> en Netlify y volver a publicar el sitio.</p>'
-      : '<p class="muted">Todavía no hay un informe para este mes.</p>';
-  } else {
-    cuerpo = `<p class="muted">Todavía no hay un informe de ${esc(mesNombre)}.${isAdmin() ? ' Generalo con el botón.' : ' Se genera cuando el administrador carga los datos.'}</p>`;
-  }
-  const meta = info
-    ? `Generado ${fmtFechaHora(info.generado)}${info.por ? ' por ' + esc(info.por) : ''} · con los datos cargados hasta ese momento`
-    : 'Análisis automático de las ventas por sucursal y de los objetivos publicados.';
-  return `
-    <div class="card informe">
-      <div class="card-head">
-        <div>
-          <h2>Informe de situación · ${esc(mesNombre)}</h2>
-          <p class="muted small">${meta}</p>
+  const publicado = info
+    ? `
+      <div class="card informe">
+        <div class="card-head">
+          <div>
+            <h2>Análisis del mes · ${esc(mesNombre)}</h2>
+            <p class="muted small">Publicado ${fmtFechaHora(info.publicado)}${info.por ? ' por ' + esc(info.por) : ''}</p>
+          </div>
         </div>
-        ${s.generando ? '' : info ? boton('Volver a generar') : (s.datos?.configurado ? boton('Generar informe', true) : '')}
+        ${s.datos.desactualizado ? `<div class="alert informe-aviso">Se cargaron datos nuevos después de este análisis.${isAdmin() ? ' Podés prepararlo de nuevo abajo.' : ''}</div>` : ''}
+        <div class="informe-texto">${informeAHtml(info.texto)}</div>
+        <p class="nota">Análisis preparado con IA a partir de los datos del portal. Puede equivocarse: revisá las cifras antes de tomar decisiones.</p>
+      </div>`
+    : `<div class="card empty" style="margin-bottom:16px">Todavía no hay un análisis publicado de ${esc(mesNombre)}.${isAdmin() ? '' : ' Lo publica el administrador después de cargar los datos.'}</div>`;
+
+  if (!isAdmin()) return publicado;
+
+  const borrador = s.borrador ?? info?.texto ?? '';
+  return `
+    ${publicado}
+    <div class="card informe informe-editor">
+      <h2>${info ? 'Actualizar el análisis' : 'Preparar el análisis'}</h2>
+      <div class="alert form-msg" id="inf-msg" hidden></div>
+      ${s.error ? `<div class="alert alert-error" style="margin:12px 0">${esc(s.error)}</div>` : ''}
+      <div class="inf-paso">
+        <span class="inf-num">1</span>
+        <div>
+          <h3>Copiá los datos y consultalos en tu chat</h3>
+          <p class="muted small">Se copia un resumen del mes (totales, ranking, alertas, comparaciones y objetivos) junto con las instrucciones para el informe. No incluye las planillas completas.</p>
+          <div class="actions" style="margin-top:10px">
+            <button class="btn btn-primary" type="button" data-inf="copiar">Copiar para Claude</button>
+            <a class="btn" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;text-decoration:none">Abrir Claude</a>
+            <span class="muted small" id="inf-copiado" role="status"></span>
+          </div>
+          <details class="inf-ver">
+            <summary class="small">Ver el texto que se copia</summary>
+            <textarea id="inf-copia" rows="6" readonly placeholder="Tocá Copiar para Claude para armarlo."></textarea>
+          </details>
+        </div>
       </div>
-      ${s.datos?.desactualizado && !s.generando ? `<div class="alert informe-aviso">Hay datos nuevos desde que se generó este informe.${isAdmin() ? ' ' + boton('Actualizar informe', true) : ''}</div>` : ''}
-      ${s.error ? `<div class="alert alert-error" style="margin-bottom:14px">${esc(s.error)}</div>` : ''}
-      ${cuerpo}
-      ${info ? '<p class="nota">Generado con IA a partir de los datos cargados en el portal. Puede equivocarse: revisá las cifras antes de tomar decisiones.</p>' : ''}
+      <div class="inf-paso">
+        <span class="inf-num">2</span>
+        <div>
+          <h3>Pegá la respuesta y publicala</h3>
+          <p class="muted small">Pegá el informe tal como te lo devuelve el chat. Los títulos (##), las viñetas (-) y la **negrita** se ven ordenados para los comerciales.</p>
+          <textarea id="inf-texto" rows="10" maxlength="${MAX_TEXTO}" placeholder="## Resumen&#10;…">${esc(borrador)}</textarea>
+          <div class="actions">
+            <button class="btn btn-primary" type="button" data-inf="publicar">${info ? 'Publicar cambios' : 'Publicar para los comerciales'}</button>
+            ${info ? '<button class="btn btn-danger" type="button" data-inf="borrar">Borrar análisis</button>' : ''}
+          </div>
+          <p class="muted small" style="margin:14px 0 6px">Vista previa</p>
+          <div class="informe-texto inf-preview" id="inf-preview">${borrador ? informeAHtml(borrador) : '<p class="muted">Acá vas a ver cómo queda.</p>'}</div>
+        </div>
+      </div>
     </div>`;
 }
 
