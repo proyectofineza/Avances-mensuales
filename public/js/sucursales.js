@@ -168,6 +168,61 @@ export function alertasSucursales(res, { umbral = 0.2, ventana = 7, maximo = 10 
   };
 }
 
+// Venta de un día por sucursal (sin NO_MINORISTA): Map sucursal → monto.
+function ventaDelDia(filas, fecha, excluir) {
+  const fuera = new Set(excluir);
+  const m = new Map();
+  for (const f of filas) {
+    if (f.fecha !== fecha || fuera.has(f.sucursal)) continue;
+    m.set(f.sucursal, (m.get(f.sucursal) || 0) + f.monto);
+  }
+  return m;
+}
+
+const variacion = (a, b) => (b > 0 ? a / b - 1 : null);
+
+// Compara la venta del día A contra la del día B (pueden ser de meses distintos:
+// se pasan las filas de cada uno). Incluye las sucursales que vendieron en alguno de los dos.
+export function compararDias(filasA, fechaA, filasB, fechaB, excluir = NO_MINORISTA) {
+  const a = ventaDelDia(filasA, fechaA, excluir);
+  const b = ventaDelDia(filasB, fechaB, excluir);
+  const nombres = new Set([...a.keys(), ...b.keys()]);
+  const sucursales = [...nombres].map((sucursal) => {
+    const va = a.get(sucursal) || 0, vb = b.get(sucursal) || 0;
+    return { sucursal, a: va, b: vb, diferencia: va - vb, variacion: variacion(va, vb) };
+  }).sort((x, y) => y.a - x.a);
+  const totA = [...a.values()].reduce((s, v) => s + v, 0);
+  const totB = [...b.values()].reduce((s, v) => s + v, 0);
+  return {
+    fechaA, fechaB,
+    total: { a: totA, b: totB, diferencia: totA - totB, variacion: variacion(totA, totB) },
+    conVentaA: [...a.values()].filter((v) => v > 0).length,
+    conVentaB: [...b.values()].filter((v) => v > 0).length,
+    sucursales,
+  };
+}
+
+// Todos los días del mes que caen en el mismo día de la semana (wd: 0 = domingo),
+// con el total y la venta de cada sucursal en cada uno.
+export function mismoDiaSemana(filas, wd, excluir = NO_MINORISTA) {
+  const fuera = new Set(excluir);
+  const fechas = [...new Set(filas.map((f) => f.fecha))].filter((f) => diaSemana(f) === wd).sort();
+  const totales = fechas.map(() => 0);
+  const porSuc = new Map();
+  for (const f of filas) {
+    const i = fechas.indexOf(f.fecha);
+    if (i < 0 || fuera.has(f.sucursal)) continue;
+    totales[i] += f.monto;
+    if (!porSuc.has(f.sucursal)) porSuc.set(f.sucursal, fechas.map(() => 0));
+    porSuc.get(f.sucursal)[i] += f.monto;
+  }
+  const sucursales = [...porSuc.entries()].map(([sucursal, valores]) => {
+    const n = valores.length;
+    return { sucursal, valores, ultimaVariacion: n >= 2 ? variacion(valores[n - 1], valores[n - 2]) : null, total: valores.reduce((s, v) => s + v, 0) };
+  }).sort((x, y) => y.total - x.total);
+  return { fechas, totales, variaciones: totales.map((t, i) => (i ? variacion(t, totales[i - 1]) : null)), sucursales };
+}
+
 // Peso de cada día de la semana (0 = domingo) según el promedio de venta de ese día.
 export function pesoSemana(dias) {
   const suma = Array(7).fill(0), cuenta = Array(7).fill(0);

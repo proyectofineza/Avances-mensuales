@@ -82,4 +82,37 @@ assert.equal(alertasSucursales(resumirMes(filasA.filter((f) => f.fecha <= '2026-
 const ps = pesoSemana(resumirMes(filasA).dias);
 assert.ok(Math.abs(ps.peso.reduce((a, b) => a + b, 0) - 1) < 1e-9);
 
+// Comparar un día contra otro (domingo 18 vs domingo 11), CENTRAL afuera
+import { compararDias, mismoDiaSemana } from '../public/js/sucursales.js';
+const filasC = [
+  { sucursal: 'LUQUE 1', fecha: '2026-10-11', monto: 100 },
+  { sucursal: 'LUQUE 1', fecha: '2026-10-18', monto: 150 },
+  { sucursal: 'ABASTO', fecha: '2026-10-11', monto: 200 },
+  { sucursal: 'COLON', fecha: '2026-10-18', monto: 50 },
+  { sucursal: 'CENTRAL', fecha: '2026-10-18', monto: 9999 },
+  { sucursal: 'LUQUE 1', fecha: '2026-10-04', monto: 80 },
+  { sucursal: 'LUQUE 1', fecha: '2026-10-12', monto: 5 }, // lunes
+];
+const cd = compararDias(filasC, '2026-10-18', filasC, '2026-10-11');
+assert.deepEqual(cd.total, { a: 200, b: 300, diferencia: -100, variacion: 200 / 300 - 1 });
+assert.equal(cd.conVentaA, 2);
+assert.equal(cd.conVentaB, 2);
+const luque = cd.sucursales.find((s) => s.sucursal === 'LUQUE 1');
+assert.equal(luque.variacion, 0.5);
+assert.equal(cd.sucursales.find((s) => s.sucursal === 'ABASTO').variacion, -1); // dejó de vender
+assert.equal(cd.sucursales.find((s) => s.sucursal === 'COLON').variacion, null); // no vendía antes
+assert.ok(!cd.sucursales.some((s) => s.sucursal === 'CENTRAL'));
+// Meses distintos: se pasan las filas de cada mes
+const nov = [{ sucursal: 'LUQUE 1', fecha: '2026-11-01', monto: 300 }];
+assert.equal(compararDias(nov, '2026-11-01', filasC, '2026-10-25').total.variacion, null);
+assert.equal(compararDias(nov, '2026-11-01', filasC, '2026-10-18').sucursales[0].variacion, 1);
+
+// Todos los domingos del mes
+const dom = mismoDiaSemana(filasC, 0);
+assert.deepEqual(dom.fechas, ['2026-10-04', '2026-10-11', '2026-10-18']);
+assert.deepEqual(dom.totales, [80, 300, 200]);
+assert.deepEqual(dom.sucursales.find((s) => s.sucursal === 'LUQUE 1').valores, [80, 100, 150]);
+assert.equal(dom.sucursales.find((s) => s.sucursal === 'LUQUE 1').ultimaVariacion, 0.5);
+assert.equal(dom.variaciones[0], null);
+
 console.log('sucursales: todas las pruebas pasaron');

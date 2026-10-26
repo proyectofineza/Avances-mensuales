@@ -349,6 +349,9 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
   - Ranking: 10 que más venden / 10 que menos / todas; el buscador busca en todas.
   - Mapa de calor: sucursales × días, cada sucursal en su propia escala (más oscuro = su mejor día; gris = sin venta).
   - Alertas: sin venta en los 2 últimos días cargados sin contar lunes; caídas y subas de 20% o más comparando la participación en los últimos 7 días contra los días anteriores del mes (desde 10 días cargados); 3 o más días sin venta en el mes sin contar lunes. El número de alertas se muestra en la pestaña.
+  - **Comparar días** (`compararDias` y `mismoDiaSemana` en `public/js/sucursales.js`), sin CENTRAL:
+    - *Un día contra otro*: dos fechas cualesquiera (pueden ser de meses distintos; el otro mes se pide al servidor). Total de cada día, sucursales con venta, diferencia y variación; tabla por sucursal con las 10 que más cayeron, las 10 que más subieron o todas, y buscador. Por defecto compara el último día completo contra el mismo día de la semana anterior; si el último cargado vendió menos del 30% de lo normal para ese día de la semana, se lo toma como incompleto y se avisa.
+    - *Mismo día de la semana*: todos los lunes, martes… del mes, con el total y la variación contra el anterior, y la tabla por sucursal con cada fecha y la variación entre los dos últimos.
   - El detalle de una sucursal se abre en un **panel lateral** (pantalla completa en celular): puesto, venta, % del total, promedio por día, días con venta, comparación con el promedio de sucursales, venta por día, peso por día de la semana y sus alertas.
 - La forma de fila `{ sucursal, fecha, monto }` es la que se va a migrar a una tabla en Supabase (etapa 5), donde se sumarán artículo, proveedor y marca.
 

@@ -5,7 +5,7 @@ import {
   mesAnterior, mismoMesAnioAnterior, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, fmtDiaMes,
   fmtFechaHora, nombreMes, fmtCI, hoyAsuncion,
 } from './calc.js';
-import { leerPlanilla, resumirMes, alertasSucursales, pesoSemana, NO_MINORISTA } from './sucursales.js';
+import { leerPlanilla, resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, NO_MINORISTA } from './sucursales.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -623,7 +623,12 @@ function guardarPref(clave, valor) {
   try { localStorage.setItem(clave, valor); } catch { /* sin almacenamiento */ }
 }
 
-const suc = { datos: null, lectura: null, filtro: '', sub: leerPref('suc-sub', 'resumen'), rank: 'top', res: null, alertas: null };
+const suc = {
+  datos: null, lectura: null, filtro: '', sub: leerPref('suc-sub', 'resumen'), rank: 'top', res: null, alertas: null,
+  // Comparar días: modo 'par' (un día contra otro) o 'semana' (todos los mismos días del mes).
+  cmp: { modo: 'par', a: null, b: null, wd: null, orden: 'caidas', filtro: '' },
+  cache: {}, // filas por mes, para comparar contra otros meses
+};
 const fechaDeMes = (mes) => `${mes}-01`;
 const esFinde = (wd) => wd === 5 || wd === 6 || wd === 0;
 const wdDe = (fecha) => new Date(`${fecha}T12:00:00Z`).getUTCDay();
@@ -638,11 +643,35 @@ function setupSucursales() {
     renderSucursales();
   });
   $('suc-contenido').addEventListener('input', (e) => {
-    if (e.target.id !== 'suc-buscar') return;
-    suc.filtro = e.target.value;
-    renderRankingTabla();
+    if (e.target.id === 'suc-buscar') {
+      suc.filtro = e.target.value;
+      renderRankingTabla();
+    } else if (e.target.id === 'cmp-buscar') {
+      suc.cmp.filtro = e.target.value;
+      renderComparacion();
+    }
+  });
+  $('suc-contenido').addEventListener('change', (e) => {
+    const id = e.target.id;
+    if (id === 'cmp-a') suc.cmp.a = e.target.value || suc.cmp.a;
+    else if (id === 'cmp-b') suc.cmp.b = e.target.value || suc.cmp.b;
+    else if (id === 'cmp-wd') suc.cmp.wd = Number(e.target.value);
+    else return;
+    renderComparacion();
   });
   $('suc-contenido').addEventListener('click', (e) => {
+    const modo = e.target.closest('[data-cmodo]');
+    if (modo) { suc.cmp.modo = modo.dataset.cmodo; $('suc-contenido').innerHTML = compararHtml(); renderComparacion(); return; }
+    const rapido = e.target.closest('[data-cmp-rap]');
+    if (rapido) {
+      const dias = rapido.dataset.cmpRap === 'semana' ? 7 : 1;
+      suc.cmp.b = sumarDias(suc.cmp.a, -dias);
+      $('cmp-b').value = suc.cmp.b;
+      renderComparacion();
+      return;
+    }
+    const orden = e.target.closest('[data-corden]');
+    if (orden) { suc.cmp.orden = orden.dataset.corden; renderComparacion(); return; }
     const ir = e.target.closest('[data-ir]');
     if (ir) {
       suc.sub = ir.dataset.ir;
@@ -765,6 +794,7 @@ async function borrarMesSucursales() {
 async function loadSucursales(mes) {
   try {
     suc.datos = await API.getSucursales(mes);
+    suc.cache = {}; // puede haber cambiado una carga: se vuelven a pedir los otros meses
     cerrarPanel();
     const sel = $('suc-mes');
     sel.innerHTML = suc.datos.meses.length
@@ -795,7 +825,8 @@ function renderSucursales() {
   $('suc-alertas-n').textContent = nAlertas;
   $('suc-alertas-n').hidden = nAlertas === 0;
   $('suc-subtabs').hidden = false;
-  if (!['resumen', 'ranking', 'calor', 'alertas'].includes(suc.sub)) suc.sub = 'resumen';
+  if (!['resumen', 'ranking', 'calor', 'comparar', 'alertas'].includes(suc.sub)) suc.sub = 'resumen';
+  suc.cache[d.mes] = d.filas;
   document.querySelectorAll('#suc-subtabs [data-sub]').forEach((b) => {
     const activa = b.dataset.sub === suc.sub;
     b.classList.toggle('active', activa);
@@ -804,6 +835,7 @@ function renderSucursales() {
 
   if (suc.sub === 'ranking') { el.innerHTML = rankingHtml(); renderRankingTabla(); }
   else if (suc.sub === 'calor') el.innerHTML = calorHtml();
+  else if (suc.sub === 'comparar') { el.innerHTML = compararHtml(); renderComparacion(); }
   else if (suc.sub === 'alertas') el.innerHTML = alertasHtml();
   else el.innerHTML = resumenSucHtml();
 }
@@ -981,6 +1013,208 @@ function calorHtml() {
           ${filas}
         </div>
       </div>
+    </div>`;
+}
+
+// ---- Comparar días ----
+
+function sumarDias(fecha, n) {
+  const d = new Date(`${fecha}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+const etiquetaDia = (fecha) => `${DIA_CORTO[wdDe(fecha)]} ${fmtDiaMes(fecha)}`;
+
+// Filas de un mes (las del mes abierto ya están; otros meses se piden una vez).
+async function filasMes(mes) {
+  if (!suc.cache[mes]) {
+    try {
+      const r = await API.getSucursales(mes);
+      suc.cache[mes] = r.mes === mes ? r.filas : [];
+    } catch {
+      suc.cache[mes] = [];
+    }
+  }
+  return suc.cache[mes];
+}
+
+// Último día que parece completo: si el último cargado vendió menos del 30% de lo normal
+// para ese día de la semana en el mes, se lo toma como incompleto y se usa el anterior.
+function ultimoDiaCompleto() {
+  const dias = suc.res.dias;
+  const ultimo = dias.at(-1);
+  const mismos = dias.slice(0, -1).filter((x) => wdDe(x.fecha) === wdDe(ultimo.fecha));
+  const normal = mismos.length ? mismos.reduce((s, x) => s + x.monto, 0) / mismos.length : 0;
+  if (dias.length > 1 && normal > 0 && ultimo.monto < normal * 0.3) return { fecha: dias.at(-2).fecha, incompleto: ultimo };
+  return { fecha: ultimo.fecha, incompleto: null };
+}
+
+const fmtM1Gs = (v) => `Gs. ${fmtM1(v)} M`;
+
+function compararHtml() {
+  const c = suc.cmp;
+  const { fecha: ultima, incompleto } = ultimoDiaCompleto();
+  c.incompleto = incompleto;
+  if (!c.a || !c.a.startsWith(suc.datos.mes)) { c.a = ultima; c.b = sumarDias(ultima, -7); }
+  if (c.wd === null) c.wd = wdDe(c.a);
+  const controles = c.modo === 'par'
+    ? `
+      <div class="cmp-controles">
+        <div><label for="cmp-a">Día</label><input type="date" id="cmp-a" value="${c.a}"></div>
+        <div><label for="cmp-b">Contra</label><input type="date" id="cmp-b" value="${c.b}"></div>
+        <div class="cmp-rapidos">
+          <button class="btn btn-sm" type="button" data-cmp-rap="semana">Mismo día, semana anterior</button>
+          <button class="btn btn-sm" type="button" data-cmp-rap="dia">Día anterior</button>
+        </div>
+      </div>`
+    : `
+      <div class="cmp-controles">
+        <div><label for="cmp-wd">Día de la semana</label>
+          <select id="cmp-wd">${DIAS_SEMANA.map((x) => `<option value="${x.wd}"${x.wd === c.wd ? ' selected' : ''}>${x.nombre}</option>`).join('')}</select>
+        </div>
+      </div>`;
+  return `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-head" style="margin-bottom:12px">
+        <div>
+          <h2>Comparar días</h2>
+          <p class="muted small">Venta de Baratote Minorista${NO_MINORISTA.length ? ` (sin ${NO_MINORISTA.join(', ')})` : ''}, en el total y por sucursal.</p>
+        </div>
+        <div class="seg-btns" role="group" aria-label="Tipo de comparación">
+          <button type="button" data-cmodo="par" class="${c.modo === 'par' ? 'active' : ''}">Un día contra otro</button>
+          <button type="button" data-cmodo="semana" class="${c.modo === 'semana' ? 'active' : ''}">Mismo día de la semana</button>
+        </div>
+      </div>
+      ${controles}
+      ${c.incompleto && c.modo === 'par' ? `<p class="muted small" style="margin:12px 0 0">El ${etiquetaDia(c.incompleto.fecha)} parece incompleto (${fmtMillones(c.incompleto.monto)}, mucho menos que un ${DIAS_SEMANA.find((x) => x.wd === wdDe(c.incompleto.fecha)).nombre.toLowerCase()} normal), por eso arranca comparando el ${etiquetaDia(ultima)}. Podés elegir cualquier fecha.</p>` : ''}
+    </div>
+    <div id="cmp-res"><div class="card empty">Calculando…</div></div>`;
+}
+
+let cmpTurno = 0;
+
+async function renderComparacion() {
+  const el = $('cmp-res');
+  if (!el) return;
+  const turno = ++cmpTurno; // si cambian los filtros mientras se pide otro mes, gana el último
+  const c = suc.cmp;
+  let html;
+  if (c.modo === 'par') {
+    const [filasA, filasB] = await Promise.all([filasMes(c.a.slice(0, 7)), filasMes(c.b.slice(0, 7))]);
+    if (turno !== cmpTurno) return;
+    html = comparacionParHtml(compararDias(filasA, c.a, filasB, c.b));
+  } else {
+    html = comparacionSemanaHtml(mismoDiaSemana(suc.datos.filas, c.wd));
+  }
+  // Mantener el foco y el cursor en el buscador mientras se escribe.
+  const buscando = document.activeElement?.id === 'cmp-buscar' ? document.activeElement.selectionStart : null;
+  el.innerHTML = html;
+  if (buscando !== null) {
+    const b = $('cmp-buscar');
+    b.focus();
+    b.setSelectionRange(buscando, buscando);
+  }
+}
+
+// Orden de la tabla: las que más cayeron, las que más subieron, o todas por venta.
+function ordenarPorVariacion(lista, clave) {
+  const conVar = lista.filter((s) => s[clave] !== null);
+  if (suc.cmp.orden === 'caidas') return conVar.sort((x, y) => x[clave] - y[clave]).slice(0, 10);
+  if (suc.cmp.orden === 'subas') return conVar.sort((x, y) => y[clave] - x[clave]).slice(0, 10);
+  return lista;
+}
+
+function controlesTabla(total) {
+  const o = suc.cmp.orden;
+  return `
+    <div class="card-head">
+      <div class="seg-btns" role="group" aria-label="Qué sucursales mostrar">
+        <button type="button" data-corden="caidas" class="${o === 'caidas' ? 'active' : ''}">Más cayeron</button>
+        <button type="button" data-corden="subas" class="${o === 'subas' ? 'active' : ''}">Más subieron</button>
+        <button type="button" data-corden="todas" class="${o === 'todas' ? 'active' : ''}">Todas (${total})</button>
+      </div>
+      <input id="cmp-buscar" class="suc-buscar" type="search" placeholder="Buscar sucursal" value="${esc(suc.cmp.filtro)}" aria-label="Buscar sucursal">
+    </div>`;
+}
+
+function filtrarCmp(lista) {
+  const q = suc.cmp.filtro.trim().toUpperCase();
+  return q ? lista.filter((s) => s.sucursal.includes(q)) : null;
+}
+
+function comparacionParHtml(r) {
+  const t = r.total;
+  if (!t.a && !t.b) {
+    return `<div class="card empty">No hay ventas cargadas para el ${fmtFecha(r.fechaA)} ni para el ${fmtFecha(r.fechaB)}.</div>`;
+  }
+  const sinDato = (fecha, v) => (v ? '' : `<small class="var-neg">Sin datos cargados del ${fmtFecha(fecha)}</small>`);
+  const filtradas = filtrarCmp(r.sucursales);
+  const lista = filtradas || ordenarPorVariacion([...r.sucursales], 'variacion');
+  const dejaron = r.sucursales.filter((s) => s.b > 0 && !s.a).length;
+  const nuevas = r.sucursales.filter((s) => s.a > 0 && !s.b).length;
+  const filas = lista.map((s) => `
+    <tr data-suc="${esc(s.sucursal)}" class="suc-row" tabindex="0">
+      <td><b>${esc(s.sucursal)}</b></td>
+      <td class="r">${fmtM1Gs(s.a)}</td>
+      <td class="r">${fmtM1Gs(s.b)}</td>
+      <td class="r ${s.diferencia >= 0 ? 'var-pos' : 'var-neg'}">${s.diferencia >= 0 ? '+' : '−'}${fmtM1(Math.abs(s.diferencia))} M</td>
+      <td class="r">${s.variacion === null ? '<span class="muted small">no vendía</span>' : varHtml(s.variacion)}</td>
+    </tr>`).join('');
+  return `
+    <div class="cmp-tot">
+      <div><span>${etiquetaDia(r.fechaA)}</span><strong>${fmtMillones(t.a)}</strong><small>${r.conVentaA} sucursales con venta</small>${sinDato(r.fechaA, t.a)}</div>
+      <div><span>${etiquetaDia(r.fechaB)}</span><strong>${fmtMillones(t.b)}</strong><small>${r.conVentaB} sucursales con venta</small>${sinDato(r.fechaB, t.b)}</div>
+      <div class="cmp-tot-var"><span>Variación</span><strong class="${varClase(t.variacion)}">${fmtVar(t.variacion)}</strong><small>${t.diferencia >= 0 ? '+' : '−'}${fmtMillones(Math.abs(t.diferencia))}</small></div>
+    </div>
+    ${dejaron || nuevas ? `<p class="muted small" style="margin:0 0 12px">${dejaron ? `${dejaron} sucursal${dejaron === 1 ? '' : 'es'} vendieron el ${fmtDiaMes(r.fechaB)} y no el ${fmtDiaMes(r.fechaA)}. ` : ''}${nuevas ? `${nuevas} vendieron el ${fmtDiaMes(r.fechaA)} y no el ${fmtDiaMes(r.fechaB)}.` : ''}</p>` : ''}
+    <div class="card">
+      ${controlesTabla(r.sucursales.length)}
+      <div class="table-wrap">
+        <table class="suc-tabla">
+          <thead><tr><th>Sucursal</th><th class="r">${etiquetaDia(r.fechaA)}</th><th class="r">${etiquetaDia(r.fechaB)}</th><th class="r">Diferencia</th><th class="r">Variación</th></tr></thead>
+          <tbody>${filas || '<tr><td colspan="5" class="muted">No hay sucursales para mostrar.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <p class="muted small" style="margin:12px 0 0">${filtradas ? `${lista.length} resultado${lista.length === 1 ? '' : 's'}.` : suc.cmp.orden === 'todas' ? `${lista.length} sucursales, de la que más vendió el ${fmtDiaMes(r.fechaA)} a la que menos.` : 'Las 10 con mayor cambio. Tocá una sucursal para ver su detalle del mes.'}</p>
+    </div>`;
+}
+
+function comparacionSemanaHtml(r) {
+  const nombre = DIAS_SEMANA.find((x) => x.wd === suc.cmp.wd)?.nombre || '';
+  if (!r.fechas.length) return `<div class="card empty">No hay ${nombre.toLowerCase()}s cargados en este mes.</div>`;
+  const max = Math.max(...r.totales, 1);
+  const columnas = r.fechas.map((f, i) => `
+    <div class="cmp-sem-col">
+      <span class="cmp-sem-val">${fmtMillones(r.totales[i])}</span>
+      <div class="cmp-sem-bar"><div style="height:${((r.totales[i] / max) * 100).toFixed(1)}%"></div></div>
+      <span class="cmp-sem-fecha">${fmtDiaMes(f)}</span>
+      <small>${r.variaciones[i] === null ? '&nbsp;' : varHtml(r.variaciones[i])}</small>
+    </div>`).join('');
+  const filtradas = filtrarCmp(r.sucursales);
+  const lista = filtradas || ordenarPorVariacion([...r.sucursales], 'ultimaVariacion');
+  const ultimas = r.fechas.length >= 2 ? `${fmtDiaMes(r.fechas.at(-1))} vs ${fmtDiaMes(r.fechas.at(-2))}` : '';
+  const filas = lista.map((s) => `
+    <tr data-suc="${esc(s.sucursal)}" class="suc-row" tabindex="0">
+      <td><b>${esc(s.sucursal)}</b></td>
+      ${s.valores.map((v) => `<td class="r">${v ? fmtM1(v) : '<span class="muted">0</span>'}</td>`).join('')}
+      <td class="r">${s.ultimaVariacion === null ? '—' : varHtml(s.ultimaVariacion)}</td>
+    </tr>`).join('');
+  return `
+    <div class="card" style="margin-bottom:16px">
+      <h3>Todos los ${nombre.toLowerCase()}s del mes</h3>
+      <p class="muted small" style="margin:4px 0 0">Total de las sucursales cada ${nombre.toLowerCase()} y variación contra el ${nombre.toLowerCase()} anterior.</p>
+      <div class="cmp-sem">${columnas}</div>
+    </div>
+    <div class="card">
+      ${controlesTabla(r.sucursales.length)}
+      <div class="table-wrap">
+        <table class="suc-tabla">
+          <thead><tr><th>Sucursal</th>${r.fechas.map((f) => `<th class="r">${fmtDiaMes(f)}</th>`).join('')}<th class="r">${ultimas || 'Variación'}</th></tr></thead>
+          <tbody>${filas || `<tr><td colspan="${r.fechas.length + 2}" class="muted">No hay sucursales para mostrar.</td></tr>`}</tbody>
+        </table>
+      </div>
+      <p class="muted small" style="margin:12px 0 0">Montos en millones. ${filtradas ? `${lista.length} resultado${lista.length === 1 ? '' : 's'}.` : suc.cmp.orden === 'todas' ? 'De la que más vende a la que menos.' : `Las 10 con mayor cambio entre el ${ultimas}.`}</p>
     </div>`;
 }
 
