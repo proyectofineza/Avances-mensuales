@@ -67,6 +67,11 @@ async function init() {
     try { await API.logout(); } finally { location.replace('index.html'); }
   });
   $('notice-close').addEventListener('click', () => { $('notice-wrap').hidden = true; });
+  // Saltos a secciones del dashboard (sin tocar el hash, que maneja las vistas).
+  $('dash').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-salto]');
+    if (b) $(b.dataset.salto)?.scrollIntoView({ behavior: sinMovimiento() ? 'auto' : 'smooth', block: 'start' });
+  });
 
   if (isAdmin()) {
     setupVentas();
@@ -113,6 +118,7 @@ function setupMenu() {
     $('menu-btn').setAttribute('aria-expanded', String(si));
   };
   $('menu-btn').addEventListener('click', () => abrir(!document.body.classList.contains('menu-abierto')));
+  $('nav-mas').addEventListener('click', () => abrir(true));
   $('sidebar-fondo').addEventListener('click', () => abrir(false));
   $('tabs').addEventListener('click', (e) => { if (e.target.closest('.tab')) abrir(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('menu-abierto')) abrir(false); });
@@ -196,16 +202,18 @@ let savePromise = Promise.resolve();
 const montoInput = (attr, id, label) =>
   `<input class="num" inputmode="numeric" ${attr} data-id="${id}" aria-label="${esc(label)}">`;
 
+// En celular cada fila se ve como tarjeta: la unidad es el título y cada celda lleva su
+// rótulo (data-label).
 function unidadCell(u) {
   return `
-      <td>
+      <td class="t-titulo">
         <div class="unidad-nombre">${esc(u.nombre)}</div>
         <div class="unidad-meta">${u.grupo ? 'Canal · ' : ''}${CAL_CORTO[u.calendario]}${u.ponderado ? ' · ponderado' : ''}</div>
       </td>`;
 }
 
 const grupoCell = `
-      <td>
+      <td class="t-titulo">
         <div class="unidad-nombre">Baratote</div>
         <div class="unidad-meta">Unidad de negocio · ${CAL_CORTO['lun-dom']}</div>
       </td>`;
@@ -218,26 +226,26 @@ function filas(grupoRow, unidadRow) {
 
 function setupVentas() {
   $('ventas-body').innerHTML = filas(
-    `<tr class="grupo-row">${grupoCell}<td class="r" id="bar-obj"></td><td class="r" id="bar-real"></td><td class="r" id="av-bar"></td></tr>`,
+    `<tr class="grupo-row">${grupoCell}<td class="r" id="bar-obj" data-label="Objetivo mensual"></td><td class="r" id="bar-real" data-label="Venta acumulada"></td><td class="r" id="av-bar" data-label="Avance"></td></tr>`,
     (u) => `
-      <td class="r">${montoInput('data-campo="obj"', u.id, `Objetivo mensual ${u.nombre}`)}</td>
-      <td class="r">${montoInput('data-campo="real"', u.id, `Venta acumulada ${u.nombre}`)}</td>
-      <td class="r" id="av-${u.id}"></td>`,
+      <td class="r" data-label="Objetivo mensual (Gs.)">${montoInput('data-campo="obj"', u.id, `Objetivo mensual ${u.nombre}`)}</td>
+      <td class="r" data-label="Venta acumulada (Gs.)">${montoInput('data-campo="real"', u.id, `Venta acumulada ${u.nombre}`)}</td>
+      <td class="r" id="av-${u.id}" data-label="Avance"></td>`,
   );
 
   $('dias-body').innerHTML = filas(
-    `<tr class="grupo-row">${grupoCell}<td></td><td></td><td></td></tr>`,
+    `<tr class="grupo-row solo-escritorio">${grupoCell}<td></td><td></td><td></td></tr>`,
     (u) => `
-      <td class="r"><input class="num dias-input" inputmode="numeric" maxlength="2" data-dias="mes" data-id="${u.id}" aria-label="Días del mes ${esc(u.nombre)}"></td>
-      <td class="r"><input class="num dias-input" inputmode="numeric" maxlength="2" data-dias="curso" data-id="${u.id}" aria-label="Día en curso ${esc(u.nombre)}"></td>
-      <td class="r" id="ri-${u.id}"></td>`,
+      <td class="r" data-label="Días del mes"><input class="num dias-input" inputmode="numeric" maxlength="2" data-dias="mes" data-id="${u.id}" aria-label="Días del mes ${esc(u.nombre)}"></td>
+      <td class="r" data-label="Día en curso"><input class="num dias-input" inputmode="numeric" maxlength="2" data-dias="curso" data-id="${u.id}" aria-label="Día en curso ${esc(u.nombre)}"></td>
+      <td class="r" id="ri-${u.id}" data-label="Ritmo ideal"></td>`,
   );
 
   $('comp-body').innerHTML = filas(
-    `<tr class="grupo-row">${grupoCell}<td class="r" id="comp-bar-ant"></td><td class="r" id="comp-bar-aa"></td></tr>`,
+    `<tr class="grupo-row">${grupoCell}<td class="r" id="comp-bar-ant" data-label="Mes anterior"></td><td class="r" id="comp-bar-aa" data-label="Año anterior"></td></tr>`,
     (u) => `
-      <td class="r">${montoInput('data-comp="ant"', u.id, `Venta mes anterior ${u.nombre}`)}</td>
-      <td class="r">${montoInput('data-comp="aa"', u.id, `Venta año anterior ${u.nombre}`)}</td>`,
+      <td class="r" data-label="Mes anterior (Gs.)">${montoInput('data-comp="ant"', u.id, `Venta mes anterior ${u.nombre}`)}</td>
+      <td class="r" data-label="Año anterior (Gs.)">${montoInput('data-comp="aa"', u.id, `Venta año anterior ${u.nombre}`)}</td>`,
   );
 
   $('pesos-grid').innerHTML = DIAS_SEMANA.map((d) => `
@@ -632,8 +640,10 @@ function conexionHtml(u) {
 
 function actualizarBadge() {
   const n = state.users.filter((u) => u.pendiente).length;
-  $('tab-badge').textContent = n;
-  $('tab-badge').hidden = n === 0;
+  for (const id of ['tab-badge', 'tab-badge-inf']) {
+    $(id).textContent = n;
+    $(id).hidden = n === 0;
+  }
 }
 
 function renderPendientes() {
@@ -643,10 +653,10 @@ function renderPendientes() {
   $('pend-body').innerHTML = pend.length
     ? pend.map((u) => `
       <tr>
-        <td style="white-space:nowrap">${fmtCI(u.ci)}</td>
-        <td>${esc(u.nombre)}</td>
-        <td style="white-space:nowrap">${fmtFechaHora(u.creado)}</td>
-        <td class="r">
+        <td style="white-space:nowrap" data-label="Cédula">${fmtCI(u.ci)}</td>
+        <td class="t-titulo">${esc(u.nombre)}</td>
+        <td style="white-space:nowrap" data-label="Solicitado">${fmtFechaHora(u.creado)}</td>
+        <td class="r t-acciones">
           <div style="display:flex;gap:8px;justify-content:flex-end">
             <button class="btn btn-primary btn-sm" data-accion="aprobar" data-ci="${esc(u.ci)}" data-nombre="${esc(u.nombre)}">Aprobar</button>
             <button class="btn btn-sm" data-accion="rechazar" data-ci="${esc(u.ci)}" data-nombre="${esc(u.nombre)}">Rechazar</button>
@@ -684,12 +694,12 @@ function renderUsers() {
     }
     return `
       <tr>
-        <td style="white-space:nowrap">${fmtCI(u.ci)}</td>
-        <td>${esc(u.nombre)}</td>
-        <td>${ROL_TEXTO[u.rol] || esc(u.rol)}</td>
-        <td><span class="chip ${u.activo ? 'ok' : 'off'}">${u.activo ? 'Activo' : 'Inactivo'}</span></td>
-        <td style="white-space:nowrap">${conexionHtml(u)}</td>
-        <td class="r">${acciones}</td>
+        <td style="white-space:nowrap" data-label="Cédula">${fmtCI(u.ci)}</td>
+        <td class="t-titulo">${esc(u.nombre)}</td>
+        <td data-label="Rol">${ROL_TEXTO[u.rol] || esc(u.rol)}</td>
+        <td class="t-chip"><span class="chip ${u.activo ? 'ok' : 'off'}">${u.activo ? 'Activo' : 'Inactivo'}</span></td>
+        <td style="white-space:nowrap" data-label="Última conexión">${conexionHtml(u)}</td>
+        <td class="r t-acciones">${acciones}</td>
       </tr>`;
   }).join('');
 }
@@ -1061,14 +1071,14 @@ function renderRankingTabla() {
       <td class="muted">${s.puesto}</td>
       <td><b>${esc(s.sucursal)}</b></td>
       <td class="r">${fmtMillones(s.total)}</td>
-      <td class="r">${fmtPct(s.total / (res.total || 1))}</td>
-      <td class="r">${fmtMillones(s.total / Math.max(s.diasConVenta, 1))}</td>
-      <td class="r">${s.diasConVenta}</td>
-      <td style="min-width:120px"><div class="rank-bar"><div style="width:${((s.total / top) * 100).toFixed(1)}%"></div></div></td>
+      <td class="r opc">${fmtPct(s.total / (res.total || 1))}</td>
+      <td class="r opc">${fmtMillones(s.total / Math.max(s.diasConVenta, 1))}</td>
+      <td class="r opc">${s.diasConVenta}</td>
+      <td class="col-barra"><div class="rank-bar"><div style="width:${((s.total / top) * 100).toFixed(1)}%"></div></div></td>
     </tr>`).join('');
   $('suc-ranking').innerHTML = `
     <table class="suc-tabla">
-      <thead><tr><th>#</th><th>Sucursal</th><th class="r">Venta del mes</th><th class="r">% del total</th><th class="r">Prom./día</th><th class="r">Días</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>Sucursal</th><th class="r">Venta del mes</th><th class="r opc">% del total</th><th class="r opc">Prom./día</th><th class="r opc">Días</th><th class="col-barra"></th></tr></thead>
       <tbody>${filas || '<tr><td colspan="7" class="muted">No hay sucursales con ese nombre.</td></tr>'}</tbody>
     </table>`;
   $('suc-ranking-pie').innerHTML = q
@@ -1389,7 +1399,7 @@ function comparacionParHtml(r) {
       <td><b>${esc(s.sucursal)}</b></td>
       <td class="r">${fmtM1Gs(s.a)}</td>
       <td class="r">${fmtM1Gs(s.b)}</td>
-      <td class="r ${s.diferencia >= 0 ? 'var-pos' : 'var-neg'}">${s.diferencia >= 0 ? '+' : '−'}${fmtM1(Math.abs(s.diferencia))} M</td>
+      <td class="r opc ${s.diferencia >= 0 ? 'var-pos' : 'var-neg'}">${s.diferencia >= 0 ? '+' : '−'}${fmtM1(Math.abs(s.diferencia))} M</td>
       <td class="r">${s.variacion === null ? '<span class="muted small">no vendía</span>' : varHtml(s.variacion)}</td>
     </tr>`).join('');
   return `
@@ -1403,7 +1413,7 @@ function comparacionParHtml(r) {
       ${controlesTabla(r.sucursales.length)}
       <div class="table-wrap">
         <table class="suc-tabla">
-          <thead><tr><th>Sucursal</th><th class="r">${etiquetaDia(r.fechaA)}</th><th class="r">${etiquetaDia(r.fechaB)}</th><th class="r">Diferencia</th><th class="r">Variación</th></tr></thead>
+          <thead><tr><th>Sucursal</th><th class="r">${etiquetaDia(r.fechaA)}</th><th class="r">${etiquetaDia(r.fechaB)}</th><th class="r opc">Diferencia</th><th class="r">Variación</th></tr></thead>
           <tbody>${filas || '<tr><td colspan="5" class="muted">No hay sucursales para mostrar.</td></tr>'}</tbody>
         </table>
       </div>
@@ -1420,6 +1430,8 @@ async function filasHastaSemanas(n) {
 }
 
 const rangoSemana = (s) => `${fmtDiaMes(s.desde)}–${fmtDiaMes(s.hasta)}`;
+// En celular, de varias columnas de fechas solo se muestran las dos últimas.
+const opcSi = (i, n) => (i < n - 2 ? ' opc' : '');
 
 function comparacionSemanasHtml(r) {
   const max = Math.max(...r.semanas.map((s) => s.total), 1);
@@ -1439,7 +1451,7 @@ function comparacionSemanasHtml(r) {
   const filas = lista.map((s) => `
     <tr data-suc="${esc(s.sucursal)}" class="suc-row" tabindex="0">
       <td><b>${esc(s.sucursal)}</b></td>
-      ${s.valores.map((v) => `<td class="r">${v ? fmtM1(v) : '<span class="muted">0</span>'}</td>`).join('')}
+      ${s.valores.map((v, i, a) => `<td class="r${opcSi(i, a.length)}">${v ? fmtM1(v) : '<span class="muted">0</span>'}</td>`).join('')}
       <td class="r">${s.variacion === null ? '—' : varHtml(s.variacion)}</td>
     </tr>`).join('');
   return `
@@ -1452,7 +1464,7 @@ function comparacionSemanasHtml(r) {
       ${controlesTabla(r.sucursales.length)}
       <div class="table-wrap">
         <table class="suc-tabla">
-          <thead><tr><th>Sucursal</th>${r.semanas.map((s) => `<th class="r">${rangoSemana(s)}</th>`).join('')}<th class="r">${colVar}</th></tr></thead>
+          <thead><tr><th>Sucursal</th>${r.semanas.map((s, i, a) => `<th class="r${opcSi(i, a.length)}">${rangoSemana(s)}</th>`).join('')}<th class="r">${colVar}</th></tr></thead>
           <tbody>${filas || `<tr><td colspan="${r.semanas.length + 2}" class="muted">No hay sucursales para mostrar.</td></tr>`}</tbody>
         </table>
       </div>
@@ -1477,7 +1489,7 @@ function comparacionSemanaHtml(r) {
   const filas = lista.map((s) => `
     <tr data-suc="${esc(s.sucursal)}" class="suc-row" tabindex="0">
       <td><b>${esc(s.sucursal)}</b></td>
-      ${s.valores.map((v) => `<td class="r">${v ? fmtM1(v) : '<span class="muted">0</span>'}</td>`).join('')}
+      ${s.valores.map((v, i, a) => `<td class="r${opcSi(i, a.length)}">${v ? fmtM1(v) : '<span class="muted">0</span>'}</td>`).join('')}
       <td class="r">${s.ultimaVariacion === null ? '—' : varHtml(s.ultimaVariacion)}</td>
     </tr>`).join('');
   return `
@@ -1490,7 +1502,7 @@ function comparacionSemanaHtml(r) {
       ${controlesTabla(r.sucursales.length)}
       <div class="table-wrap">
         <table class="suc-tabla">
-          <thead><tr><th>Sucursal</th>${r.fechas.map((f) => `<th class="r">${fmtDiaMes(f)}</th>`).join('')}<th class="r">${ultimas || 'Variación'}</th></tr></thead>
+          <thead><tr><th>Sucursal</th>${r.fechas.map((f, i, a) => `<th class="r${opcSi(i, a.length)}">${fmtDiaMes(f)}</th>`).join('')}<th class="r">${ultimas || 'Variación'}</th></tr></thead>
           <tbody>${filas || `<tr><td colspan="${r.fechas.length + 2}" class="muted">No hay sucursales para mostrar.</td></tr>`}</tbody>
         </table>
       </div>
@@ -1982,7 +1994,7 @@ function renderDashboard() {
       <tr${clase ? ` class="${clase}"` : ''}>
         <td>${esc(nombre)}</td>
         <td class="r">${fmtMiles(c.faltante / 1e6)}</td>
-        <td class="r">${c.diasRestantes}</td>
+        <td class="r opc">${c.diasRestantes}</td>
         <td class="r">${fmtM1(c.promedioDia)}</td>
         <td class="r ${alto ? 'necesario-alto' : 'necesario-ok'}">${fmtM1(c.necesarioDia)}</td>
       </tr>`;
@@ -1994,7 +2006,16 @@ function renderDashboard() {
       <p class="muted">Corte al ${fmtFecha(p.corte)} · Publicado ${fmtFechaHora(p.publicadoEn)} por ${esc(p.por)}${r.manual ? ' · Días cargados a mano' : ''}</p>
     </div>
 
-    ${proyeccionHtml(r, p.corte)}
+    <nav class="saltos" aria-label="Ir a una sección">
+      <button type="button" data-salto="s-proy">Proyección</button>
+      <button type="button" data-salto="s-unidades">Unidades</button>
+      <button type="button" data-salto="s-clima">Clima</button>
+      <button type="button" data-salto="s-graficos">Gráficos</button>
+      <button type="button" data-salto="s-comparativa">Comparativa</button>
+      <button type="button" data-salto="s-ritmo">Ritmo</button>
+    </nav>
+
+    <div id="s-proy" class="ancla">${proyeccionHtml(r, p.corte)}</div>
 
     <div class="kpis">
       <div class="card kpi" style="--acento:var(--c-fbt)">
@@ -2014,7 +2035,7 @@ function renderDashboard() {
       </div>
     </div>
 
-    <div class="unidades">
+    <div class="unidades ancla" id="s-unidades">
       ${unidadCard('Baratote', 'lun-dom', r.baratote, COLOR.bar, r.manual, `<div class="canales"><div class="unidad-meta" style="font-weight:600">Por canal</div>${canal(u.may)}${canal(u.min)}</div>`)}
       ${unidadCard('Fineglass', 'lun-vie', u.fgl, COLOR.fgl, r.manual)}
       ${unidadCard('Fineboats', 'lun-dom', u.fbt, COLOR.fbt, r.manual)}
@@ -2025,22 +2046,22 @@ function renderDashboard() {
       <span><i class="sw target"></i>Objetivo (100%)</span>
     </div>
 
-    ${climaHtml(r, p)}
+    <div id="s-clima" class="ancla">${climaHtml(r, p)}</div>
 
-    <div class="dash-bottom">
+    <div class="dash-bottom ancla" id="s-graficos">
       ${evolucionHtml()}
       ${composicionHtml(r)}
     </div>
 
-    <div class="dash-bottom" style="margin-top:16px">
+    <div class="dash-bottom ancla" id="s-comparativa" style="margin-top:16px">
       ${comparativaHtml(r, p.corte)}
-      <div class="card">
+      <div class="card ancla" id="s-ritmo">
         <h2>Ritmo necesario para llegar</h2>
         <p class="muted small" style="margin:4px 0 12px">Montos en millones de guaraníes.</p>
         <div class="table-wrap">
           <table class="ritmo">
             <thead>
-              <tr><th>Unidad</th><th class="r">Faltante</th><th class="r">Días</th><th class="r">Prom./día</th><th class="r">Necesario/día</th></tr>
+              <tr><th>Unidad</th><th class="r">Faltante</th><th class="r opc">Días</th><th class="r">Prom./día</th><th class="r">Necesario/día</th></tr>
             </thead>
             <tbody>${ritmoRows}</tbody>
           </table>

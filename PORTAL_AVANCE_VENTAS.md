@@ -374,6 +374,12 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - **Comparar días → Últimas 4 semanas** (lunes a domingo), cruzando meses si hace falta: total de cada semana, días cargados y variación contra la semana anterior; la semana en curso se compara contra los mismos días de la semana anterior. Tabla por sucursal con cada semana y la variación entre las dos últimas semanas completas (`ultimasSemanas` en `public/js/sucursales.js`). Se cuenta hasta el último día completo.
 - El **resumen para la IA** suma el clima de cada día con venta (máxima, mínima, lluvia), el pronóstico de los próximos días, el criterio del negocio (bebidas: sol y calor favorecen; lluvia y frío bajan la venta) y las últimas 4 semanas con las sucursales que más cambiaron. Nueva sección del informe: **Clima y próximos días**.
 
+### 12.15 Optimización para celular
+- Hasta 900 px: **barra de navegación inferior** (Inicio, Sucursales, Cargar y Usuarios para admin, **Más** abre el menú con tema y salir), respetando la zona segura del iPhone. La barra superior queda con logo y título de la sección.
+- Dashboard: **saltos a secciones** fijos debajo de la barra superior (Proyección, Unidades, Clima, Gráficos, Comparativa, Ritmo). Pestañas de Sucursales fijas al hacer scroll, con aviso de que hay más a la derecha.
+- Hasta 600 px: las tablas de **Cargar ventas** y **Usuarios** se muestran como **tarjetas** (rótulo + valor, campos a lo ancho); las tablas de análisis ocultan columnas secundarias (`.opc`): ranking sin % / prom. / días, comparar sin diferencia, semanas y mismos días con las dos últimas columnas, ritmo sin días. Indicadores en dos columnas.
+- Objetivo: nada se sale de la pantalla a 375 px (verificado en todas las vistas).
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.
