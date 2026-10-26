@@ -223,6 +223,18 @@ export function mismoDiaSemana(filas, wd, excluir = NO_MINORISTA) {
   return { fechas, totales, variaciones: totales.map((t, i) => (i ? variacion(t, totales[i - 1]) : null)), sucursales };
 }
 
+// Último día que parece completo: si el último cargado vendió menos del 30% de lo normal
+// para ese día de la semana en el mes, se lo toma como incompleto y se usa el anterior.
+// dias: [{ fecha, monto }] ordenados (resumirMes().dias).
+export function ultimoDiaCompleto(dias) {
+  const ultimo = dias.at(-1);
+  if (!ultimo) return { fecha: null, incompleto: null };
+  const mismos = dias.slice(0, -1).filter((x) => diaSemana(x.fecha) === diaSemana(ultimo.fecha));
+  const normal = mismos.length ? mismos.reduce((s, x) => s + x.monto, 0) / mismos.length : 0;
+  if (dias.length > 1 && normal > 0 && ultimo.monto < normal * 0.3) return { fecha: dias.at(-2).fecha, incompleto: ultimo };
+  return { fecha: ultimo.fecha, incompleto: null };
+}
+
 // Peso de cada día de la semana (0 = domingo) según el promedio de venta de ese día.
 export function pesoSemana(dias) {
   const suma = Array(7).fill(0), cuenta = Array(7).fill(0);

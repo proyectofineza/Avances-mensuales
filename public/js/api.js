@@ -28,6 +28,8 @@ export const publish = (avisarTeams) => api('POST', 'publish', { avisarTeams });
 export const getClima = () => api('GET', 'clima');
 export const getSucursales = (mes) => api('GET', `sucursales${mes ? `?mes=${encodeURIComponent(mes)}` : ''}`);
 export const saveSucursales = (filas) => api('POST', 'sucursales', { filas });
+export const getInforme = (mes) => api('GET', `informe?mes=${encodeURIComponent(mes)}`);
+export const generarInforme = (mes) => api('POST', 'informe', { mes });
 export const deleteSucursalesMes = (mes) => api('DELETE', `sucursales?mes=${encodeURIComponent(mes)}`);
 export const getTeams = () => api('GET', 'teams');
 export const testTeams = () => api('POST', 'teams');

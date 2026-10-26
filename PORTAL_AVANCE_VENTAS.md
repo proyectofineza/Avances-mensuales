@@ -248,6 +248,7 @@ El dashboard del comercial refresca solo cada 60 s (y al volver a la pestaña) p
 | `TEAMS_WEBHOOK_URL`   | URL del flujo de Teams (si falta, no se envía aviso) |
 | `TEAMS_CANAL`         | nombre del canal para el mensaje de confirmación |
 | `PORTAL_URL`          | URL pública del sitio para el botón del aviso |
+| `ANTHROPIC_API_KEY`   | clave de la API de Claude para el Informe IA (si falta, no se generan informes) |
 
 ### 9.5 Aviso a Teams
 - Crear en Teams, en el canal elegido: **Workflows → "Publicar en un canal cuando se recibe una solicitud de webhook"**, copiar la URL → `TEAMS_WEBHOOK_URL`. (Los conectores clásicos "Incoming Webhook" de Office 365 están siendo retirados; usar Workflows.)
@@ -354,6 +355,13 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
     - *Mismo día de la semana*: todos los lunes, martes… del mes, con el total y la variación contra el anterior, y la tabla por sucursal con cada fecha y la variación entre los dos últimos.
   - El detalle de una sucursal se abre en un **panel lateral** (pantalla completa en celular): puesto, venta, % del total, promedio por día, días con venta, comparación con el promedio de sucursales, venta por día, peso por día de la semana y sus alertas.
 - La forma de fila `{ sucursal, fecha, monto }` es la que se va a migrar a una tabla en Supabase (etapa 5), donde se sumarán artículo, proveedor y marca.
+
+### 12.12 Informe de situación con IA
+- Pestaña **Informe IA** en Sucursales (admin y comerciales). Al guardar una planilla, si la IA está configurada, el informe del mes se genera solo; el admin también puede generarlo o regenerarlo con un botón. Si se cargan datos nuevos después, se avisa que el informe quedó desactualizado.
+- `GET /api/informe?mes=AAAA-MM` (todos) y `POST /api/informe { mes }` (admin). Se guarda en Blobs `informes/AAAA-MM` → `{ mes, texto, generado, por, basadoEn, modelo, uso }`.
+- Modelo **Claude Opus 5.5** (`claude-opus-5-5`) con `effort: low` y respuesta en streaming, para entrar en el límite de 60 s de las funciones de Netlify; con el respaldo automático del servidor (`fallbacks: "default"`) si el modelo declina.
+- Se envían solo datos agregados (`netlify/lib/informe.mjs` → `armarContexto`): totales, venta por día, peso por día de la semana, top y últimas 10, alertas, último día contra la semana anterior, mismos días del mes y, si son del mismo mes, los objetivos y la proyección publicados. Unas 2.000 palabras de datos por informe.
+- Requiere la variable de entorno `ANTHROPIC_API_KEY` (cuenta de API en console.anthropic.com con saldo). Sin ella el portal funciona igual y la pestaña explica que falta activarlo.
 
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).

@@ -13,6 +13,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@netlify/blobs": "^8.1.0"
   }
 }

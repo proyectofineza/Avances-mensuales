@@ -5,7 +5,9 @@ import {
   mesAnterior, mismoMesAnioAnterior, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, fmtDiaMes,
   fmtFechaHora, nombreMes, fmtCI, hoyAsuncion,
 } from './calc.js';
-import { leerPlanilla, resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, NO_MINORISTA } from './sucursales.js';
+import {
+  leerPlanilla, resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, ultimoDiaCompleto, NO_MINORISTA,
+} from './sucursales.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -628,6 +630,8 @@ const suc = {
   // Comparar días: modo 'par' (un día contra otro) o 'semana' (todos los mismos días del mes).
   cmp: { modo: 'par', a: null, b: null, wd: null, orden: 'caidas', filtro: '' },
   cache: {}, // filas por mes, para comparar contra otros meses
+  // Informe IA del mes abierto: datos de /api/informe, si se está generando y el último error.
+  informe: { mes: null, datos: null, generando: false, error: null },
 };
 const fechaDeMes = (mes) => `${mes}-01`;
 const esFinde = (wd) => wd === 5 || wd === 6 || wd === 0;
@@ -672,6 +676,7 @@ function setupSucursales() {
     }
     const orden = e.target.closest('[data-corden]');
     if (orden) { suc.cmp.orden = orden.dataset.corden; renderComparacion(); return; }
+    if (e.target.closest('[data-informe-generar]')) { generarInformeMes(suc.datos.mes); return; }
     const ir = e.target.closest('[data-ir]');
     if (ir) {
       suc.sub = ir.dataset.ir;
@@ -772,7 +777,9 @@ async function guardarPlanilla() {
     $('suc-archivo').value = '';
     $('suc-preview').textContent = '';
     $('suc-errores').hidden = true;
-    await loadSucursales(res.resumen.at(-1).mes);
+    const mes = res.resumen.at(-1).mes;
+    await loadSucursales(mes);
+    informeAutomatico(mes, msgEl);
   } catch (err) {
     btn.disabled = false;
     handleError(err, msgEl);
@@ -825,7 +832,7 @@ function renderSucursales() {
   $('suc-alertas-n').textContent = nAlertas;
   $('suc-alertas-n').hidden = nAlertas === 0;
   $('suc-subtabs').hidden = false;
-  if (!['resumen', 'ranking', 'calor', 'comparar', 'alertas'].includes(suc.sub)) suc.sub = 'resumen';
+  if (!['resumen', 'informe', 'ranking', 'calor', 'comparar', 'alertas'].includes(suc.sub)) suc.sub = 'resumen';
   suc.cache[d.mes] = d.filas;
   document.querySelectorAll('#suc-subtabs [data-sub]').forEach((b) => {
     const activa = b.dataset.sub === suc.sub;
@@ -836,6 +843,7 @@ function renderSucursales() {
   if (suc.sub === 'ranking') { el.innerHTML = rankingHtml(); renderRankingTabla(); }
   else if (suc.sub === 'calor') el.innerHTML = calorHtml();
   else if (suc.sub === 'comparar') { el.innerHTML = compararHtml(); renderComparacion(); }
+  else if (suc.sub === 'informe') { el.innerHTML = informeHtml(); if (suc.informe.mes !== d.mes) cargarInforme(d.mes); }
   else if (suc.sub === 'alertas') el.innerHTML = alertasHtml();
   else el.innerHTML = resumenSucHtml();
 }
@@ -1016,6 +1024,109 @@ function calorHtml() {
     </div>`;
 }
 
+// ---- Informe IA ----
+
+async function cargarInforme(mes) {
+  suc.informe = { mes, datos: null, generando: suc.informe.generando && suc.informe.mes === mes, error: null };
+  try {
+    suc.informe.datos = await API.getInforme(mes);
+  } catch (err) {
+    suc.informe.error = err.message;
+  }
+  if (suc.sub === 'informe' && suc.datos?.mes === mes) $('suc-contenido').innerHTML = informeHtml();
+}
+
+// Genera el informe (al tocar el botón o después de guardar una planilla).
+async function generarInformeMes(mes) {
+  if (!isAdmin() || (suc.informe.generando && suc.informe.mes === mes)) return;
+  suc.informe = { ...suc.informe, mes, generando: true, error: null };
+  const pintar = () => { if (suc.sub === 'informe' && suc.datos?.mes === mes) $('suc-contenido').innerHTML = informeHtml(); };
+  pintar();
+  try {
+    suc.informe.datos = await API.generarInforme(mes);
+  } catch (err) {
+    suc.informe.error = err.message;
+  } finally {
+    suc.informe.generando = false;
+  }
+  pintar();
+}
+
+// Después de guardar una planilla: si la IA está activada, se genera el informe con los datos nuevos.
+async function informeAutomatico(mes, msgEl) {
+  let datos = null;
+  try { datos = await API.getInforme(mes); } catch { return; }
+  suc.informe = { mes, datos, generando: false, error: null };
+  if (!datos.configurado) return;
+  msgEl.textContent += ' Generando el informe con IA: lo vas a ver en la pestaña Informe IA.';
+  await generarInformeMes(mes);
+}
+
+// Convierte el texto del informe (títulos "## ", viñetas "- " y **negrita**) en HTML seguro.
+function informeATexto(texto) {
+  const lineas = esc(texto).split(/\r?\n/);
+  const out = [];
+  let enLista = false;
+  const cerrarLista = () => { if (enLista) { out.push('</ul>'); enLista = false; } };
+  const enLinea = (s) => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  for (const l of lineas) {
+    const t = l.trim();
+    if (!t) { cerrarLista(); continue; }
+    if (/^#{1,3}\s+/.test(t)) { cerrarLista(); out.push(`<h3>${enLinea(t.replace(/^#{1,3}\s+/, ''))}</h3>`); continue; }
+    if (/^[-*•]\s+/.test(t)) {
+      if (!enLista) { out.push('<ul>'); enLista = true; }
+      out.push(`<li>${enLinea(t.replace(/^[-*•]\s+/, ''))}</li>`);
+      continue;
+    }
+    cerrarLista();
+    out.push(`<p>${enLinea(t)}</p>`);
+  }
+  cerrarLista();
+  return out.join('');
+}
+
+function informeHtml() {
+  const s = suc.informe;
+  const mesNombre = nombreMes(fechaDeMes(suc.datos.mes));
+  const info = s.datos?.informe;
+  const boton = (texto, primario = false) => (isAdmin()
+    ? `<button class="btn${primario ? ' btn-primary' : ''}" type="button" data-informe-generar ${s.generando ? 'disabled' : ''}>${texto}</button>`
+    : '');
+
+  if (s.mes !== suc.datos.mes || (!s.datos && !s.error && !s.generando)) {
+    return '<div class="card empty">Cargando el informe…</div>';
+  }
+  let cuerpo;
+  if (s.generando) {
+    cuerpo = '<div class="informe-cargando"><span class="spinner" aria-hidden="true"></span>Generando el informe con IA… puede tardar hasta un minuto.</div>';
+  } else if (info) {
+    cuerpo = `<div class="informe-texto">${informeATexto(info.texto)}</div>`;
+  } else if (s.datos && !s.datos.configurado) {
+    cuerpo = isAdmin()
+      ? '<p class="muted">Los informes con IA todavía no están activados. Hay que cargar la variable <b>ANTHROPIC_API_KEY</b> en Netlify y volver a publicar el sitio.</p>'
+      : '<p class="muted">Todavía no hay un informe para este mes.</p>';
+  } else {
+    cuerpo = `<p class="muted">Todavía no hay un informe de ${esc(mesNombre)}.${isAdmin() ? ' Generalo con el botón.' : ' Se genera cuando el administrador carga los datos.'}</p>`;
+  }
+  const meta = info
+    ? `Generado ${fmtFechaHora(info.generado)}${info.por ? ' por ' + esc(info.por) : ''} · con los datos cargados hasta ese momento`
+    : 'Análisis automático de las ventas por sucursal y de los objetivos publicados.';
+  return `
+    <div class="card informe">
+      <div class="card-head">
+        <div>
+          <h2>Informe de situación · ${esc(mesNombre)}</h2>
+          <p class="muted small">${meta}</p>
+        </div>
+        ${s.generando ? '' : info ? boton('Volver a generar') : (s.datos?.configurado ? boton('Generar informe', true) : '')}
+      </div>
+      ${s.datos?.desactualizado && !s.generando ? `<div class="alert informe-aviso">Hay datos nuevos desde que se generó este informe.${isAdmin() ? ' ' + boton('Actualizar informe', true) : ''}</div>` : ''}
+      ${s.error ? `<div class="alert alert-error" style="margin-bottom:14px">${esc(s.error)}</div>` : ''}
+      ${cuerpo}
+      ${info ? '<p class="nota">Generado con IA a partir de los datos cargados en el portal. Puede equivocarse: revisá las cifras antes de tomar decisiones.</p>' : ''}
+    </div>`;
+}
+
 // ---- Comparar días ----
 
 function sumarDias(fecha, n) {
@@ -1039,22 +1150,11 @@ async function filasMes(mes) {
   return suc.cache[mes];
 }
 
-// Último día que parece completo: si el último cargado vendió menos del 30% de lo normal
-// para ese día de la semana en el mes, se lo toma como incompleto y se usa el anterior.
-function ultimoDiaCompleto() {
-  const dias = suc.res.dias;
-  const ultimo = dias.at(-1);
-  const mismos = dias.slice(0, -1).filter((x) => wdDe(x.fecha) === wdDe(ultimo.fecha));
-  const normal = mismos.length ? mismos.reduce((s, x) => s + x.monto, 0) / mismos.length : 0;
-  if (dias.length > 1 && normal > 0 && ultimo.monto < normal * 0.3) return { fecha: dias.at(-2).fecha, incompleto: ultimo };
-  return { fecha: ultimo.fecha, incompleto: null };
-}
-
 const fmtM1Gs = (v) => `Gs. ${fmtM1(v)} M`;
 
 function compararHtml() {
   const c = suc.cmp;
-  const { fecha: ultima, incompleto } = ultimoDiaCompleto();
+  const { fecha: ultima, incompleto } = ultimoDiaCompleto(suc.res.dias);
   c.incompleto = incompleto;
   if (!c.a || !c.a.startsWith(suc.datos.mes)) { c.a = ultima; c.b = sumarDias(ultima, -7); }
   if (c.wd === null) c.wd = wdDe(c.a);
