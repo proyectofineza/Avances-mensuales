@@ -27,6 +27,22 @@ const conObj = armarContexto({ mes: '2026-10', filas, published });
 assert.equal(conObj.objetivosPublicados.minorista.objetivo, 200);
 assert.equal(armarContexto({ mes: '2026-10', filas, published: { ...published, corte: '2026-09-30' } }).objetivosPublicados, undefined);
 
+// Clima y últimas semanas en el resumen
+const conClima = armarContexto({
+  mes: '2026-10', filas, filasSemanas: filas,
+  clima: {
+    historial: [{ fecha: '2026-10-03', tmax: 31.6, tmin: 20.2, lluvia: 13.24 }],
+    dias: [{ fecha: '2026-10-15', tmax: 24, tmin: 15, lluvia: 0 }, { fecha: '2026-10-13', tmax: 1, tmin: 1, lluvia: 0 }],
+  },
+});
+assert.deepEqual(conClima.ventaPorDia[2].clima, { maxC: 32, minC: 20, lluviaMm: 13.2 });
+assert.equal(conClima.ventaPorDia[0].clima, null);
+assert.equal(conClima.clima.diasConDatoDeClima, '1 de 14');
+assert.match(conClima.clima.nota, /Faltan datos/);
+assert.deepEqual(conClima.clima.pronostico.map((d) => d.fecha), ['2026-10-15']); // solo lo que viene después del último día cargado
+assert.equal(conClima.ultimasSemanas.length, 4);
+assert.match(conClima.clima.criterio, /sol y calor/);
+
 // Texto para copiar: instrucciones + datos
 const copia = textoParaCopiar(ctx);
 assert.match(copia, /## Resumen/);

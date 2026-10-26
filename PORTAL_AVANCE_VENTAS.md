@@ -368,6 +368,12 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Indicadores con ícono en un recuadro del color de la unidad y un brillo suave.
 - **Animaciones**: tarjetas que aparecen con un leve desplazamiento escalonado; barras que crecen; columnas que suben; la dona se dibuja en círculo; el medidor de la proyección se llena; los números grandes cuentan hasta su valor; el panel de detalle entra desde el costado; elevación al pasar el mouse por tarjetas y filas. Todo se desactiva con "reducir movimiento" del sistema.
 
+### 12.14 Clima registrado y comparativa por semanas
+- **Historial de clima propio** (no hay una fuente gratuita y de uso comercial con el clima ya ocurrido en Paraguay): cada vez que se renueva el pronóstico, el portal guarda en Blobs `clima-historial` el último pronóstico hecho antes de que empiece cada día (menos de 24 h de anticipación). Las fechas futuras se actualizan; las de hoy y pasadas quedan fijas (`netlify/lib/clima.mjs` → `mezclarHistorial`).
+- Tarea programada `clima-diario` (02:00 y 14:00 UTC = 23:00 y 11:00 en Asunción) para que el historial se complete aunque nadie abra el portal. `GET /api/clima?mes=AAAA-MM` devuelve además el clima registrado del mes.
+- **Comparar días → Últimas 4 semanas** (lunes a domingo), cruzando meses si hace falta: total de cada semana, días cargados y variación contra la semana anterior; la semana en curso se compara contra los mismos días de la semana anterior. Tabla por sucursal con cada semana y la variación entre las dos últimas semanas completas (`ultimasSemanas` en `public/js/sucursales.js`). Se cuenta hasta el último día completo.
+- El **resumen para la IA** suma el clima de cada día con venta (máxima, mínima, lluvia), el pronóstico de los próximos días, el criterio del negocio (bebidas: sol y calor favorecen; lluvia y frío bajan la venta) y las últimas 4 semanas con las sucursales que más cambiaron. Nueva sección del informe: **Clima y próximos días**.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

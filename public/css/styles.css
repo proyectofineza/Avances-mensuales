@@ -759,6 +759,7 @@ textarea {
 .cmp-sem-bar div { width: 100%; background: linear-gradient(180deg, var(--c-min), color-mix(in srgb, var(--c-min) 55%, transparent)); border-radius: 10px 10px 0 0; }
 .cmp-sem-fecha { font-size: 13px; color: var(--text-2); }
 .cmp-sem-col small { font-size: 12px; }
+.cmp-sem-col.incompleta .cmp-sem-bar div { opacity: .55; background: repeating-linear-gradient(135deg, var(--c-min) 0 6px, color-mix(in srgb, var(--c-min) 55%, transparent) 6px 12px); }
 
 /* Informe IA */
 .informe { max-width: 880px; }

@@ -115,4 +115,39 @@ assert.deepEqual(dom.sucursales.find((s) => s.sucursal === 'LUQUE 1').valores, [
 assert.equal(dom.sucursales.find((s) => s.sucursal === 'LUQUE 1').ultimaVariacion, 0.5);
 assert.equal(dom.variaciones[0], null);
 
+// Últimas 4 semanas (lunes a domingo), cruzando de mes. 2026-09-28 es lunes.
+import { ultimasSemanas } from '../public/js/sucursales.js';
+const filasS = [];
+const agregar = (desde, hasta, suc, monto) => {
+  for (let d = new Date(`${desde}T12:00:00Z`); d <= new Date(`${hasta}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+    filasS.push({ sucursal: suc, fecha: d.toISOString().slice(0, 10), monto });
+  }
+};
+agregar('2026-09-28', '2026-10-04', 'A', 10); // semana 1: 70
+agregar('2026-10-05', '2026-10-11', 'A', 20); // semana 2: 140
+agregar('2026-10-12', '2026-10-18', 'A', 10); // semana 3: 70
+agregar('2026-10-19', '2026-10-21', 'A', 30); // semana 4 en curso (lun a mié): 90
+agregar('2026-10-12', '2026-10-18', 'B', 5);
+filasS.push({ sucursal: 'CENTRAL', fecha: '2026-10-20', monto: 999 });
+const us = ultimasSemanas(filasS, '2026-10-21');
+assert.deepEqual(us.semanas.map((s) => s.desde), ['2026-09-28', '2026-10-05', '2026-10-12', '2026-10-19']);
+assert.deepEqual(us.semanas.map((s) => s.hasta), ['2026-10-04', '2026-10-11', '2026-10-18', '2026-10-25']);
+assert.deepEqual(us.semanas.map((s) => s.total), [70, 140, 105, 90]); // CENTRAL afuera
+assert.equal(us.semanas[1].variacion, 1); // 140 vs 70
+assert.equal(us.semanas[2].variacion, 105 / 140 - 1);
+assert.equal(us.semanas[3].completa, false);
+assert.equal(us.semanas[3].diasCargados, 3);
+assert.equal(us.semanas[3].comparableAnterior, 45); // lun a mié de la semana anterior (A 30 + B 15)
+assert.equal(us.semanas[3].variacion, 90 / 45 - 1);
+assert.equal(us.semanas[0].variacion, null); // no hay semana anterior
+assert.deepEqual(us.comparacionSucursales, { desde: '2026-10-12', contra: '2026-10-05' });
+const a = us.sucursales.find((s) => s.sucursal === 'A');
+assert.deepEqual(a.valores, [70, 140, 70, 90]);
+assert.equal(a.variacion, -0.5);
+assert.equal(us.sucursales.find((s) => s.sucursal === 'B').variacion, null); // no vendía la semana 2
+// Un día cargado después de `hasta` (incompleto) no suma
+const conParcial = ultimasSemanas([...filasS, { sucursal: 'A', fecha: '2026-10-22', monto: 1 }], '2026-10-21');
+assert.equal(conParcial.semanas[3].total, 90);
+assert.equal(conParcial.semanas[3].diasCargados, 3);
+
 console.log('sucursales: todas las pruebas pasaron');

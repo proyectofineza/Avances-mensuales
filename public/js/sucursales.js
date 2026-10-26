@@ -223,6 +223,73 @@ export function mismoDiaSemana(filas, wd, excluir = NO_MINORISTA) {
   return { fechas, totales, variaciones: totales.map((t, i) => (i ? variacion(t, totales[i - 1]) : null)), sucursales };
 }
 
+const sumarDias = (fecha, n) => {
+  const d = new Date(`${fecha}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+// Las últimas n semanas (lunes a domingo) hasta la semana que contiene `hasta`.
+// filas puede traer varios meses. La semana en curso puede estar incompleta: en ese caso
+// se compara contra los mismos días de la semana anterior para que sea justo.
+// Devuelve semanas de la más vieja a la más nueva.
+export function ultimasSemanas(filas, hasta, n = 4, excluir = NO_MINORISTA) {
+  const fuera = new Set(excluir);
+  const lunesFin = sumarDias(hasta, -((diaSemana(hasta) + 6) % 7));
+  const semanas = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const desde = sumarDias(lunesFin, -7 * i);
+    semanas.push({ desde, hasta: sumarDias(desde, 6), total: 0, porDia: new Map(), porSucursal: new Map() });
+  }
+  for (const f of filas) {
+    if (fuera.has(f.sucursal) || f.fecha > hasta) continue; // nada después del último día que se compara
+    const s = semanas.find((x) => f.fecha >= x.desde && f.fecha <= x.hasta);
+    if (!s) continue;
+    s.total += f.monto;
+    s.porDia.set(f.fecha, (s.porDia.get(f.fecha) || 0) + f.monto);
+    const porDiaSuc = s.porSucursal.get(f.sucursal) || new Map();
+    porDiaSuc.set(f.fecha, (porDiaSuc.get(f.fecha) || 0) + f.monto);
+    s.porSucursal.set(f.sucursal, porDiaSuc);
+  }
+
+  // Día de la semana (0 = lunes) de cada fecha cargada, para comparar los mismos días.
+  const idx = (fecha) => (diaSemana(fecha) + 6) % 7;
+  const resultado = semanas.map((s, i) => {
+    const cargados = [...s.porDia.keys()].map(idx);
+    const completa = cargados.length === 7;
+    const prev = semanas[i - 1];
+    let variacion = null, comparable = null;
+    if (prev && prev.total > 0 && s.total > 0) {
+      if (completa) {
+        variacion = s.total / prev.total - 1;
+      } else {
+        // Semana incompleta: contra los mismos días de la semana anterior.
+        const dias = new Set(cargados);
+        comparable = [...prev.porDia.entries()].filter(([f]) => dias.has(idx(f))).reduce((t, [, v]) => t + v, 0);
+        variacion = comparable > 0 ? s.total / comparable - 1 : null;
+      }
+    }
+    return { desde: s.desde, hasta: s.hasta, total: s.total, diasCargados: cargados.length, completa, variacion, comparableAnterior: comparable };
+  });
+
+  // Por sucursal: venta de cada semana y variación entre las dos últimas semanas completas.
+  const completas = resultado.map((s, i) => (s.completa ? i : -1)).filter((i) => i >= 0);
+  const [ia, ib] = completas.slice(-2);
+  const nombres = new Set(semanas.flatMap((s) => [...s.porSucursal.keys()]));
+  const sumaSuc = (s, nombre) => [...(s.porSucursal.get(nombre)?.values() || [])].reduce((t, v) => t + v, 0);
+  const sucursales = [...nombres].map((sucursal) => {
+    const valores = semanas.map((s) => sumaSuc(s, sucursal));
+    const variacion = ib !== undefined && valores[ia] > 0 ? valores[ib] / valores[ia] - 1 : null;
+    return { sucursal, valores, variacion, total: valores.reduce((t, v) => t + v, 0) };
+  }).sort((a, b) => b.total - a.total);
+
+  return {
+    semanas: resultado,
+    sucursales,
+    comparacionSucursales: ib !== undefined ? { desde: resultado[ib].desde, contra: resultado[ia].desde } : null,
+  };
+}
+
 // Último día que parece completo: si el último cargado vendió menos del 30% de lo normal
 // para ese día de la semana en el mes, se lo toma como incompleto y se usa el anterior.
 // dias: [{ fecha, monto }] ordenados (resumirMes().dias).

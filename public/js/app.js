@@ -7,7 +7,7 @@ import {
 } from './calc.js';
 import { armarContexto, textoParaCopiar, informeAHtml, MAX_TEXTO } from './informe.js';
 import {
-  leerPlanilla, resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, ultimoDiaCompleto, NO_MINORISTA,
+  leerPlanilla, resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, ultimoDiaCompleto, ultimasSemanas, NO_MINORISTA,
 } from './sucursales.js';
 
 const $ = (id) => document.getElementById(id);
@@ -1134,8 +1134,13 @@ async function copiarParaIA() {
   estado.textContent = 'Preparando…';
   let texto;
   try {
-    const dash = await API.getDashboard();
-    texto = textoParaCopiar(armarContexto({ mes: suc.datos.mes, filas: suc.datos.filas, published: dash.published }));
+    const mes = suc.datos.mes;
+    const [dash, clima, filasSemanas] = await Promise.all([
+      API.getDashboard(),
+      API.getClima(mes).catch(() => null), // sin clima el resumen sale igual
+      filasHastaSemanas(4),
+    ]);
+    texto = textoParaCopiar(armarContexto({ mes, filas: suc.datos.filas, published: dash.published, clima, filasSemanas }));
   } catch (err) {
     estado.textContent = '';
     handleError(err, $('inf-msg'));
@@ -1216,7 +1221,7 @@ function informeHtml() {
         <span class="inf-num">1</span>
         <div>
           <h3>Copiá los datos y consultalos en tu chat</h3>
-          <p class="muted small">Se copia un resumen del mes (totales, ranking, alertas, comparaciones y objetivos) junto con las instrucciones para el informe. No incluye las planillas completas.</p>
+          <p class="muted small">Se copia un resumen del mes (totales, ranking, alertas, clima de cada día y pronóstico, últimas 4 semanas, comparaciones y objetivos) junto con las instrucciones para el informe. No incluye las planillas completas.</p>
           <div class="actions" style="margin-top:10px">
             <button class="btn btn-primary" type="button" data-inf="copiar">Copiar para Claude</button>
             <a class="btn" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;text-decoration:none">Abrir Claude</a>
@@ -1286,12 +1291,14 @@ function compararHtml() {
           <button class="btn btn-sm" type="button" data-cmp-rap="dia">Día anterior</button>
         </div>
       </div>`
-    : `
+    : c.modo === 'semana'
+      ? `
       <div class="cmp-controles">
         <div><label for="cmp-wd">Día de la semana</label>
           <select id="cmp-wd">${DIAS_SEMANA.map((x) => `<option value="${x.wd}"${x.wd === c.wd ? ' selected' : ''}>${x.nombre}</option>`).join('')}</select>
         </div>
-      </div>`;
+      </div>`
+      : `<p class="muted small" style="margin:0">Semanas de lunes a domingo, hasta la semana del ${etiquetaDia(ultima)} (último día completo). Si la semana en curso está incompleta, se compara contra los mismos días de la semana anterior.</p>`;
   return `
     <div class="card" style="margin-bottom:16px">
       <div class="card-head" style="margin-bottom:12px">
@@ -1302,6 +1309,7 @@ function compararHtml() {
         <div class="seg-btns" role="group" aria-label="Tipo de comparación">
           <button type="button" data-cmodo="par" class="${c.modo === 'par' ? 'active' : ''}">Un día contra otro</button>
           <button type="button" data-cmodo="semana" class="${c.modo === 'semana' ? 'active' : ''}">Mismo día de la semana</button>
+          <button type="button" data-cmodo="semanas" class="${c.modo === 'semanas' ? 'active' : ''}">Últimas 4 semanas</button>
         </div>
       </div>
       ${controles}
@@ -1322,6 +1330,10 @@ async function renderComparacion() {
     const [filasA, filasB] = await Promise.all([filasMes(c.a.slice(0, 7)), filasMes(c.b.slice(0, 7))]);
     if (turno !== cmpTurno) return;
     html = comparacionParHtml(compararDias(filasA, c.a, filasB, c.b));
+  } else if (c.modo === 'semanas') {
+    const filas = await filasHastaSemanas(4);
+    if (turno !== cmpTurno) return;
+    html = comparacionSemanasHtml(ultimasSemanas(filas, ultimoDiaCompleto(suc.res.dias).fecha, 4));
   } else {
     html = comparacionSemanaHtml(mismoDiaSemana(suc.datos.filas, c.wd));
   }
@@ -1396,6 +1408,55 @@ function comparacionParHtml(r) {
         </table>
       </div>
       <p class="muted small" style="margin:12px 0 0">${filtradas ? `${lista.length} resultado${lista.length === 1 ? '' : 's'}.` : suc.cmp.orden === 'todas' ? `${lista.length} sucursales, de la que más vendió el ${fmtDiaMes(r.fechaA)} a la que menos.` : 'Las 10 con mayor cambio. Tocá una sucursal para ver su detalle del mes.'}</p>
+    </div>`;
+}
+
+// Filas de todos los meses que tocan las últimas n semanas (pueden ser dos meses).
+async function filasHastaSemanas(n) {
+  const hasta = ultimoDiaCompleto(suc.res.dias).fecha;
+  const lunes = sumarDias(hasta, -((wdDe(hasta) + 6) % 7) - 7 * (n - 1));
+  const meses = [...new Set([lunes.slice(0, 7), hasta.slice(0, 7)])];
+  return (await Promise.all(meses.map(filasMes))).flat();
+}
+
+const rangoSemana = (s) => `${fmtDiaMes(s.desde)}–${fmtDiaMes(s.hasta)}`;
+
+function comparacionSemanasHtml(r) {
+  const max = Math.max(...r.semanas.map((s) => s.total), 1);
+  const ultima = r.semanas.length - 1;
+  const columnas = r.semanas.map((s, i) => `
+    <div class="cmp-sem-col${s.completa ? '' : ' incompleta'}">
+      <span class="cmp-sem-val">${s.total ? fmtMillones(s.total) : '—'}</span>
+      <div class="cmp-sem-bar"><div style="height:${((s.total / max) * 100).toFixed(1)}%"></div></div>
+      <span class="cmp-sem-fecha">${rangoSemana(s)}</span>
+      <small>${s.variacion === null ? '&nbsp;' : varHtml(s.variacion)}${!s.completa && s.variacion !== null ? ' <span class="muted">vs mismos días</span>' : ''}</small>
+      <small class="muted">${s.diasCargados === 7 ? '7 de 7 días' : s.diasCargados ? `${s.diasCargados} de 7 días${i === ultima ? ' · en curso' : ' cargados'}` : 'sin datos'}</small>
+    </div>`).join('');
+  const filtradas = filtrarCmp(r.sucursales);
+  const lista = filtradas || ordenarPorVariacion([...r.sucursales], 'variacion');
+  const comp = r.comparacionSucursales;
+  const colVar = comp ? `Sem. ${fmtDiaMes(comp.desde)} vs ${fmtDiaMes(comp.contra)}` : 'Variación';
+  const filas = lista.map((s) => `
+    <tr data-suc="${esc(s.sucursal)}" class="suc-row" tabindex="0">
+      <td><b>${esc(s.sucursal)}</b></td>
+      ${s.valores.map((v) => `<td class="r">${v ? fmtM1(v) : '<span class="muted">0</span>'}</td>`).join('')}
+      <td class="r">${s.variacion === null ? '—' : varHtml(s.variacion)}</td>
+    </tr>`).join('');
+  return `
+    <div class="card" style="margin-bottom:16px">
+      <h3>Últimas 4 semanas</h3>
+      <p class="muted small" style="margin:4px 0 0">Venta total de cada semana (lunes a domingo) y variación contra la semana anterior.</p>
+      <div class="cmp-sem">${columnas}</div>
+    </div>
+    <div class="card">
+      ${controlesTabla(r.sucursales.length)}
+      <div class="table-wrap">
+        <table class="suc-tabla">
+          <thead><tr><th>Sucursal</th>${r.semanas.map((s) => `<th class="r">${rangoSemana(s)}</th>`).join('')}<th class="r">${colVar}</th></tr></thead>
+          <tbody>${filas || `<tr><td colspan="${r.semanas.length + 2}" class="muted">No hay sucursales para mostrar.</td></tr>`}</tbody>
+        </table>
+      </div>
+      <p class="muted small" style="margin:12px 0 0">Montos en millones. La variación por sucursal compara las dos últimas semanas completas.${filtradas ? ` ${lista.length} resultado${lista.length === 1 ? '' : 's'}.` : suc.cmp.orden === 'todas' ? '' : ' Se muestran las 10 con mayor cambio.'}</p>
     </div>`;
 }
 

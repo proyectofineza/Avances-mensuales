@@ -53,6 +53,42 @@ export function resumirPronostico(timeseries) {
     }));
 }
 
+// ---- Historial propio ----
+// No hay una fuente gratuita (también para uso comercial) de clima ya ocurrido en Paraguay,
+// así que el portal guarda, para cada fecha, el último pronóstico hecho ANTES de que
+// empiece ese día (menos de 24 h de anticipación). Blob "clima-historial":
+//   { dias: { 'AAAA-MM-DD': { tmax, tmin, lluvia, simbolo, hechoEn } } }
+const DIAS_GUARDADOS = 400;
+
+export function hoyLocal(ahora = new Date()) {
+  return local(ahora.toISOString()).fecha;
+}
+
+// Mezcla el pronóstico nuevo en el historial: las fechas futuras se actualizan; las de hoy
+// y las pasadas quedan fijas (si no estaban, se toma lo que haya, marcado como parcial).
+export function mezclarHistorial(historial, dias, ahora = new Date()) {
+  const hoy = hoyLocal(ahora);
+  const out = { ...(historial || {}) };
+  for (const d of dias) {
+    const nuevo = { tmax: d.tmax, tmin: d.tmin, lluvia: d.lluvia, simbolo: d.simbolo, hechoEn: ahora.toISOString() };
+    if (d.fecha > hoy) out[d.fecha] = nuevo;
+    else if (!out[d.fecha]) out[d.fecha] = { ...nuevo, parcial: true };
+  }
+  const fechas = Object.keys(out).sort();
+  for (const f of fechas.slice(0, Math.max(fechas.length - DIAS_GUARDADOS, 0))) delete out[f];
+  return out;
+}
+
+// Pide el pronóstico, lo guarda como vigente y actualiza el historial.
+export async function renovarClima({ getJSON, setJSON }) {
+  const dias = await obtenerPronostico();
+  const clima = { actualizado: new Date().toISOString(), fuente: 'MET Norway', dias };
+  await setJSON('clima', clima);
+  const hist = await getJSON('clima-historial', { dias: {} });
+  await setJSON('clima-historial', { dias: mezclarHistorial(hist.dias, dias) });
+  return clima;
+}
+
 export async function obtenerPronostico() {
   const res = await fetch(URL, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(8000) });
   if (!res.ok) throw new Error(`MET Norway respondió ${res.status}`);

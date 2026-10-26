@@ -25,7 +25,7 @@ export const getDashboard = () => api('GET', 'dashboard');
 export const getDraft = () => api('GET', 'draft');
 export const saveDraft = (draft) => api('PUT', 'draft', draft);
 export const publish = (avisarTeams) => api('POST', 'publish', { avisarTeams });
-export const getClima = () => api('GET', 'clima');
+export const getClima = (mes) => api('GET', `clima${mes ? `?mes=${encodeURIComponent(mes)}` : ''}`);
 export const getSucursales = (mes) => api('GET', `sucursales${mes ? `?mes=${encodeURIComponent(mes)}` : ''}`);
 export const saveSucursales = (filas) => api('POST', 'sucursales', { filas });
 export const getInforme = (mes) => api('GET', `informe?mes=${encodeURIComponent(mes)}`);

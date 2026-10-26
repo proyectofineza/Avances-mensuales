@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "netlify dev",
     "deploy": "netlify deploy --prod",
-    "test": "node tests/calc.test.mjs && node tests/sucursales.test.mjs && node tests/informe.test.mjs"
+    "test": "node tests/calc.test.mjs && node tests/sucursales.test.mjs && node tests/informe.test.mjs && node tests/clima.test.mjs"
   },
   "engines": {
     "node": ">=18"
