@@ -335,14 +335,54 @@
           <button class="btn btn-primary" type="button" id="suc-guardar" disabled>Guardar</button>
           <span class="muted small" id="suc-preview"></span>
         </div>
+        <label class="check" id="suc-teams-box" hidden><input type="checkbox" id="suc-teams"> Avisar por Teams las alertas de sucursales al guardar</label>
         <div class="alert form-msg" id="suc-msg" hidden></div>
         <ul class="suc-errores" id="suc-errores" hidden></ul>
+        <div class="suc-control" id="suc-control" hidden></div>
+      </details>
+
+      <details class="card solo-admin suc-carga" id="suc-config">
+        <summary>
+          <span class="suc-carga-titulo">Configurar sucursales</span>
+          <span class="muted small">zona, encargado y objetivo de cada sucursal</span>
+        </summary>
+        <div class="cfg-grid">
+          <div class="cfg-bloque">
+            <h3>Listado de sucursales</h3>
+            <p class="muted small">Columnas: <b>sucursal</b>, <b>zona</b> y <b>encargado</b>. Se carga una vez y se actualiza cuando abre o cierra una sucursal. <span id="cfg-maestro-estado"></span></p>
+            <button class="btn btn-sm" type="button" data-cfg-base="maestro">Descargar planilla base</button>
+            <label for="cfg-maestro-archivo" style="margin-top:12px">Archivo CSV</label>
+            <input type="file" id="cfg-maestro-archivo" accept=".csv,.txt,text/csv,text/plain">
+            <label for="cfg-maestro-texto" style="margin-top:10px">O pegá desde Excel</label>
+            <textarea id="cfg-maestro-texto" rows="4" placeholder="Sucursal&#9;Zona&#9;Encargado&#10;LUQUE 1&#9;LUQUE&#9;María González"></textarea>
+            <div class="actions">
+              <button class="btn btn-primary" type="button" data-cfg-guardar="maestro">Revisar y guardar</button>
+            </div>
+            <div class="alert form-msg" id="cfg-maestro-msg" hidden></div>
+          </div>
+          <div class="cfg-bloque">
+            <h3>Objetivo por sucursal</h3>
+            <p class="muted small">Columnas: <b>sucursal</b> y <b>objetivo</b> del mes en guaraníes. <span id="cfg-obj-estado"></span></p>
+            <label for="cfg-obj-mes">Mes</label>
+            <input type="month" id="cfg-obj-mes">
+            <button class="btn btn-sm" type="button" data-cfg-base="objetivos" style="margin-top:10px">Descargar planilla base</button>
+            <label for="cfg-obj-archivo" style="margin-top:12px">Archivo CSV</label>
+            <input type="file" id="cfg-obj-archivo" accept=".csv,.txt,text/csv,text/plain">
+            <label for="cfg-obj-texto" style="margin-top:10px">O pegá desde Excel</label>
+            <textarea id="cfg-obj-texto" rows="4" placeholder="Sucursal&#9;Objetivo&#10;LUQUE 1&#9;95.000.000"></textarea>
+            <div class="actions">
+              <button class="btn btn-primary" type="button" data-cfg-guardar="objetivos">Revisar y guardar</button>
+            </div>
+            <div class="alert form-msg" id="cfg-obj-msg" hidden></div>
+          </div>
+        </div>
       </details>
 
       <nav class="subtabs" id="suc-subtabs" role="tablist" aria-label="Vistas de sucursales" hidden>
         <button type="button" role="tab" data-sub="resumen">Resumen</button>
         <button type="button" role="tab" data-sub="informe">Informe IA</button>
         <button type="button" role="tab" data-sub="ranking">Ranking</button>
+        <button type="button" role="tab" data-sub="zonas">Zonas</button>
         <button type="button" role="tab" data-sub="calor">Mapa de calor</button>
         <button type="button" role="tab" data-sub="comparar">Comparar días</button>
         <button type="button" role="tab" data-sub="alertas">Alertas<span class="tab-badge" id="suc-alertas-n" hidden></span></button>

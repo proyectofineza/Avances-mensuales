@@ -1,6 +1,6 @@
 import * as API from './api.js';
 import {
-  UNIDADES, IDS, DIAS_SEMANA, PESOS_MINORISTA, AJUSTE_LLUVIA, parseCorte,
+  UNIDADES, IDS, DIAS_SEMANA, PESOS_MINORISTA, AJUSTE_LLUVIA, parseCorte, fraccionPonderada,
   calcularReporte, estado, diasOperativos, diasUnidad, normalizarReporte, validarReporte, proyeccionLluvia,
   mesAnterior, mismoMesAnioAnterior, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, fmtDiaMes,
   fmtFechaHora, nombreMes, fmtCI, hoyAsuncion,
@@ -8,6 +8,7 @@ import {
 import { armarContexto, textoParaCopiar, informeAHtml, MAX_TEXTO } from './informe.js';
 import {
   leerPlanilla, resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, ultimoDiaCompleto, ultimasSemanas, NO_MINORISTA,
+  leerMaestro, leerObjetivos, avanceSucursales, resumenZonas, controlMaestro, zonaSugerida,
 } from './sucursales.js';
 
 const $ = (id) => document.getElementById(id);
@@ -71,6 +72,14 @@ async function init() {
   $('dash').addEventListener('click', (e) => {
     const b = e.target.closest('[data-salto]');
     if (b) $(b.dataset.salto)?.scrollIntoView({ behavior: sinMovimiento() ? 'auto' : 'smooth', block: 'start' });
+    const t = e.target.closest('[data-dash-detalle]');
+    if (t) {
+      const det = $('dash-detalle');
+      det.hidden = !det.hidden;
+      guardarPref('dash-detalle', det.hidden ? 'no' : 'si');
+      t.textContent = det.hidden ? 'Ver el detalle completo' : 'Ocultar el detalle';
+      if (!det.hidden) contarNumeros(det);
+    }
   });
 
   if (isAdmin()) {
@@ -719,12 +728,30 @@ const suc = {
   // Comparar días: modo 'par' (un día contra otro) o 'semana' (todos los mismos días del mes).
   cmp: { modo: 'par', a: null, b: null, wd: null, orden: 'caidas', filtro: '' },
   cache: {}, // filas por mes, para comparar contra otros meses
+  // Mapa de calor: escala ('propio' = vs. lo habitual de la sucursal, 'monto') y si muestra todas.
+  calor: { modo: 'propio', todas: false },
+  // Listado maestro y objetivos del mes (/api/sucursales-config); filtros del ranking.
+  config: { maestro: null, objetivos: null }, info: new Map(), cfgObj: null, avance: new Map(), zona: '', encargado: '',
   // Análisis del mes abierto: respuesta de /api/informe, último error y texto que se está editando.
   informe: { mes: null, datos: null, error: null, borrador: null },
 };
 const fechaDeMes = (mes) => `${mes}-01`;
 const esFinde = (wd) => wd === 5 || wd === 6 || wd === 0;
 const wdDe = (fecha) => new Date(`${fecha}T12:00:00Z`).getUTCDay();
+// "jueves" → "jueves", "sábado" → "sábados".
+const pluralDia = (nombre) => (nombre.endsWith('s') ? nombre : `${nombre}s`);
+// Pesos por día de la semana de Minorista: los publicados si el reporte es de ese mes.
+const pesosDelMes = (mes) => (suc.published?.corte?.startsWith(mes) && suc.published.pesos) || PESOS_MINORISTA;
+// Zona de una sucursal: la del listado maestro o, si no hay listado, la sugerida por el nombre.
+const zonaDe = (nombre) => suc.info.get(nombre)?.zona || (suc.info.size ? 'SIN ZONA' : zonaSugerida(nombre));
+
+// Estado contra el objetivo de la sucursal (proyección ponderada al cierre).
+function avanceChip(nombre) {
+  const a = suc.avance.get(nombre);
+  if (!a) return '';
+  const e = estado(a.proyeccionPct);
+  return `<span class="chip ${e.clase}" title="Avance ${fmtPct(a.avance)} · proyecta ${fmtMillones(a.proyeccion)} de ${fmtMillones(a.objetivo)}">${fmtPct(a.proyeccionPct)}</span>`;
+}
 
 function setupSucursales() {
   $('suc-mes').addEventListener('change', () => loadSucursales($('suc-mes').value));
@@ -753,10 +780,16 @@ function setupSucursales() {
     if (id === 'cmp-a') suc.cmp.a = e.target.value || suc.cmp.a;
     else if (id === 'cmp-b') suc.cmp.b = e.target.value || suc.cmp.b;
     else if (id === 'cmp-wd') suc.cmp.wd = Number(e.target.value);
-    else return;
+    else if (id === 'suc-zona' || id === 'suc-encargado') {
+      suc[id === 'suc-zona' ? 'zona' : 'encargado'] = e.target.value;
+      renderRankingTabla();
+      return;
+    } else return;
     renderComparacion();
   });
   $('suc-contenido').addEventListener('click', (e) => {
+    const exp = e.target.closest('[data-exp]');
+    if (exp) { exportar(exp.dataset.exp, exp.dataset.formato); return; }
     const modo = e.target.closest('[data-cmodo]');
     if (modo) { suc.cmp.modo = modo.dataset.cmodo; $('suc-contenido').innerHTML = compararHtml(); renderComparacion(); return; }
     const rapido = e.target.closest('[data-cmp-rap]');
@@ -769,6 +802,11 @@ function setupSucursales() {
     }
     const orden = e.target.closest('[data-corden]');
     if (orden) { suc.cmp.orden = orden.dataset.corden; renderComparacion(); return; }
+    const celda = e.target.closest('.calor i[data-f]');
+    if (celda) { mostrarCeldaCalor(celda); return; }
+    const calorModo = e.target.closest('[data-calor-modo]');
+    if (calorModo) { suc.calor.modo = calorModo.dataset.calorModo; $('suc-contenido').innerHTML = calorHtml(); return; }
+    if (e.target.closest('[data-calor-todas]')) { suc.calor.todas = !suc.calor.todas; $('suc-contenido').innerHTML = calorHtml(); return; }
     const inf = e.target.closest('[data-inf]');
     if (inf) {
       if (inf.dataset.inf === 'copiar') copiarParaIA();
@@ -792,6 +830,10 @@ function setupSucursales() {
     }
     const fila = e.target.closest('[data-suc]');
     if (fila) abrirPanel(fila.dataset.suc);
+  });
+  $('suc-contenido').addEventListener('mouseover', (e) => {
+    const celda = e.target.closest('.calor i[data-f]');
+    if (celda) mostrarCeldaCalor(celda);
   });
   $('suc-contenido').addEventListener('keydown', (e) => {
     const fila = e.target.closest('[data-suc]');
@@ -818,6 +860,227 @@ function setupSucursales() {
   });
   $('suc-guardar').addEventListener('click', guardarPlanilla);
   $('suc-borrar-mes').addEventListener('click', borrarMesSucursales);
+  API.getTeams().then((t) => { $('suc-teams-box').hidden = !t.configurado; }).catch(() => {});
+  setupConfigSucursales();
+}
+
+// ---- Configurar sucursales (admin): listado maestro y objetivos por mes ----
+
+function setupConfigSucursales() {
+  $('cfg-obj-mes').value = hoyAsuncion().slice(0, 7);
+  $('cfg-obj-mes').addEventListener('change', cargarObjetivosConfig);
+  for (const pre of ['cfg-maestro', 'cfg-obj']) {
+    $(`${pre}-archivo`).addEventListener('change', async () => {
+      const f = $(`${pre}-archivo`).files[0];
+      if (f) $(`${pre}-texto`).value = await leerArchivo(f);
+    });
+  }
+  $('suc-config').addEventListener('click', (e) => {
+    const base = e.target.closest('[data-cfg-base]');
+    if (base) descargarBase(base.dataset.cfgBase);
+    const g = e.target.closest('[data-cfg-guardar]');
+    if (g) guardarConfig(g.dataset.cfgGuardar);
+  });
+}
+
+function pintarEstadoConfig() {
+  const m = suc.config?.maestro;
+  $('cfg-maestro-estado').textContent = m?.filas?.length
+    ? `Hay ${m.filas.length} sucursales cargadas (actualizado ${fmtFechaHora(m.actualizado)}).`
+    : 'Todavía no está cargado.';
+  const mes = $('cfg-obj-mes').value;
+  const o = suc.cfgObj;
+  $('cfg-obj-estado').textContent = !mes ? '' : o?.filas?.length
+    ? `${nombreMes(fechaDeMes(mes))}: ${o.filas.length} sucursales con objetivo, total ${fmtMillones(o.filas.reduce((s, f) => s + f.objetivo, 0))}.`
+    : `${nombreMes(fechaDeMes(mes))}: sin objetivos cargados.`;
+}
+
+async function cargarObjetivosConfig() {
+  const mes = $('cfg-obj-mes').value;
+  if (!mes) return;
+  try { suc.cfgObj = (await API.getSucursalesConfig(mes)).objetivos; } catch { suc.cfgObj = null; }
+  pintarEstadoConfig();
+}
+
+// Sucursales conocidas: las del mes abierto más las del listado.
+function nombresConocidos() {
+  return [...new Set([...(suc.res?.sucursales || []).map((s) => s.sucursal), ...suc.info.keys()])].sort();
+}
+
+function descargarBase(tipo) {
+  const nombres = nombresConocidos();
+  const msgEl = $(tipo === 'maestro' ? 'cfg-maestro-msg' : 'cfg-obj-msg');
+  if (!nombres.length) { showMsg(msgEl, 'Primero cargá una planilla de ventas para conocer las sucursales.', false); return; }
+  if (tipo === 'maestro') {
+    descargarCsv('sucursales-zonas.csv', [['Sucursal', 'Zona', 'Encargado'],
+      ...nombres.map((n) => [n, suc.info.get(n)?.zona || zonaSugerida(n), suc.info.get(n)?.encargado || ''])]);
+    showMsg(msgEl, 'La zona viene sugerida por el nombre: corregila y completá el encargado.', true);
+  } else {
+    const mes = $('cfg-obj-mes').value;
+    const obj = new Map((suc.cfgObj?.filas || []).map((f) => [f.sucursal, f.objetivo]));
+    descargarCsv(`objetivos-sucursales-${mes}.csv`, [['Sucursal', 'Objetivo'], ...nombres.map((n) => [n, obj.get(n) ?? ''])]);
+    showMsg(msgEl, 'Completá el objetivo de cada sucursal; las que quedan vacías no se cargan.', true);
+  }
+}
+
+async function guardarConfig(tipo) {
+  const pre = tipo === 'maestro' ? 'cfg-maestro' : 'cfg-obj';
+  const msgEl = $(`${pre}-msg`);
+  const texto = $(`${pre}-texto`).value;
+  const mes = $('cfg-obj-mes').value;
+  if (!texto.trim()) { showMsg(msgEl, 'Subí un archivo o pegá las filas.', false); return; }
+  if (tipo === 'objetivos' && !mes) { showMsg(msgEl, 'Elegí el mes de los objetivos.', false); return; }
+  const r = tipo === 'maestro' ? leerMaestro(texto) : leerObjetivos(texto);
+  if (!r.filas.length) { showMsg(msgEl, r.errores[0]?.motivo || 'No encontré filas con datos.', false); return; }
+
+  const conocidas = new Set(nombresConocidos());
+  const raras = conocidas.size ? r.filas.map((f) => f.sucursal).filter((n) => !conocidas.has(n)) : [];
+  const detalle = tipo === 'maestro'
+    ? `${r.filas.length} sucursales en ${new Set(r.filas.map((f) => f.zona).filter(Boolean)).size} zonas`
+    : `${r.filas.length} sucursales, total ${fmtMillones(r.filas.reduce((s, f) => s + f.objetivo, 0))} para ${nombreMes(fechaDeMes(mes))}`;
+  const avisos = [
+    r.errores.length ? `${r.errores.length} línea${r.errores.length === 1 ? '' : 's'} con problemas no se van a guardar (línea ${r.errores[0].linea}: ${r.errores[0].motivo})` : '',
+    raras.length ? `${raras.length} no coinciden con ninguna sucursal con ventas: ${raras.slice(0, 8).join(', ')}${raras.length > 8 ? '…' : ''}` : '',
+  ].filter(Boolean);
+  if (!confirm(`Se va a reemplazar ${tipo === 'maestro' ? 'el listado' : 'los objetivos del mes'}: ${detalle}.${avisos.length ? '\n\n' + avisos.join('\n') : ''}\n\n¿Guardar?`)) return;
+
+  try {
+    if (tipo === 'maestro') await API.saveMaestro(r.filas);
+    else await API.saveObjetivosSucursal(mes, r.filas);
+    $(`${pre}-texto`).value = '';
+    $(`${pre}-archivo`).value = '';
+    if (tipo === 'objetivos' && mes !== suc.datos?.mes) await cargarObjetivosConfig();
+    else await loadSucursales(suc.datos?.mes || undefined);
+    showMsg(msgEl, `Guardado: ${detalle}.${avisos.length ? ' ' + avisos.join('. ') + '.' : ''}`, true);
+  } catch (err) {
+    handleError(err, msgEl);
+  }
+}
+
+// ---- Exportar: Excel (CSV con ; y BOM, que Excel en español abre directo), PDF y compartir ----
+
+const csvCelda = (v) => {
+  const s = typeof v === 'number' ? String(v).replace('.', ',') : String(v ?? '');
+  return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+function descargarCsv(nombre, filas) {
+  const texto = '﻿' + filas.map((f) => f.map(csvCelda).join(';')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([texto], { type: 'text/csv;charset=utf-8' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: nombre });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// PDF: el diálogo de imprimir del navegador ("Guardar como PDF"), en tema claro y sin menús.
+function imprimir(titulo) {
+  const html = document.documentElement;
+  const tema = html.dataset.tema;
+  const previo = document.title;
+  html.dataset.tema = 'claro';
+  document.title = titulo; // nombre sugerido del archivo
+  const volver = () => {
+    if (tema) html.dataset.tema = tema; else delete html.dataset.tema;
+    document.title = previo;
+  };
+  window.addEventListener('afterprint', volver, { once: true });
+  window.print();
+}
+
+// Compartir: el menú del teléfono (WhatsApp, Teams, correo…); en la compu se copia el texto.
+async function compartirTexto(titulo, texto) {
+  if (navigator.share) {
+    try { await navigator.share({ title: titulo, text: texto }); } catch { /* cancelado */ }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(texto);
+    showNotice('Resumen copiado: pegalo en WhatsApp, Teams o un correo.');
+  } catch {
+    showNotice('No se pudo copiar el resumen.', true);
+  }
+}
+
+const lineaSuc = (s, i) => `${i + 1}. ${s.sucursal} — ${fmtMillones(s.total)}`;
+
+// Datos de cada vista para exportar: { titulo, archivo, tabla?, texto }.
+function datosExportar(que) {
+  const mes = suc.datos.mes;
+  const mesNombre = nombreMes(fechaDeMes(mes));
+  const res = suc.res;
+  if (que === 'ranking') {
+    let lista = rankingFiltrado();
+    if (suc.rank === 'riesgo') lista = lista.filter((s) => suc.avance.has(s.sucursal)).sort((a, b) => suc.avance.get(a.sucursal).proyeccionPct - suc.avance.get(b.sucursal).proyeccionPct);
+    const filtro = [suc.zona && `zona ${suc.zona}`, suc.encargado && `encargado ${suc.encargado}`, suc.filtro.trim() && `"${suc.filtro.trim()}"`].filter(Boolean).join(', ');
+    const tabla = [['Puesto', 'Sucursal', 'Zona', 'Encargado', 'Venta del mes', '% del total', 'Promedio por día', 'Días con venta', 'Objetivo', 'Avance', 'Proyección al cierre', 'Estado'],
+      ...lista.map((s) => {
+        const a = suc.avance.get(s.sucursal);
+        return [s.puesto, s.sucursal, zonaDe(s.sucursal), suc.info.get(s.sucursal)?.encargado || '', s.total, fmtPct(s.total / (res.total || 1)),
+          Math.round(s.total / Math.max(s.diasConVenta, 1)), s.diasConVenta, a?.objetivo ?? '', a ? fmtPct(a.avance) : '', a ? fmtPct(a.proyeccionPct) : '', a ? estado(a.proyeccionPct).texto : ''];
+      })];
+    const partes = [`Ranking de sucursales · Baratote Minorista · ${mesNombre}${filtro ? ` (${filtro})` : ''}`, `Total: ${fmtMillones(lista.reduce((t, s) => t + s.total, 0))} en ${lista.length} sucursales.`];
+    partes.push('', 'Más venden:', ...lista.slice(0, 5).map(lineaSuc));
+    if (lista.length > 5) partes.push('', 'Menos venden:', ...lista.slice(-5).reverse().map((s, i) => `${i + 1}. ${s.sucursal} — ${fmtMillones(s.total)}`));
+    const riesgo = lista.filter((s) => suc.avance.get(s.sucursal)?.proyeccionPct < 0.9).sort((a, b) => suc.avance.get(a.sucursal).proyeccionPct - suc.avance.get(b.sucursal).proyeccionPct);
+    if (riesgo.length) partes.push('', `En riesgo de no llegar al objetivo (${riesgo.length}):`, ...riesgo.slice(0, 8).map((s) => `- ${s.sucursal}: proyecta ${fmtPct(suc.avance.get(s.sucursal).proyeccionPct)}`));
+    return { titulo: `Ranking sucursales ${mesNombre}`, archivo: `ranking-sucursales-${mes}`, tabla, texto: partes.join('\n') };
+  }
+  if (que === 'zonas') {
+    const zonas = zonasDelMes();
+    const tabla = [['Zona', 'Sucursales', 'Venta del mes', '% del total', 'Objetivo', 'Proyección al cierre', 'Proyección / objetivo'],
+      ...zonas.map((z) => [z.zona, z.sucursales.length, z.total, fmtPct(z.total / (res.total || 1)), z.objetivo || '', z.objetivo ? Math.round(z.proyeccion) : '', z.objetivo ? fmtPct(z.proyeccion / z.objetivo) : ''])];
+    const texto = [`Venta por zona · Baratote Minorista · ${mesNombre}`, '',
+      ...zonas.map((z) => `- ${z.zona}: ${fmtMillones(z.total)} (${fmtPct(z.total / (res.total || 1))}, ${z.sucursales.length} suc.)${z.objetivo ? ` · proyecta ${fmtPct(z.proyeccion / z.objetivo)} del objetivo` : ''}`)].join('\n');
+    return { titulo: `Ventas por zona ${mesNombre}`, archivo: `zonas-${mes}`, tabla, texto };
+  }
+  if (que === 'comparar') return datosExportarComparacion();
+  if (que === 'informe') {
+    const info = suc.informe.datos?.informe;
+    if (!info) return null;
+    return { titulo: `Análisis ${mesNombre}`, archivo: `analisis-${mes}`, texto: `Análisis del mes · ${mesNombre}\n\n${info.texto}` };
+  }
+  return null;
+}
+
+function datosExportarComparacion() {
+  const u = suc.cmpUltimo;
+  if (!u) return null;
+  const r = u.r;
+  const top = (lista, clave, signo) => lista.filter((s) => s[clave] !== null && Math.sign(s[clave]) === signo)
+    .sort((a, b) => signo * (b[clave] - a[clave])).slice(0, 5).map((s) => `- ${s.sucursal}: ${fmtVar(s[clave])}`);
+  let titulo, tabla, cabecera, clave;
+  if (u.modo === 'par') {
+    titulo = `${etiquetaDia(r.fechaA)} vs ${etiquetaDia(r.fechaB)}`;
+    tabla = [['Sucursal', etiquetaDia(r.fechaA), etiquetaDia(r.fechaB), 'Diferencia', 'Variación'],
+      ...r.sucursales.map((s) => [s.sucursal, s.a, s.b, s.diferencia, s.variacion === null ? '' : fmtVar(s.variacion)])];
+    cabecera = `Total: ${fmtMillones(r.total.a)} vs ${fmtMillones(r.total.b)} (${fmtVar(r.total.variacion)}).`;
+    clave = 'variacion';
+  } else if (u.modo === 'semanas') {
+    titulo = 'Últimas 4 semanas';
+    tabla = [['Sucursal', ...r.semanas.map(rangoSemana), 'Variación'], ...r.sucursales.map((s) => [s.sucursal, ...s.valores, s.variacion === null ? '' : fmtVar(s.variacion)])];
+    cabecera = r.semanas.map((s) => `${rangoSemana(s)}: ${s.total ? fmtMillones(s.total) : '—'}${s.variacion === null ? '' : ` (${fmtVar(s.variacion)})`}`).join('\n');
+    clave = 'variacion';
+  } else {
+    const nombre = DIAS_SEMANA.find((x) => x.wd === suc.cmp.wd)?.nombre || '';
+    titulo = `Todos los ${pluralDia(nombre.toLowerCase())}`;
+    tabla = [['Sucursal', ...r.fechas.map(fmtDiaMes), 'Variación'], ...r.sucursales.map((s) => [s.sucursal, ...s.valores, s.ultimaVariacion === null ? '' : fmtVar(s.ultimaVariacion)])];
+    cabecera = r.fechas.map((f, i) => `${fmtDiaMes(f)}: ${fmtMillones(r.totales[i])}${r.variaciones[i] === null ? '' : ` (${fmtVar(r.variaciones[i])})`}`).join('\n');
+    clave = 'ultimaVariacion';
+  }
+  const caen = top(r.sucursales, clave, -1), suben = top(r.sucursales, clave, 1);
+  const texto = [`Comparación · ${titulo} · Baratote Minorista`, cabecera,
+    ...(caen.length ? ['', 'Más cayeron:', ...caen] : []), ...(suben.length ? ['', 'Más subieron:', ...suben] : [])].join('\n');
+  return { titulo: `Comparación ${titulo}`, archivo: `comparacion-${u.modo}-${suc.datos.mes}`, tabla, texto };
+}
+
+function exportar(que, formato) {
+  const d = datosExportar(que);
+  if (!d) { showNotice('No hay datos para exportar.', true); return; }
+  if (formato === 'excel' && d.tabla) descargarCsv(`${d.archivo}.csv`, d.tabla);
+  else if (formato === 'pdf') imprimir(d.titulo);
+  else compartirTexto(d.titulo, d.texto);
 }
 
 // Los CSV de Excel en Windows suelen venir en Windows-1252 (Ñ, tildes): si UTF-8 falla, se reintenta.
@@ -860,6 +1123,23 @@ function revisarPlanilla() {
   const meses = [...new Set(fechas.map((f) => f.slice(0, 7)))].map((m) => nombreMes(fechaDeMes(m))).join(', ');
   $('suc-preview').textContent = `${fmtMiles(r.filas.length)} filas · ${sucursales} sucursales · del ${fmtFecha(fechas[0])} al ${fmtFecha(fechas.at(-1))} (${meses}) · total ${fmtMillones(total)}`;
   $('suc-guardar').disabled = false;
+  pintarControlMaestro(r.filas, fechas.at(-1));
+}
+
+// Contra el listado maestro: qué sucursales no vinieron el último día de la planilla y cuáles no están en el listado.
+function pintarControlMaestro(filas, ultima) {
+  const el = $('suc-control');
+  const maestro = suc.config?.maestro?.filas;
+  if (!maestro?.length) { el.hidden = true; return; }
+  const { faltan } = controlMaestro(maestro, filas.filter((f) => f.fecha === ultima).map((f) => f.sucursal));
+  const { nuevas } = controlMaestro(maestro, filas.map((f) => f.sucursal));
+  const nombres = (arr) => esc(arr.slice(0, 25).join(', ')) + (arr.length > 25 ? ` y ${arr.length - 25} más` : '');
+  const partes = [];
+  if (faltan.length) partes.push(`<p><b>Faltan ${faltan.length} sucursal${faltan.length === 1 ? '' : 'es'} del listado el ${DIA_CORTO[wdDe(ultima)]} ${fmtFecha(ultima)}</b>${wdDe(ultima) === 1 ? ' (es lunes: varias no abren)' : ''}: ${nombres(faltan)}.</p>`);
+  if (nuevas.length) partes.push(`<p><b>${nuevas.length} no figura${nuevas.length === 1 ? '' : 'n'} en el listado</b> (¿nueva o escrita distinto?): ${nombres(nuevas)}.</p>`);
+  el.innerHTML = partes.length ? partes.join('') : `<p>Están todas las sucursales del listado (${maestro.length}).</p>`;
+  el.className = `suc-control ${partes.length ? 'warn' : 'ok'}`;
+  el.hidden = false;
 }
 
 async function guardarPlanilla() {
@@ -868,14 +1148,17 @@ async function guardarPlanilla() {
   const btn = $('suc-guardar');
   btn.disabled = true;
   try {
-    const res = await API.saveSucursales(suc.lectura.filas);
+    const avisar = !$('suc-teams-box').hidden && $('suc-teams').checked;
+    const res = await API.saveSucursales(suc.lectura.filas, avisar);
     const partes = res.resumen.map((x) => `${nombreMes(fechaDeMes(x.mes))}: ${fmtMiles(x.filas)} filas de ${x.dias} día${x.dias === 1 ? '' : 's'}${x.reemplazadas ? ` (se reemplazaron ${fmtMiles(x.reemplazadas)} filas anteriores de esos días)` : ''}`);
-    showMsg(msgEl, `Planilla guardada. ${partes.join(' · ')}.`, true);
+    const teams = res.teams ? (res.teams.ok ? ' Se avisó en Teams.' : ` No se pudo avisar en Teams: ${res.teams.detalle}`) : '';
+    showMsg(msgEl, `Planilla guardada. ${partes.join(' · ')}.${teams}`, true);
     suc.lectura = null;
     $('suc-texto').value = '';
     $('suc-archivo').value = '';
     $('suc-preview').textContent = '';
     $('suc-errores').hidden = true;
+    $('suc-control').hidden = true;
     const mes = res.resumen.at(-1).mes;
     suc.informe.mes = null; // que el análisis se vuelva a pedir (puede haber quedado desactualizado)
     await loadSucursales(mes);
@@ -900,7 +1183,16 @@ async function borrarMesSucursales() {
 
 async function loadSucursales(mes) {
   try {
-    suc.datos = await API.getSucursales(mes);
+    const [datos, dash] = await Promise.all([API.getSucursales(mes), API.getDashboard().catch(() => null)]);
+    suc.datos = datos;
+    suc.published = dash?.published || null; // objetivo de Minorista para el avance acumulado
+    suc.config = await API.getSucursalesConfig(datos.mes || hoyAsuncion().slice(0, 7)).catch(() => ({ maestro: null, objetivos: null }));
+    suc.info = new Map((suc.config.maestro?.filas || []).map((m) => [m.sucursal, m]));
+    if (isAdmin()) {
+      if ($('cfg-obj-mes').value === datos.mes) suc.cfgObj = suc.config.objetivos;
+      else if (!suc.cfgObj) cargarObjetivosConfig();
+      pintarEstadoConfig();
+    }
     suc.cache = {}; // puede haber cambiado una carga: se vuelven a pedir los otros meses
     cerrarPanel();
     const sel = $('suc-mes');
@@ -926,13 +1218,14 @@ function renderSucursales() {
   }
   suc.res = resumirMes(d.filas);
   suc.alertas = alertasSucursales(suc.res);
+  suc.avance = avanceSucursales(suc.res, suc.config?.objetivos?.filas, ultimoDiaCompleto(suc.res.dias).fecha, pesosDelMes(d.mes));
   $('suc-sub').textContent = `${nombreMes(fechaDeMes(d.mes))} · actualizado ${fmtFechaHora(d.actualizado)}${d.por ? ' por ' + d.por : ''}`;
 
   const nAlertas = suc.alertas.sinVentaReciente.length + suc.alertas.caidas.length;
   $('suc-alertas-n').textContent = nAlertas;
   $('suc-alertas-n').hidden = nAlertas === 0;
   $('suc-subtabs').hidden = false;
-  if (!['resumen', 'informe', 'ranking', 'calor', 'comparar', 'alertas'].includes(suc.sub)) suc.sub = 'resumen';
+  if (!['resumen', 'informe', 'ranking', 'zonas', 'calor', 'comparar', 'alertas'].includes(suc.sub)) suc.sub = 'resumen';
   suc.cache[d.mes] = d.filas;
   document.querySelectorAll('#suc-subtabs [data-sub]').forEach((b) => {
     const activa = b.dataset.sub === suc.sub;
@@ -941,6 +1234,7 @@ function renderSucursales() {
   });
 
   if (suc.sub === 'ranking') { el.innerHTML = rankingHtml(); renderRankingTabla(); }
+  else if (suc.sub === 'zonas') el.innerHTML = zonasHtml();
   else if (suc.sub === 'calor') el.innerHTML = calorHtml();
   else if (suc.sub === 'comparar') { el.innerHTML = compararHtml(); renderComparacion(); }
   else if (suc.sub === 'informe') { el.innerHTML = informeHtml(); if (suc.informe.mes !== d.mes) cargarInforme(d.mes); }
@@ -997,6 +1291,8 @@ function resumenSucHtml() {
     </div>
     ${res.totalExcluido ? `<p class="muted small" style="margin:-8px 0 16px">${NO_MINORISTA.join(', ')} (Mayorista) no se incluye: ${fmtMillones(res.totalExcluido)} en el mes.</p>` : ''}
 
+    ${avanceAcumuladoHtml()}
+
     <div class="dash-bottom">
       <div class="card">
         <h2>Venta por día</h2>
@@ -1027,6 +1323,69 @@ function resumenSucHtml() {
     </div>`;
 }
 
+// ---- 1. Avance acumulado de Minorista: real día a día vs. el ritmo para llegar al objetivo ----
+// El "ritmo" reparte el objetivo según el peso de cada día de la semana (el fin de semana pesa
+// más), igual que la proyección ponderada. La proyección sigue esa misma curva hasta fin de mes.
+function avanceAcumuladoHtml() {
+  const mes = suc.datos.mes;
+  const res = suc.res;
+  const c = parseCorte(fechaDeMes(mes));
+  const ultimo = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
+  const pub = suc.published?.corte?.startsWith(mes) ? suc.published : null;
+  const pesos = pesosDelMes(mes);
+  const objetivo = pub ? Number(pub.obj?.min) || 0 : 0;
+  const fecha = (d) => `${mes}-${String(d).padStart(2, '0')}`;
+  const frac = (d) => fraccionPonderada(fecha(d), pesos) || 0;
+
+  const porDia = new Map(res.dias.map((x) => [x.fecha, x.monto]));
+  const { fecha: hasta } = ultimoDiaCompleto(res.dias);
+  const dHasta = Number(hasta.slice(8));
+  let acum = 0;
+  const real = [];
+  for (let d = 1; d <= dHasta; d++) { acum += porDia.get(fecha(d)) || 0; real.push([d, acum]); }
+  const fHasta = frac(dHasta);
+  const proyFinal = fHasta > 0 ? acum / fHasta : acum;
+  const proy = [];
+  for (let d = dHasta; d <= ultimo; d++) proy.push([d, fHasta > 0 ? (acum / fHasta) * frac(d) : acum]);
+  const ideal = objetivo ? Array.from({ length: ultimo }, (_, i) => [i + 1, objetivo * frac(i + 1)]) : [];
+
+  // Escalas del gráfico (SVG, en unidades del viewBox).
+  const W = 640, H = 230, IZQ = 46, DER = 12, ARR = 14, ABA = 26;
+  const yMax = Math.max(objetivo, proyFinal, acum, 1) * 1.08;
+  const x = (d) => IZQ + ((d - 1) / Math.max(ultimo - 1, 1)) * (W - IZQ - DER);
+  const y = (v) => ARR + (1 - v / yMax) * (H - ARR - ABA);
+  const linea = (pts) => pts.map(([d, v], i) => `${i ? 'L' : 'M'}${x(d).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const area = real.length ? `${linea(real)} L${x(dHasta).toFixed(1)},${y(0)} L${x(1).toFixed(1)},${y(0)} Z` : '';
+  const marcas = [0, 0.25, 0.5, 0.75, 1].map((k) => yMax / 1.08 * k);
+  const grilla = marcas.map((v) => `<line x1="${IZQ}" x2="${W - DER}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" class="ac-grilla"/><text x="${IZQ - 6}" y="${(y(v) + 4).toFixed(1)}" class="ac-eje" text-anchor="end">${fmtMiles(v / 1e6)}</text>`).join('');
+  const dias = [1, 8, 15, 22, ultimo].filter((d, i, a) => a.indexOf(d) === i).map((d) => `<text x="${x(d).toFixed(1)}" y="${H - 8}" class="ac-eje" text-anchor="middle">${d}</text>`).join('');
+
+  const debido = objetivo ? objetivo * fHasta : 0;
+  const dif = acum - debido;
+  const frase = objetivo
+    ? `Al ${fmtFecha(hasta)} Minorista lleva <b>${fmtMillones(acum)}</b>. Para ir al ritmo del objetivo debería tener <b>${fmtMillones(debido)}</b>: va <b class="${dif >= 0 ? 'var-pos' : 'var-neg'}">${dif >= 0 ? 'adelantada' : 'atrasada'} ${fmtMillones(Math.abs(dif))}</b>. Proyecta cerrar en <b>${fmtMillones(proyFinal)}</b> (${fmtPct(proyFinal / objetivo)} del objetivo de ${fmtMillones(objetivo)}).`
+    : `Al ${fmtFecha(hasta)} Minorista lleva <b>${fmtMillones(acum)}</b> y proyecta cerrar en <b>${fmtMillones(proyFinal)}</b>. No hay un objetivo publicado para este mes, por eso no se muestra la línea del ritmo.`;
+
+  return `
+    <div class="card avance-ac" style="margin-bottom:16px">
+      <h2>Avance acumulado del mes</h2>
+      <p class="small" style="margin:6px 0 0">${frase}</p>
+      <svg class="ac-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Venta acumulada de Minorista contra el ritmo del objetivo">
+        ${grilla}${dias}
+        ${area ? `<path d="${area}" class="ac-area"/>` : ''}
+        ${ideal.length ? `<path d="${linea(ideal)}" class="ac-ideal" pathLength="1"/>` : ''}
+        ${proy.length > 1 ? `<path d="${linea(proy)}" class="ac-proy" pathLength="1"/>` : ''}
+        ${real.length ? `<path d="${linea(real)}" class="ac-real" pathLength="1"/><circle cx="${x(dHasta).toFixed(1)}" cy="${y(acum).toFixed(1)}" r="4.5" class="ac-punto"/>` : ''}
+      </svg>
+      <div class="leyenda" style="margin:6px 0 0">
+        <span><i class="sw" style="background:var(--c-min)"></i>Venta acumulada</span>
+        ${objetivo ? '<span><i class="sw ideal-l"></i>Ritmo para llegar al objetivo</span>' : ''}
+        <span><i class="sw proy-l"></i>Proyección</span>
+        <span class="muted">Montos en millones · días del mes abajo</span>
+      </div>
+    </div>`;
+}
+
 function pesosSemanaHtml(peso, cuenta) {
   return DIAS_SEMANA.map((x) => `
     <div class="sp-dia${esFinde(x.wd) ? ' finde' : ''}">
@@ -1038,85 +1397,237 @@ function pesosSemanaHtml(peso, cuenta) {
 
 // ---- Ranking: 10 que más venden, 10 que menos, o todas; el buscador busca en todas ----
 
+// Botones de exportar de una vista: data-exp = qué se exporta.
+const exportarHtml = (que, excel = true) => `
+  <div class="exportar" role="group" aria-label="Exportar">
+    ${excel ? `<button class="btn btn-sm" type="button" data-exp="${que}" data-formato="excel" title="Descargar para Excel">Excel</button>` : ''}
+    <button class="btn btn-sm" type="button" data-exp="${que}" data-formato="pdf" title="Imprimir o guardar como PDF">PDF</button>
+    <button class="btn btn-sm" type="button" data-exp="${que}" data-formato="compartir" title="Compartir el resumen">Compartir</button>
+  </div>`;
+
 function rankingHtml() {
+  const zonas = [...new Set([...suc.info.values()].map((m) => m.zona).filter(Boolean))].sort();
+  const encargados = [...new Set([...suc.info.values()].map((m) => m.encargado).filter(Boolean))].sort();
+  if (!zonas.includes(suc.zona)) suc.zona = '';
+  if (!encargados.includes(suc.encargado)) suc.encargado = '';
+  const opciones = (arr, actual, todas) => `<option value="">${todas}</option>${arr.map((v) => `<option${v === actual ? ' selected' : ''}>${esc(v)}</option>`).join('')}`;
   return `
     <div class="card">
       <div class="card-head">
         <div class="seg-btns" role="group" aria-label="Qué sucursales mostrar">
           <button type="button" data-rank="top">Más venden</button>
           <button type="button" data-rank="bottom">Menos venden</button>
+          ${suc.avance.size ? '<button type="button" data-rank="riesgo">Lejos del objetivo</button>' : ''}
           <button type="button" data-rank="todas">Todas</button>
         </div>
+        ${exportarHtml('ranking')}
+      </div>
+      <div class="rank-filtros">
         <input id="suc-buscar" class="suc-buscar" type="search" placeholder="Buscar sucursal" value="${esc(suc.filtro)}" aria-label="Buscar sucursal">
+        ${zonas.length ? `<select id="suc-zona" aria-label="Zona">${opciones(zonas, suc.zona, 'Todas las zonas')}</select>` : ''}
+        ${encargados.length ? `<select id="suc-encargado" aria-label="Encargado">${opciones(encargados, suc.encargado, 'Todos los encargados')}</select>` : ''}
       </div>
       <div class="table-wrap" id="suc-ranking"></div>
       <p class="muted small" id="suc-ranking-pie" style="margin:12px 0 0"></p>
     </div>`;
 }
 
+// Sucursales del ranking con puesto general, según buscador, zona y encargado (sin el corte de 10).
+function rankingFiltrado() {
+  const q = suc.filtro.trim().toUpperCase();
+  return suc.res.sucursales
+    .map((s, i) => ({ ...s, puesto: i + 1 }))
+    .filter((s) => (!q || s.sucursal.includes(q))
+      && (!suc.zona || suc.info.get(s.sucursal)?.zona === suc.zona)
+      && (!suc.encargado || suc.info.get(s.sucursal)?.encargado === suc.encargado));
+}
+
 function renderRankingTabla() {
   const res = suc.res;
   if (!res || !$('suc-ranking')) return;
+  if (suc.rank === 'riesgo' && !suc.avance.size) suc.rank = 'top';
   document.querySelectorAll('[data-rank]').forEach((b) => b.classList.toggle('active', b.dataset.rank === suc.rank));
-  const todas = res.sucursales.map((s, i) => ({ ...s, puesto: i + 1 }));
-  const q = suc.filtro.trim().toUpperCase();
+  const base = rankingFiltrado();
+  const filtrando = Boolean(suc.filtro.trim() || suc.zona || suc.encargado);
   let lista;
-  if (q) lista = todas.filter((s) => s.sucursal.includes(q));
-  else if (suc.rank === 'bottom') lista = todas.slice(-10).reverse();
-  else if (suc.rank === 'todas') lista = todas;
-  else lista = todas.slice(0, 10);
+  if (suc.rank === 'riesgo') {
+    lista = base.filter((s) => suc.avance.has(s.sucursal)).sort((a, b) => suc.avance.get(a.sucursal).proyeccionPct - suc.avance.get(b.sucursal).proyeccionPct);
+    if (!filtrando) lista = lista.slice(0, 10);
+  } else if (filtrando || suc.rank === 'todas') lista = base;
+  else if (suc.rank === 'bottom') lista = base.slice(-10).reverse();
+  else lista = base.slice(0, 10);
+  const hayZona = suc.info.size > 0;
+  const hayObj = suc.avance.size > 0;
   const top = res.sucursales[0]?.total || 1;
-  const filas = lista.map((s) => `
+  const filas = lista.map((s) => {
+    const a = suc.avance.get(s.sucursal);
+    return `
     <tr data-suc="${esc(s.sucursal)}" class="suc-row" tabindex="0">
       <td class="muted">${s.puesto}</td>
       <td><b>${esc(s.sucursal)}</b></td>
+      ${hayZona ? `<td class="opc muted">${esc(zonaDe(s.sucursal))}</td>` : ''}
       <td class="r">${fmtMillones(s.total)}</td>
+      ${hayObj ? `<td class="r">${a ? fmtPct(a.avance) : '—'}</td><td class="r">${a ? avanceChip(s.sucursal) : '<span class="muted small">sin objetivo</span>'}</td>` : ''}
       <td class="r opc">${fmtPct(s.total / (res.total || 1))}</td>
       <td class="r opc">${fmtMillones(s.total / Math.max(s.diasConVenta, 1))}</td>
-      <td class="r opc">${s.diasConVenta}</td>
+      ${hayObj ? '' : `<td class="r opc">${s.diasConVenta}</td>`}
       <td class="col-barra"><div class="rank-bar"><div style="width:${((s.total / top) * 100).toFixed(1)}%"></div></div></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
+  const columnas = 6 + hayZona + (hayObj ? 1 : 0);
   $('suc-ranking').innerHTML = `
     <table class="suc-tabla">
-      <thead><tr><th>#</th><th>Sucursal</th><th class="r">Venta del mes</th><th class="r opc">% del total</th><th class="r opc">Prom./día</th><th class="r opc">Días</th><th class="col-barra"></th></tr></thead>
-      <tbody>${filas || '<tr><td colspan="7" class="muted">No hay sucursales con ese nombre.</td></tr>'}</tbody>
+      <thead><tr><th>#</th><th>Sucursal</th>${hayZona ? '<th class="opc">Zona</th>' : ''}<th class="r">Venta del mes</th>${hayObj ? '<th class="r" title="Venta hasta el último día completo sobre el objetivo del mes">Avance</th><th class="r" title="Proyección al cierre sobre el objetivo">Proyección</th>' : ''}<th class="r opc">% del total</th><th class="r opc">Prom./día</th>${hayObj ? '' : '<th class="r opc">Días</th>'}<th class="col-barra"></th></tr></thead>
+      <tbody>${filas || `<tr><td colspan="${columnas + 1}" class="muted">No hay sucursales con ese filtro.</td></tr>`}</tbody>
     </table>`;
-  $('suc-ranking-pie').innerHTML = q
-    ? `${lista.length} resultado${lista.length === 1 ? '' : 's'} para "${esc(suc.filtro.trim())}".`
-    : `Mostrando ${lista.length} de ${todas.length} sucursales. Tocá una para ver su detalle.${suc.rank !== 'todas' ? ' <button class="btn-link" type="button" data-rank="todas">Ver todas</button>' : ''}`;
+  $('suc-ranking-pie').innerHTML = filtrando
+    ? `${lista.length} sucursal${lista.length === 1 ? '' : 'es'} con ese filtro.`
+    : `Mostrando ${lista.length} de ${res.sucursales.length} sucursales. Tocá una para ver su detalle.${suc.rank !== 'todas' ? ' <button class="btn-link" type="button" data-rank="todas">Ver todas</button>' : ''}`;
 }
 
-// ---- Mapa de calor: sucursales × días, cada sucursal en su propia escala ----
+// ---- Zonas ----
+
+// Zonas del mes con objetivo y proyección sumados (solo de las sucursales con objetivo).
+function zonasDelMes() {
+  const maestro = suc.info.size ? [...suc.info.values()] : suc.res.sucursales.map((s) => ({ sucursal: s.sucursal, zona: zonaSugerida(s.sucursal) }));
+  return resumenZonas(suc.res, maestro).map((z) => {
+    let objetivo = 0, proyeccion = 0;
+    for (const s of z.sucursales) {
+      const a = suc.avance.get(s.sucursal);
+      if (a) { objetivo += a.objetivo; proyeccion += a.proyeccion; }
+    }
+    const encargados = [...new Set(z.sucursales.map((s) => suc.info.get(s.sucursal)?.encargado).filter(Boolean))];
+    return { ...z, objetivo, proyeccion, encargados };
+  });
+}
+
+function zonasHtml() {
+  const res = suc.res;
+  const zonas = zonasDelMes();
+  const max = Math.max(...zonas.map((z) => z.total), 1);
+  const tarjetas = zonas.map((z) => {
+    const e = z.objetivo ? estado(z.proyeccion / z.objetivo) : null;
+    return `
+    <details class="card zona">
+      <summary>
+        <span class="zona-nombre">${esc(z.zona)}<small class="muted">${z.sucursales.length} sucursal${z.sucursales.length === 1 ? '' : 'es'}${z.encargados.length ? ' · ' + esc(z.encargados.join(', ')) : ''}</small></span>
+        <span class="zona-bar"><span style="width:${((z.total / max) * 100).toFixed(1)}%"></span></span>
+        <span class="zona-cifras"><b>${fmtMillones(z.total)}</b><small class="muted">${fmtPct(z.total / (res.total || 1))} del total</small></span>
+        ${e ? `<span class="chip ${e.clase}" title="Proyección al cierre sobre el objetivo de la zona">${fmtPct(z.proyeccion / z.objetivo)}</span>` : ''}
+      </summary>
+      <ul class="zona-lista">${z.sucursales.map((s) => `
+        <li data-suc="${esc(s.sucursal)}" role="button" tabindex="0">
+          <span>${esc(s.sucursal)}</span>${avanceChip(s.sucursal)}<b>${fmtMillones(s.total)}</b>
+        </li>`).join('')}</ul>
+    </details>`;
+  }).join('');
+  const aviso = suc.info.size
+    ? ''
+    : `<p class="nota" style="margin:0 0 14px">Zonas sugeridas por el nombre de cada sucursal. ${isAdmin() ? 'Para definir las zonas reales y los encargados, cargá el listado en <b>Configurar sucursales</b>.' : 'El administrador puede cargar las zonas reales.'}</p>`;
+  return `
+    <div class="card-head" style="margin-bottom:12px">
+      <p class="muted small" style="margin:0">Tocá una zona para ver sus sucursales.${suc.avance.size ? ' El porcentaje de color es la proyección al cierre contra el objetivo.' : ''}</p>
+      ${exportarHtml('zonas')}
+    </div>
+    ${aviso}
+    <div class="zonas">${tarjetas}</div>`;
+}
+
+// ---- Mapa de calor ----
+// Modo "propio": cada día contra lo que esa sucursal vende normalmente ese día de la semana
+// (verde = mejor que lo habitual, rojo = peor). Modo "monto": todas en la misma escala.
+
+const LETRA_DIA = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+const CALOR_TOPE = 0.4; // ±40% ya es el color más fuerte
+const CALOR_INICIAL = 30;
+
+// Promedio de cada sucursal por día de la semana (solo días con venta).
+function promediosPorDiaSemana(s) {
+  const suma = Array(7).fill(0), n = Array(7).fill(0);
+  for (const [f, v] of Object.entries(s.dias)) {
+    if (!v) continue;
+    const wd = wdDe(f);
+    suma[wd] += v;
+    n[wd]++;
+  }
+  return suma.map((x, i) => (n[i] ? x / n[i] : 0));
+}
+
+function colorCalor(v, ref, modo) {
+  if (!v) return 'var(--sin-venta)';
+  if (modo === 'monto') return `color-mix(in srgb, var(--calor-alto) ${(Math.min(v / ref, 1) * 100).toFixed(0)}%, var(--calor-bajo))`;
+  if (!ref) return 'var(--calor-neutro)';
+  const t = Math.max(-1, Math.min(1, (v / ref - 1) / CALOR_TOPE));
+  return t >= 0
+    ? `color-mix(in srgb, var(--pos) ${(t * 100).toFixed(0)}%, var(--calor-neutro))`
+    : `color-mix(in srgb, var(--neg) ${(-t * 100).toFixed(0)}%, var(--calor-neutro))`;
+}
 
 function calorHtml() {
   const res = suc.res;
+  const c = suc.calor;
   const fechas = res.dias.map((x) => x.fecha);
-  const cab = fechas.map((f) => `<span class="${esFinde(wdDe(f)) ? 'finde' : ''}" title="${DIA_CORTO[wdDe(f)]} ${fmtFecha(f)}">${Number(f.slice(8))}</span>`).join('');
-  const filas = res.sucursales.map((s) => {
-    const max = Math.max(...Object.values(s.dias), 1);
+  const maxGlobal = Math.max(...res.sucursales.flatMap((s) => Object.values(s.dias)), 1);
+  const lista = c.todas ? res.sucursales : res.sucursales.slice(0, CALOR_INICIAL);
+  const lun = (f) => (wdDe(f) === 1 ? ' lun' : '');
+  const cabDia = fechas.map((f) => `<span class="${esFinde(wdDe(f)) ? 'finde' : ''}${lun(f)}">${LETRA_DIA[wdDe(f)]}</span>`).join('');
+  const cabNum = fechas.map((f) => `<span class="${esFinde(wdDe(f)) ? 'finde' : ''}${lun(f)}">${Number(f.slice(8))}</span>`).join('');
+  const filas = lista.map((s) => {
+    const prom = promediosPorDiaSemana(s);
     const celdas = fechas.map((f) => {
       const v = s.dias[f] || 0;
-      const color = v ? `color-mix(in srgb, var(--calor-alto) ${(Math.min(v / max, 1) * 100).toFixed(0)}%, var(--calor-bajo))` : 'var(--sin-venta)';
-      return `<i style="background:${color}" title="${esc(s.sucursal)} · ${DIA_CORTO[wdDe(f)]} ${fmtFecha(f)}: ${v ? fmtMillones(v) : 'sin venta'}"></i>`;
+      const ref = c.modo === 'monto' ? maxGlobal : prom[wdDe(f)];
+      return `<i class="${lun(f).trim()}" style="background:${colorCalor(v, ref, c.modo)}" data-s="${esc(s.sucursal)}" data-f="${f}" data-v="${v}" data-p="${Math.round(prom[wdDe(f)])}" role="button" tabindex="-1" aria-label="${esc(s.sucursal)} ${fmtFecha(f)}"></i>`;
     }).join('');
-    return `<div class="calor-fila" data-suc="${esc(s.sucursal)}" role="button" tabindex="0"><span class="calor-nombre">${esc(s.sucursal)}</span>${celdas}</div>`;
+    return `
+      <div class="calor-fila">
+        <button type="button" class="calor-nombre" data-suc="${esc(s.sucursal)}" title="Ver el detalle de ${esc(s.sucursal)}">${esc(s.sucursal)}</button>${celdas}
+        <span class="calor-total">${fmtM1(s.total)}</span>
+      </div>`;
   }).join('');
+
+  const leyenda = c.modo === 'monto'
+    ? `<div class="calor-escala monto"><span>menos venta</span><i></i><span>más venta</span></div>`
+    : `<div class="calor-escala propio"><span>${fmtVar(-CALOR_TOPE)} o menos</span><i></i><span>${fmtVar(CALOR_TOPE)} o más</span></div>`;
+  const explica = c.modo === 'monto'
+    ? 'Todas las sucursales en la misma escala: cuanto más naranja, más vendió ese día. Sirve para ver las grandes y las chicas.'
+    : 'Cada cuadrito es un día de una sucursal, comparado con lo que <b>esa misma sucursal</b> vende normalmente <b>ese día de la semana</b>. Verde: vendió más que lo habitual. Rojo: vendió menos. Gris: lo normal.';
   return `
     <div class="card">
-      <div class="card-head">
+      <div class="card-head" style="margin-bottom:10px">
         <div>
           <h2>Mapa de calor</h2>
-          <p class="muted small">Cada fila es una sucursal (de la que más vende a la que menos) y cada columna un día. Cada sucursal en su propia escala: más oscuro es su mejor día y gris, sin venta. Tocá una fila para ver el detalle.</p>
+          <p class="muted small">${explica}</p>
         </div>
-        <div class="calor-leyenda"><i style="background:var(--sin-venta)"></i>sin venta <i style="background:var(--calor-bajo)"></i>bajo <i style="background:var(--calor-alto)"></i>su mejor día</div>
+        <div class="seg-btns" role="group" aria-label="Escala del mapa">
+          <button type="button" data-calor-modo="propio" class="${c.modo === 'propio' ? 'active' : ''}">Vs. lo habitual</button>
+          <button type="button" data-calor-modo="monto" class="${c.modo === 'monto' ? 'active' : ''}">Monto vendido</button>
+        </div>
       </div>
+      <div class="calor-pie">
+        ${leyenda}
+        <span class="calor-escala-sv"><i></i>sin venta</span>
+      </div>
+      <div class="calor-info" id="calor-info" role="status">Tocá un cuadrito para ver la venta de ese día. Tocá el nombre para ver el detalle de la sucursal.</div>
       <div class="calor-wrap">
         <div class="calor" style="--dias:${fechas.length}">
-          <div class="calor-fila calor-cab"><span class="calor-nombre"></span>${cab}</div>
+          <div class="calor-fila calor-cab"><span class="calor-nombre"></span>${cabDia}<span class="calor-total"></span></div>
+          <div class="calor-fila calor-cab"><span class="calor-nombre">Sucursal</span>${cabNum}<span class="calor-total">Mes (M)</span></div>
           ${filas}
         </div>
       </div>
+      ${res.sucursales.length > CALOR_INICIAL ? `<div class="actions" style="justify-content:center"><button class="btn btn-sm" type="button" data-calor-todas>${c.todas ? `Ver solo las ${CALOR_INICIAL} que más venden` : `Ver las ${res.sucursales.length} sucursales`}</button></div>` : ''}
     </div>`;
+}
+
+// Detalle de un cuadrito del mapa en la barra de arriba (sirve igual con mouse o con el dedo).
+function mostrarCeldaCalor(i) {
+  const v = Number(i.dataset.v), p = Number(i.dataset.p), f = i.dataset.f;
+  const nombreDia = DIAS_SEMANA.find((x) => x.wd === wdDe(f)).nombre.toLowerCase();
+  const comp = v && p ? ` · ${varHtml(v / p - 1)} vs. sus ${pluralDia(nombreDia)} (${fmtM1Gs(p)})` : '';
+  $('calor-info').innerHTML = `<b>${esc(i.dataset.s)}</b> · ${DIA_CORTO[wdDe(f)]} ${fmtFecha(f)}: ${v ? `<b>${fmtM1Gs(v)}</b>${comp}` : 'sin venta'}`;
+  document.querySelectorAll('.calor i.sel').forEach((x) => x.classList.remove('sel'));
+  i.classList.add('sel');
 }
 
 // ---- Informe IA ----
@@ -1211,6 +1722,7 @@ function informeHtml() {
             <h2>Análisis del mes · ${esc(mesNombre)}</h2>
             <p class="muted small">Publicado ${fmtFechaHora(info.publicado)}${info.por ? ' por ' + esc(info.por) : ''}</p>
           </div>
+          ${exportarHtml('informe', false)}
         </div>
         ${s.datos.desactualizado ? `<div class="alert informe-aviso">Se cargaron datos nuevos después de este análisis.${isAdmin() ? ' Podés prepararlo de nuevo abajo.' : ''}</div>` : ''}
         <div class="informe-texto">${informeAHtml(info.texto)}</div>
@@ -1323,6 +1835,7 @@ function compararHtml() {
         </div>
       </div>
       ${controles}
+      <div class="cmp-exportar">${exportarHtml('comparar')}</div>
       ${c.incompleto && c.modo === 'par' ? `<p class="muted small" style="margin:12px 0 0">El ${etiquetaDia(c.incompleto.fecha)} parece incompleto (${fmtMillones(c.incompleto.monto)}, mucho menos que un ${DIAS_SEMANA.find((x) => x.wd === wdDe(c.incompleto.fecha)).nombre.toLowerCase()} normal), por eso arranca comparando el ${etiquetaDia(ultima)}. Podés elegir cualquier fecha.</p>` : ''}
     </div>
     <div id="cmp-res"><div class="card empty">Calculando…</div></div>`;
@@ -1339,13 +1852,19 @@ async function renderComparacion() {
   if (c.modo === 'par') {
     const [filasA, filasB] = await Promise.all([filasMes(c.a.slice(0, 7)), filasMes(c.b.slice(0, 7))]);
     if (turno !== cmpTurno) return;
-    html = comparacionParHtml(compararDias(filasA, c.a, filasB, c.b));
+    const r = compararDias(filasA, c.a, filasB, c.b);
+    suc.cmpUltimo = { modo: 'par', r };
+    html = comparacionParHtml(r);
   } else if (c.modo === 'semanas') {
     const filas = await filasHastaSemanas(4);
     if (turno !== cmpTurno) return;
-    html = comparacionSemanasHtml(ultimasSemanas(filas, ultimoDiaCompleto(suc.res.dias).fecha, 4));
+    const r = ultimasSemanas(filas, ultimoDiaCompleto(suc.res.dias).fecha, 4);
+    suc.cmpUltimo = { modo: 'semanas', r };
+    html = comparacionSemanasHtml(r);
   } else {
-    html = comparacionSemanaHtml(mismoDiaSemana(suc.datos.filas, c.wd));
+    const r = mismoDiaSemana(suc.datos.filas, c.wd);
+    suc.cmpUltimo = { modo: 'semana', r };
+    html = comparacionSemanaHtml(r);
   }
   // Mantener el foco y el cursor en el buscador mientras se escribe.
   const buscando = document.activeElement?.id === 'cmp-buscar' ? document.activeElement.selectionStart : null;
@@ -1474,7 +1993,7 @@ function comparacionSemanasHtml(r) {
 
 function comparacionSemanaHtml(r) {
   const nombre = DIAS_SEMANA.find((x) => x.wd === suc.cmp.wd)?.nombre || '';
-  if (!r.fechas.length) return `<div class="card empty">No hay ${nombre.toLowerCase()}s cargados en este mes.</div>`;
+  if (!r.fechas.length) return `<div class="card empty">No hay ${pluralDia(nombre.toLowerCase())} cargados en este mes.</div>`;
   const max = Math.max(...r.totales, 1);
   const columnas = r.fechas.map((f, i) => `
     <div class="cmp-sem-col">
@@ -1494,7 +2013,7 @@ function comparacionSemanaHtml(r) {
     </tr>`).join('');
   return `
     <div class="card" style="margin-bottom:16px">
-      <h3>Todos los ${nombre.toLowerCase()}s del mes</h3>
+      <h3>Todos los ${pluralDia(nombre.toLowerCase())} del mes</h3>
       <p class="muted small" style="margin:4px 0 0">Total de las sucursales cada ${nombre.toLowerCase()} y variación contra el ${nombre.toLowerCase()} anterior.</p>
       <div class="cmp-sem">${columnas}</div>
     </div>
@@ -1576,10 +2095,30 @@ function abrirPanel(nombre) {
   const sube = a.crecen.find((x) => x.sucursal === nombre);
   if (sube) marcas.push(`<span class="chip ok">Creciendo: ${fmtVar(sube.variacion)}</span>`);
 
+  const info = suc.info.get(nombre);
+  const av = suc.avance.get(nombre);
+  const eAv = av ? estado(av.proyeccionPct) : null;
+  const objetivoHtml = av ? `
+    <div class="panel-obj">
+      <div class="card-head" style="margin:0">
+        <h3 style="margin:0">Objetivo del mes</h3>
+        <span class="chip ${eAv.clase}">${eAv.texto}</span>
+      </div>
+      <div class="panel-kpis">
+        <div><span>Objetivo</span><strong>${fmtMillones(av.objetivo)}</strong></div>
+        <div><span>Avance</span><strong>${fmtPct(av.avance)}</strong></div>
+        <div><span>Proyección al cierre</span><strong>${fmtMillones(av.proyeccion)}</strong></div>
+        <div><span>Proyección / objetivo</span><strong>${fmtPct(av.proyeccionPct)}</strong></div>
+      </div>
+      ${bar(av.avance, av.proyeccionPct, COLOR.min, true)}
+      <p class="muted small" style="margin:6px 0 0">Avance con lo vendido hasta el último día completo. La proyección reparte el mes según el peso de cada día de la semana.</p>
+    </div>` : '';
+
   $('suc-panel-titulo').textContent = nombre;
   $('suc-panel-body').innerHTML = `
-    <p class="muted small" style="margin:0 0 12px">${nombreMes(fechaDeMes(suc.datos.mes))} · puesto ${i + 1} de ${res.sucursales.length}</p>
+    <p class="muted small" style="margin:0 0 12px">${nombreMes(fechaDeMes(suc.datos.mes))} · puesto ${i + 1} de ${res.sucursales.length}${info?.zona ? ` · zona ${esc(info.zona)}` : ''}${info?.encargado ? ` · encargado: ${esc(info.encargado)}` : ''}</p>
     ${marcas.length ? `<div class="panel-marcas">${marcas.join('')}</div>` : ''}
+    ${objetivoHtml}
     <div class="panel-kpis">
       <div><span>Venta del mes</span><strong>${fmtMillones(s.total)}</strong></div>
       <div><span>% del total</span><strong>${fmtPct(s.total / (res.total || 1))}</strong></div>
@@ -1622,10 +2161,24 @@ async function cargarClima() {
   return true;
 }
 
+// Alertas de sucursales para la vista rápida (último mes cargado), como mucho cada 10 min.
+let sucAlertasPedido = 0;
+async function cargarAlertasSucursales() {
+  if (state.sucAlertas !== undefined && Date.now() - sucAlertasPedido < 10 * 60e3) return false;
+  sucAlertasPedido = Date.now();
+  try {
+    const d = await API.getSucursales();
+    state.sucAlertas = d.filas?.length ? { mes: d.mes, ...alertasSucursales(resumirMes(d.filas)) } : null;
+  } catch {
+    state.sucAlertas = null;
+  }
+  return true;
+}
+
 async function refreshDashboard(force = false) {
   try {
-    const [dash, climaNuevo] = await Promise.all([API.getDashboard(), cargarClima()]);
-    if (climaNuevo) force = true;
+    const [dash, climaNuevo, alertasNuevas] = await Promise.all([API.getDashboard(), cargarClima(), cargarAlertasSucursales()]);
+    if (climaNuevo || alertasNuevas) force = true;
     state.published = dash.published;
     state.history = dash.history;
     const key = dash.published ? dash.published.publicadoEn : 'none';
@@ -1657,7 +2210,29 @@ const varHtml = (v) => `<b class="${varClase(v)}">${fmtVar(v)}</b>`;
 // Etiqueta para unidades cuya proyección lineal es solo orientativa (Fineboats).
 const tagRef = (c) => (c.referencial ? ' <span class="tag-ref" title="Sus ventas no siguen un ritmo diario: tomá la proyección como orientativa.">Referencial</span>' : '');
 
-function unidadCard(titulo, calendario, c, color, manual, extra = '') {
+// ---- 2. Mini gráfico: avance de la unidad en las últimas publicaciones del mes ----
+function sparklineHtml(serie, color) {
+  if (serie.length < 2) return '';
+  const W = 132, H = 34, P = 3;
+  const max = Math.max(...serie.map((s) => s.v), 0.01);
+  const x = (i) => P + (i / (serie.length - 1)) * (W - 2 * P);
+  const y = (v) => H - P - (v / max) * (H - 2 * P);
+  const d = serie.map((s, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(s.v).toFixed(1)}`).join(' ');
+  const area = `${d} L${x(serie.length - 1).toFixed(1)},${H} L${x(0).toFixed(1)},${H} Z`;
+  const ult = serie.at(-1);
+  const titulo = serie.map((s) => `${fmtDiaMes(s.corte)}: ${fmtPct(s.v)}`).join(' · ');
+  return `
+    <div class="spark" title="Avance en cada publicación: ${titulo}">
+      <svg viewBox="0 0 ${W} ${H}" aria-hidden="true">
+        <path d="${area}" style="fill:color-mix(in srgb, ${color} 16%, transparent)"/>
+        <path d="${d}" class="spark-linea" style="stroke:${color}" pathLength="1"/>
+        <circle cx="${x(serie.length - 1).toFixed(1)}" cy="${y(ult.v).toFixed(1)}" r="3" style="fill:${color}"/>
+      </svg>
+      <span>${serie.length} publicaciones · desde ${fmtDiaMes(serie[0].corte)}</span>
+    </div>`;
+}
+
+function unidadCard(titulo, calendario, c, color, manual, extra = '', serie = []) {
   const dias = manual ? 'Días cargados a mano' : `Opera ${CAL_LARGO[calendario]}`;
   return `
     <div class="card u-card" style="border-top:4px solid ${color.fuerte}">
@@ -1670,6 +2245,7 @@ function unidadCard(titulo, calendario, c, color, manual, extra = '') {
       </div>
       <div class="u-big"><strong style="color:${color.fuerte}" data-contar>${fmtPct(c.avance)}</strong><span>de avance · proyecta ${fmtPct(c.proyeccionPct)}${c.referencial ? ' (referencial)' : ''}</span></div>
       ${bar(c.avance, c.proyeccionPct, color)}
+      ${sparklineHtml(serie, color.fuerte)}
       <div class="u-stats">
         <div><span>Real</span><strong>${fmtMillones(c.real)}</strong></div>
         <div><span>Proyección${c.referencial ? ' (ref.)' : ''}</span><strong>${fmtMillones(c.proyeccion)}</strong></div>
@@ -1971,6 +2547,46 @@ function climaHtml(r, p) {
     </div>`;
 }
 
+// ---- 3. Vista rápida: lo esencial en una tarjeta ----
+function rapidoHtml(r, p) {
+  const t = r.total;
+  const est = estado(t.proyeccionPct);
+  const ritmo = t.avance - t.ritmoIdeal;
+  const items = [];
+  const enRiesgo = [['Baratote', r.baratote], ['Fineglass', r.unidades.fgl], ['Fineboats', r.unidades.fbt]].filter(([, c]) => c.proyeccionPct < 0.9);
+  if (enRiesgo.length) items.push({ tipo: 'risk', txt: `${enRiesgo.map(([n, c]) => `<b>${n}</b> proyecta ${fmtPct(c.proyeccionPct)}`).join(' · ')} del objetivo.` });
+  const a = state.sucAlertas;
+  if (a && a.mes === p.corte.slice(0, 7)) {
+    if (a.sinVentaReciente.length) items.push({ tipo: 'risk', txt: `<b>${a.sinVentaReciente.length} sucursal${a.sinVentaReciente.length === 1 ? '' : 'es'}</b> sin venta en los últimos días: ${a.sinVentaReciente.slice(0, 3).map((s) => esc(s.sucursal)).join(', ')}${a.sinVentaReciente.length > 3 ? '…' : ''}.` });
+    if (a.caidas.length) items.push({ tipo: 'warn', txt: `Vienen vendiendo menos: ${a.caidas.slice(0, 3).map((s) => `<b>${esc(s.sucursal)}</b> ${fmtVar(s.variacion)}`).join(', ')}.` });
+  }
+  // Lluvia pronosticada en el próximo viernes a domingo (días fuertes de Minorista).
+  const finde = (state.clima?.dias || []).filter((d) => d.fecha > p.corte && esFinde(wdDe(d.fecha))).slice(0, 3);
+  const lluvia = finde.filter((d) => d.lluvia >= AJUSTE_LLUVIA.umbralMm);
+  if (lluvia.length) items.push({ tipo: 'warn', txt: `Pronóstico: lluvia el ${lluvia.map((d) => `${DIA_CORTO[wdDe(d.fecha)].toLowerCase()} ${Number(d.fecha.slice(8))}`).join(' y el ')}, días fuertes para Minorista.` });
+  else if (finde.length) items.push({ tipo: 'ok', txt: `Pronóstico del próximo fin de semana sin lluvia (máx. ${Math.round(Math.max(...finde.map((d) => d.tmax)))}°): buen clima para bebidas.` });
+  if (!items.length) items.push({ tipo: 'ok', txt: 'Sin alertas: todas las unidades proyectan 90% o más del objetivo.' });
+
+  const oculto = !isAdmin() && leerPref('dash-detalle', 'no') !== 'si';
+  return `
+    <div class="card rapido">
+      <div class="rapido-top">
+        <div class="rapido-dato">
+          <span>Proyección al cierre</span>
+          <strong data-contar>${fmtPct(t.proyeccionPct)}</strong>
+          <span class="chip ${est.clase}">${est.texto}</span>
+        </div>
+        <div class="rapido-dato">
+          <span>Avance a hoy</span>
+          <strong data-contar>${fmtPct(t.avance)}</strong>
+          <small class="${ritmo >= 0 ? 'var-pos' : 'var-neg'}">${ritmo >= 0 ? 'Adelantado' : 'Atrasado'} ${fmtPct(Math.abs(ritmo))} vs. el ritmo ideal</small>
+        </div>
+      </div>
+      <ul class="rapido-lista">${items.slice(0, 4).map((x) => `<li class="${x.tipo}"><i></i><span>${x.txt}</span></li>`).join('')}</ul>
+      ${isAdmin() ? '' : `<button class="btn btn-sm rapido-btn" type="button" data-dash-detalle>${oculto ? 'Ver el detalle completo' : 'Ocultar el detalle'}</button>`}
+    </div>`;
+}
+
 function renderDashboard() {
   const el = $('dash');
   const p = state.published;
@@ -1981,6 +2597,9 @@ function renderDashboard() {
   const r = calcularReporte(p);
   const t = r.total;
   const u = r.unidades;
+  // Avance de cada unidad en las últimas publicaciones (para los mini gráficos).
+  const historia = state.history.slice(-8).map((h) => ({ corte: h.corte, r: calcularReporte(h) }));
+  const serieDe = (elegir) => historia.map((h) => ({ corte: h.corte, v: elegir(h.r).avance }));
   const filasRitmo = [
     { nombre: 'Baratote', c: r.baratote, clase: 'grupo-row' },
     { nombre: 'Mayorista', c: u.may, clase: 'sub-row' },
@@ -2006,6 +2625,9 @@ function renderDashboard() {
       <p class="muted">Corte al ${fmtFecha(p.corte)} · Publicado ${fmtFechaHora(p.publicadoEn)} por ${esc(p.por)}${r.manual ? ' · Días cargados a mano' : ''}</p>
     </div>
 
+    ${rapidoHtml(r, p)}
+
+    <div id="dash-detalle"${!isAdmin() && leerPref('dash-detalle', 'no') !== 'si' ? ' hidden' : ''}>
     <nav class="saltos" aria-label="Ir a una sección">
       <button type="button" data-salto="s-proy">Proyección</button>
       <button type="button" data-salto="s-unidades">Unidades</button>
@@ -2036,9 +2658,9 @@ function renderDashboard() {
     </div>
 
     <div class="unidades ancla" id="s-unidades">
-      ${unidadCard('Baratote', 'lun-dom', r.baratote, COLOR.bar, r.manual, `<div class="canales"><div class="unidad-meta" style="font-weight:600">Por canal</div>${canal(u.may)}${canal(u.min)}</div>`)}
-      ${unidadCard('Fineglass', 'lun-vie', u.fgl, COLOR.fgl, r.manual)}
-      ${unidadCard('Fineboats', 'lun-dom', u.fbt, COLOR.fbt, r.manual)}
+      ${unidadCard('Baratote', 'lun-dom', r.baratote, COLOR.bar, r.manual, `<div class="canales"><div class="unidad-meta" style="font-weight:600">Por canal</div>${canal(u.may)}${canal(u.min)}</div>`, serieDe((x) => x.baratote))}
+      ${unidadCard('Fineglass', 'lun-vie', u.fgl, COLOR.fgl, r.manual, '', serieDe((x) => x.unidades.fgl))}
+      ${unidadCard('Fineboats', 'lun-dom', u.fbt, COLOR.fbt, r.manual, '', serieDe((x) => x.unidades.fbt))}
     </div>
     <div class="leyenda">
       <span><i class="sw" style="background:var(--text-2)"></i>Venta real (color de la unidad)</span>
@@ -2068,6 +2690,7 @@ function renderDashboard() {
         </div>
         <p class="nota">Necesario/día en <span class="necesario-alto">naranja</span>: hay que vender por día más que el promedio actual para llegar al objetivo. En <span class="necesario-ok">azul</span>: con el ritmo actual alcanza.</p>
       </div>
+    </div>
     </div>`;
   contarNumeros(el);
 }

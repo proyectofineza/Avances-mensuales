@@ -2,12 +2,14 @@
 //   sucursales/AAAA-MM  → { mes, filas: [{ sucursal, fecha, monto }], actualizado, por }
 //   sucursales/index    → ['AAAA-MM', ...]
 // GET  ?mes=AAAA-MM  (todos)  → datos del mes (o del último cargado) y meses disponibles
-// POST { filas }     (admin)  → reemplaza las fechas incluidas y deja el resto del mes
+// POST { filas, avisarTeams? } (admin) → reemplaza las fechas incluidas y deja el resto del mes;
+//                    con avisarTeams manda las alertas del mes al canal de Teams
 // DELETE ?mes=AAAA-MM (admin) → borra el mes
 import { handler, json, readBody, requireUser, HttpError } from '../lib/auth.mjs';
 import { getJSON, setJSON, deleteKey } from '../lib/store.mjs';
 import { parseCorte } from '../../public/js/calc.js';
-import { normalizarSucursal, MAX_FILAS } from '../../public/js/sucursales.js';
+import { normalizarSucursal, MAX_FILAS, resumirMes, alertasSucursales } from '../../public/js/sucursales.js';
+import { teamsConfigurado, enviarTarjeta, tarjetaAlertasSucursales } from '../lib/teams.mjs';
 
 const MES_RE = /^\d{4}-\d{2}$/;
 
@@ -60,7 +62,18 @@ export default handler(async (req) => {
     const index = new Set(await meses());
     porMes.forEach((_, mes) => index.add(mes));
     await setJSON('sucursales/index', [...index].sort());
-    return json({ ok: true, resumen });
+
+    // Aviso opcional a Teams con las alertas del último mes cargado.
+    let teams = null;
+    if (body.avisarTeams) {
+      if (!teamsConfigurado()) teams = { ok: false, detalle: 'Teams no está configurado.' };
+      else {
+        const mes = [...porMes.keys()].sort().at(-1);
+        const { filas } = await getJSON(`sucursales/${mes}`, { filas: [] });
+        teams = await enviarTarjeta(tarjetaAlertasSucursales(mes, alertasSucursales(resumirMes(filas)), user.nombre));
+      }
+    }
+    return json({ ok: true, resumen, teams });
   }
 
   if (req.method === 'DELETE') {

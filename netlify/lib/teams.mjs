@@ -46,15 +46,46 @@ export function armarTarjeta(published, { prueba = false } = {}) {
   };
 }
 
+// Alertas de sucursales tras cargar la planilla (alertas = alertasSucursales()).
+export function tarjetaAlertasSucursales(mes, alertas, por) {
+  const lista = (arr, fmt) => arr.slice(0, 8).map(fmt).join(' · ') + (arr.length > 8 ? ` y ${arr.length - 8} más` : '');
+  const bloque = (titulo, arr, fmt, color) => (arr.length ? [
+    { type: 'TextBlock', text: `${titulo} (${arr.length})`, weight: 'Bolder', color, wrap: true, spacing: 'Medium' },
+    { type: 'TextBlock', text: lista(arr, fmt), wrap: true, spacing: 'None' },
+  ] : []);
+  const [y, m] = mes.split('-');
+  const sinNada = !alertas.sinVentaReciente.length && !alertas.caidas.length;
+  return {
+    $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+    type: 'AdaptiveCard',
+    version: '1.4',
+    body: [
+      { type: 'TextBlock', text: 'Ventas por sucursal actualizadas', weight: 'Bolder', size: 'Large', wrap: true },
+      { type: 'TextBlock', text: `Baratote Minorista · ${m}/${y} · cargado por ${por}`, isSubtle: true, spacing: 'None', wrap: true },
+      ...(sinNada ? [{ type: 'TextBlock', text: 'Sin alertas: todas las sucursales vendieron en los últimos días y ninguna viene cayendo.', wrap: true }] : []),
+      ...bloque('Sin venta en los últimos días', alertas.sinVentaReciente, (s) => s.sucursal, 'Attention'),
+      ...bloque('Vienen vendiendo menos', alertas.caidas, (s) => `${s.sucursal} ${fmtVar(s.variacion)}`, 'Warning'),
+      ...bloque('Vienen creciendo', alertas.crecen, (s) => `${s.sucursal} ${fmtVar(s.variacion)}`, 'Good'),
+    ],
+    actions: process.env.PORTAL_URL
+      ? [{ type: 'Action.OpenUrl', title: 'Ver sucursales', url: new URL('/app#sucursales', process.env.PORTAL_URL).href }]
+      : [],
+  };
+}
+
 // Devuelve { ok, detalle } — detalle explica el fallo para mostrarlo al admin.
-export async function enviarTeams(published, opciones) {
+export function enviarTeams(published, opciones) {
+  return enviarTarjeta(armarTarjeta(published, opciones));
+}
+
+export async function enviarTarjeta(tarjeta) {
   try {
     const res = await fetch(process.env.TEAMS_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         type: 'message',
-        attachments: [{ contentType: 'application/vnd.microsoft.card.adaptive', contentUrl: null, content: armarTarjeta(published, opciones) }],
+        attachments: [{ contentType: 'application/vnd.microsoft.card.adaptive', contentUrl: null, content: tarjeta }],
       }),
       signal: AbortSignal.timeout(8000),
     });

@@ -150,4 +150,47 @@ const conParcial = ultimasSemanas([...filasS, { sucursal: 'A', fecha: '2026-10-2
 assert.equal(conParcial.semanas[3].total, 90);
 assert.equal(conParcial.semanas[3].diasCargados, 3);
 
+// Listado maestro, objetivos, zonas y control de la planilla
+import { leerMaestro, leerObjetivos, zonaSugerida, avanceSucursales, resumenZonas, controlMaestro } from '../public/js/sucursales.js';
+import { fraccionPonderada } from '../public/js/calc.js';
+assert.equal(zonaSugerida('luque 2'), 'LUQUE');
+assert.equal(zonaSugerida('SAN LORENZO 12'), 'SAN LORENZO');
+assert.equal(zonaSugerida('MARIANO R. ALONSO N° 3'), 'MARIANO R. ALONSO');
+assert.equal(zonaSugerida('LAS RESIDENTAS'), 'LAS RESIDENTAS');
+assert.equal(zonaSugerida('KM 5'), 'KM'); // solo sugerencia: el admin la corrige
+
+const m = leerMaestro('Sucursal;Zona;Encargado\nLuque 1;luque;María González\n;X;Y\nABASTO;Asunción;\nLuque 1;Luque Centro;Ana');
+assert.deepEqual(m.filas, [{ sucursal: 'LUQUE 1', zona: 'LUQUE CENTRO', encargado: 'Ana' }, { sucursal: 'ABASTO', zona: 'ASUNCIÓN', encargado: '' }]);
+assert.equal(m.errores.length, 1); assert.equal(m.errores[0].linea, 3);
+assert.deepEqual(leerMaestro('LUQUE 1\tLUQUE\tMaría').filas, [{ sucursal: 'LUQUE 1', zona: 'LUQUE', encargado: 'María' }]); // sin títulos
+assert.deepEqual(leerMaestro('Nombre;Otra\nA;B'), { filas: [{ sucursal: 'A', zona: '', encargado: '' }], errores: [] }); // zona y encargado son opcionales
+assert.match(leerObjetivos('Sucursal;Cosa\nA;1').errores[0].motivo, /objetivo/);
+
+const o = leerObjetivos('Sucursal;Objetivo\nLUQUE 1;95.000.000\nABASTO;\nCOLON;abc\nKM 5;Gs. 40.000.000');
+assert.deepEqual(o.filas, [{ sucursal: 'LUQUE 1', objetivo: 95e6 }, { sucursal: 'KM 5', objetivo: 40e6 }]); // vacío se ignora
+assert.equal(o.errores.length, 1); assert.match(o.errores[0].motivo, /Objetivo inválido/);
+
+const resO = resumirMes([
+  { sucursal: 'LUQUE 1', fecha: '2026-10-01', monto: 30e6 },
+  { sucursal: 'LUQUE 1', fecha: '2026-10-10', monto: 20e6 },
+  { sucursal: 'LUQUE 1', fecha: '2026-10-11', monto: 1e6 }, // después del último día completo: no cuenta
+  { sucursal: 'ABASTO', fecha: '2026-10-05', monto: 10e6 },
+  { sucursal: 'CENTRAL', fecha: '2026-10-05', monto: 99e6 },
+]);
+const av = avanceSucursales(resO, [{ sucursal: 'LUQUE 1', objetivo: 100e6 }, { sucursal: 'NUEVA', objetivo: 10e6 }], '2026-10-10');
+const fr = fraccionPonderada('2026-10-10');
+assert.equal(av.get('LUQUE 1').vendido, 50e6);
+assert.equal(av.get('LUQUE 1').avance, 0.5);
+assert.equal(av.get('LUQUE 1').proyeccion, 50e6 / fr);
+assert.equal(av.get('LUQUE 1').proyeccionPct, 50e6 / fr / 100e6);
+assert.equal(av.get('NUEVA').vendido, 0); // con objetivo pero sin ventas
+assert.equal(av.has('ABASTO'), false);
+assert.equal(avanceSucursales(resO, [], '2026-10-10').size, 0);
+
+const zonas = resumenZonas(resO, [{ sucursal: 'LUQUE 1', zona: 'LUQUE' }]);
+assert.deepEqual(zonas.map((z) => [z.zona, z.total, z.sucursales.length]), [['LUQUE', 51e6, 1], ['SIN ZONA', 10e6, 1]]);
+
+const ctl = controlMaestro([{ sucursal: 'A' }, { sucursal: 'B' }, { sucursal: 'CENTRAL' }], ['A', 'C', 'CENTRAL']);
+assert.deepEqual(ctl, { faltan: ['B'], nuevas: ['C'] });
+
 console.log('sucursales: todas las pruebas pasaron');

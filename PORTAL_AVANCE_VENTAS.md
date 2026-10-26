@@ -228,6 +228,8 @@ Montos como enteros en guaraníes.
 | GET    | `/api/users`      | admin  | lista (sin hashes) |
 | POST   | `/api/users`      | admin  | alta |
 | PATCH  | `/api/users/:ci`  | admin  | `{activo}` o `{pin}` |
+| GET    | `/api/sucursales-config` | todos | listado maestro y objetivos del mes (ver 12.18) |
+| POST   | `/api/sucursales-config` | admin | reemplaza listado u objetivos del mes |
 
 El dashboard del comercial refresca solo cada 60 s (y al volver a la pestaña) para ver publicaciones nuevas sin recargar.
 
@@ -379,6 +381,30 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Dashboard: **saltos a secciones** fijos debajo de la barra superior (Proyección, Unidades, Clima, Gráficos, Comparativa, Ritmo). Pestañas de Sucursales fijas al hacer scroll, con aviso de que hay más a la derecha.
 - Hasta 600 px: las tablas de **Cargar ventas** y **Usuarios** se muestran como **tarjetas** (rótulo + valor, campos a lo ancho); las tablas de análisis ocultan columnas secundarias (`.opc`): ranking sin % / prom. / días, comparar sin diferencia, semanas y mismos días con las dos últimas columnas, ritmo sin días. Indicadores en dos columnas.
 - Objetivo: nada se sale de la pantalla a 375 px (verificado en todas las vistas).
+
+### 12.16 Mapa de calor más claro
+- Dos escalas a elegir: **Vs. lo habitual** (por defecto: cada día contra lo que esa sucursal vende normalmente ese día de la semana; verde = mejor, rojo = peor, gris = normal, ±40% ya es el color más fuerte) y **Monto vendido** (todas en la misma escala).
+- Leyenda arriba, encabezado con letra del día y número, separación entre semanas, columna de total. Al pasar el mouse o tocar un cuadrito, la barra de arriba explica el dato (monto y variación contra sus días iguales). El nombre abre el panel de la sucursal. Muestra 30 sucursales y un botón para ver todas.
+
+### 12.17 Dashboard y resumen
+- **Avance acumulado del mes** (Sucursales → Resumen): venta acumulada de Minorista día a día contra el ritmo para llegar al objetivo publicado (ponderado por día de la semana) y la proyección hasta fin de mes, con una frase de si va adelantada o atrasada.
+- **Mini gráfico** en cada tarjeta de unidad (Baratote, Fineglass, Fineboats) con el avance de las últimas publicaciones del mes.
+- **Vista rápida** para comerciales: proyección al cierre, avance contra el ritmo ideal, unidades en riesgo, sucursales sin venta reciente o que caen, y el clima del próximo fin de semana. Botón **Ver detalle** para el dashboard completo (se recuerda la elección).
+
+### 12.18 Listado de sucursales, zonas y objetivos
+- **Configurar sucursales** (admin, en Sucursales): planilla `sucursal, zona, encargado` (Blob `sucursales-maestro`) y planilla `sucursal, objetivo` por mes (Blob `sucursales-objetivos/AAAA-MM`). CSV o pegado de Excel; **Descargar planilla base** arma el CSV con las sucursales conocidas (la zona viene sugerida por el nombre sin el número final; los objetivos vacíos no se cargan). Antes de guardar se muestra un resumen y las sucursales que no coinciden con ninguna con ventas.
+- API: `GET /api/sucursales-config?mes=AAAA-MM` (todos) → `{ maestro, objetivos }`; `POST { tipo: 'maestro', filas }` o `{ tipo: 'objetivos', mes, filas }` (admin) reemplaza todo.
+- **Zonas** (nueva pestaña): total por zona, % del total, encargados y proyección contra el objetivo de la zona; se abre cada zona para ver sus sucursales. Sin listado cargado usa las zonas sugeridas y lo avisa.
+- **Ranking**: filtros por zona y encargado, columna de zona, y con objetivos cargados **Avance** (vendido hasta el último día completo / objetivo) y **Proyección** (ponderada por día de la semana, con color de estado) más el orden **Lejos del objetivo**. El panel de la sucursal muestra zona, encargado y su objetivo.
+- Al revisar una planilla de ventas, si hay listado, avisa qué sucursales del listado **faltan el último día** de la planilla (aclara si es lunes) y cuáles **no figuran** en el listado.
+
+### 12.19 Aviso de alertas por Teams
+- Al guardar la planilla de ventas por sucursal, la casilla **Avisar por Teams las alertas de sucursales** (aparece solo si Teams está configurado) manda una tarjeta con las sin venta reciente, las que caen y las que crecen del mes cargado, y botón a Sucursales (`PORTAL_URL`). `POST /api/sucursales` acepta `avisarTeams` y devuelve `teams: { ok, detalle }`.
+- Las notificaciones push en el teléfono quedan para más adelante.
+
+### 12.20 Exportar
+- Botones **Excel**, **PDF** y **Compartir** en Ranking, Zonas y Comparar días (Informe IA: PDF y Compartir).
+- Excel: CSV con `;` y BOM, que Excel en español abre directo; exporta todas las sucursales del filtro actual con zona, encargado y objetivo. PDF: el diálogo de imprimir del navegador ("Guardar como PDF"), en tema claro y sin menús ni botones. Compartir: el menú del teléfono (WhatsApp, Teams, correo) con un resumen en texto; en la compu se copia al portapapeles.
 
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).

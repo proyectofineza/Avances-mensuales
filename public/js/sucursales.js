@@ -3,7 +3,7 @@
 // Forma de cada fila (pensada para pasar tal cual a una tabla en Supabase):
 //   { sucursal: 'LUQUE 1', fecha: 'YYYY-MM-DD', monto: 1234567 }
 
-import { parseCorte } from './calc.js';
+import { parseCorte, fraccionPonderada, PESOS_MINORISTA } from './calc.js';
 
 // Sucursales que no son Minorista (CENTRAL es venta Mayorista): se muestran aparte.
 export const NO_MINORISTA = ['CENTRAL'];
@@ -331,4 +331,103 @@ export function resumirMes(filas, excluir = NO_MINORISTA) {
     .sort((a, b) => b.total - a.total);
   const dias = [...porDia.entries()].map(([fecha, monto]) => ({ fecha, monto })).sort((a, b) => a.fecha.localeCompare(b.fecha));
   return { total, totalExcluido, sucursales, dias };
+}
+
+// ---- Listado maestro (sucursal, zona, encargado) y objetivos por sucursal ----
+
+// Zona sugerida para la planilla base: el nombre sin el número final ("LUQUE 2" → "LUQUE").
+export function zonaSugerida(nombre) {
+  const s = normalizarSucursal(nombre).replace(/(\s+(N[°º]?\s*)?\d+[A-Z]?)+$/, '').trim();
+  return s || normalizarSucursal(nombre);
+}
+
+// Lee una planilla con columna de sucursal y las columnas pedidas.
+// columnas: [{ clave, re, numero? }]. Sin títulos, se toman en orden: sucursal y luego las pedidas.
+function leerTabla(texto, columnas) {
+  const rows = celdas(texto);
+  if (!rows.length) return { filas: [], errores: [{ linea: 0, motivo: 'La planilla está vacía.' }] };
+  const cab = rows[0].map((c) => c.toLowerCase());
+  const tieneCabecera = /sucursal|local|tienda|nombre/.test(cab[0] || '') || cab.some((c) => /sucursal/.test(c));
+  let idx = { sucursal: 0 };
+  columnas.forEach((c, i) => { idx[c.clave] = i + 1; });
+  if (tieneCabecera) {
+    idx = { sucursal: cab.findIndex((c) => /sucursal|local|tienda|nombre/.test(c)) };
+    for (const c of columnas) idx[c.clave] = cab.findIndex((x) => c.re.test(x));
+    const falta = columnas.filter((c) => c.obligatoria && idx[c.clave] < 0);
+    if (idx.sucursal < 0 || falta.length) {
+      return { filas: [], errores: [{ linea: 1, motivo: `No encontré las columnas. Tiene que tener sucursal${columnas.filter((c) => c.obligatoria).map((c) => ', ' + c.clave).join('')}.` }] };
+    }
+  }
+  const filas = new Map();
+  const errores = [];
+  (tieneCabecera ? rows.slice(1) : rows).forEach((r, k) => {
+    const linea = k + (tieneCabecera ? 2 : 1);
+    const sucursal = normalizarSucursal(r[idx.sucursal]);
+    if (!sucursal) return errores.push({ linea, motivo: 'Falta el nombre de la sucursal.' });
+    const fila = { sucursal };
+    for (const c of columnas) {
+      const v = idx[c.clave] >= 0 ? r[idx[c.clave]] : '';
+      if (c.numero && !String(v ?? '').trim()) return; // sin valor (planilla base sin completar): se ignora
+      if (c.numero) {
+        const n = parseMonto(v);
+        if (!n) return errores.push({ linea, motivo: `${c.clave[0].toUpperCase() + c.clave.slice(1)} inválido: "${v ?? ''}".` });
+        fila[c.clave] = n;
+      } else fila[c.clave] = String(v ?? '').trim().replace(/\s+/g, ' ').slice(0, 60);
+    }
+    filas.set(sucursal, fila); // si se repite, gana la última
+  });
+  return { filas: [...filas.values()], errores };
+}
+
+export function leerMaestro(texto) {
+  const r = leerTabla(texto, [{ clave: 'zona', re: /zona|regi[oó]n/ }, { clave: 'encargado', re: /encargad|responsable|gerente|supervisor/ }]);
+  r.filas.forEach((f) => { f.zona = f.zona.toUpperCase(); });
+  return r;
+}
+
+export function leerObjetivos(texto) {
+  return leerTabla(texto, [{ clave: 'objetivo', re: /objetivo|meta|presupuesto/, numero: true, obligatoria: true }]);
+}
+
+// Avance de cada sucursal contra su objetivo, con la proyección ponderada del mes
+// (la misma curva de días de la semana que Minorista). hasta = último día completo.
+// Devuelve Map sucursal → { objetivo, avance, proyeccion, proyeccionPct }.
+export function avanceSucursales(res, objetivos, hasta, pesos = PESOS_MINORISTA) {
+  const out = new Map();
+  if (!objetivos?.length || !hasta) return out;
+  const frac = fraccionPonderada(hasta, pesos) || 0;
+  const porNombre = new Map(res.sucursales.map((s) => [s.sucursal, s]));
+  for (const o of objetivos) {
+    const s = porNombre.get(o.sucursal);
+    // Solo lo vendido hasta el último día completo, para no castigar un día a medio cargar.
+    const vendido = s ? Object.entries(s.dias).reduce((a, [f, v]) => (f <= hasta ? a + v : a), 0) : 0;
+    const proyeccion = frac > 0 ? vendido / frac : vendido;
+    out.set(o.sucursal, { objetivo: o.objetivo, vendido, avance: vendido / o.objetivo, proyeccion, proyeccionPct: proyeccion / o.objetivo });
+  }
+  return out;
+}
+
+// Totales por zona según el listado maestro. Las que no figuran van a "SIN ZONA".
+export function resumenZonas(res, maestro = []) {
+  const info = new Map(maestro.map((m) => [m.sucursal, m]));
+  const zonas = new Map();
+  for (const s of res.sucursales) {
+    const zona = info.get(s.sucursal)?.zona || 'SIN ZONA';
+    const z = zonas.get(zona) || { zona, total: 0, sucursales: [] };
+    z.total += s.total;
+    z.sucursales.push(s);
+    zonas.set(zona, z);
+  }
+  return [...zonas.values()].sort((a, b) => (a.zona === 'SIN ZONA') - (b.zona === 'SIN ZONA') || b.total - a.total);
+}
+
+// Diferencias entre el listado maestro y lo que trae una planilla de ventas.
+export function controlMaestro(maestro, nombresPlanilla, excluir = NO_MINORISTA) {
+  const enPlanilla = new Set(nombresPlanilla);
+  const enMaestro = new Set(maestro.map((m) => m.sucursal));
+  const fuera = new Set(excluir);
+  return {
+    faltan: [...enMaestro].filter((n) => !enPlanilla.has(n) && !fuera.has(n)).sort(),
+    nuevas: [...enPlanilla].filter((n) => !enMaestro.has(n) && !fuera.has(n)).sort(),
+  };
 }
