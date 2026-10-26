@@ -361,6 +361,13 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Comerciales: ven el análisis publicado con formato (títulos `#`, viñetas `-` o `1.`, **negrita**), quién y cuándo lo publicó, y un aviso si se cargaron datos después.
 - `GET /api/informe?mes=AAAA-MM` (todos), `POST /api/informe { mes, texto }` y `DELETE /api/informe?mes=` (admin). Blobs `informes/AAAA-MM` → `{ mes, texto, publicado, por, basadoEn }`. Máximo 20.000 caracteres.
 
+### 12.13 Diseño oscuro "vidrio" con animaciones
+- Reemplaza el sistema visual de la sección 7. Tema **oscuro por defecto** con tarjetas translúcidas (fondo con brillo suave, borde fino, desenfoque), radios de 20 px y tipografía **Plus Jakarta Sans**. **Tema claro** opcional con el botón del menú; se guarda en el navegador (`localStorage` `tema`) y se aplica antes de pintar.
+- Todos los colores salen de variables CSS (`--vidrio`, `--text`, `--c-may`, `--c-min`, `--c-fgl`, `--c-fbt`, `--calor-*`, etc.) definidas para `:root` (oscuro) y `html[data-tema="claro"]`.
+- **Menú lateral** (reemplaza las pestañas del encabezado): logo, grupos *Tableros* (Dashboard, Sucursales) y *Administración* (Cargar ventas, Usuarios, solo admin), botón de tema y tarjeta de usuario con iniciales y botón de salir. En pantallas de hasta 900 px se esconde y se abre con ☰ desde una barra superior.
+- Indicadores con ícono en un recuadro del color de la unidad y un brillo suave.
+- **Animaciones**: tarjetas que aparecen con un leve desplazamiento escalonado; barras que crecen; columnas que suben; la dona se dibuja en círculo; el medidor de la proyección se llena; los números grandes cuentan hasta su valor; el panel de detalle entra desde el costado; elevación al pasar el mouse por tarjetas y filas. Todo se desactiva con "reducir movimiento" del sistema.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

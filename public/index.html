@@ -7,19 +7,23 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#0B3F86">
+  <meta name="theme-color" content="#0E1217">
+  <script>
+    // Mismo tema que eligió el usuario dentro del portal (oscuro por defecto).
+    try { if (localStorage.getItem('tema') === 'claro') document.documentElement.dataset.tema = 'claro'; } catch (e) { /* sin almacenamiento */ }
+  </script>
   <meta name="apple-mobile-web-app-title" content="Ventas Fineza">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body class="login-page">
   <main class="login">
-    <img class="login-logo" src="img/fineza.png" alt="Fineza">
+    <span class="login-logo-chip"><img class="login-logo" src="img/fineza.png" alt="Fineza"></span>
     <p class="login-sub">Portal de avance de ventas</p>
 
     <form class="login-card" id="login-form" novalidate>

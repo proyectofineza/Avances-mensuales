@@ -16,15 +16,27 @@ const ROL_TEXTO = { admin: 'Administrador', comercial: 'Comercial' };
 const CAL_CORTO = { 'lun-dom': 'lun a lun', 'lun-vie': 'lun a vie' };
 const CAL_LARGO = { 'lun-dom': 'lunes a lunes', 'lun-vie': 'lunes a viernes' };
 
-// Color de cada unidad: fuerte = venta real, claro = proyección.
+// Color de cada unidad: fuerte = venta real, claro = proyección (el mismo color, translúcido,
+// para que funcione en el tema oscuro y en el claro). Los valores viven en el CSS.
+const tono = (fuerte) => ({ fuerte, claro: `color-mix(in srgb, ${fuerte} 38%, transparent)` });
 const COLOR = {
-  bar: { fuerte: '#DC2626', claro: '#FECACA' },
-  may: { fuerte: '#DC2626', claro: '#FECACA' },
-  min: { fuerte: '#F59E0B', claro: '#FDE68A' },
-  fgl: { fuerte: '#0D9488', claro: '#99F6E4' },
-  fbt: { fuerte: '#1D4ED8', claro: '#BFD0F7' },
-  total: { fuerte: '#111827', claro: '#D1D5DB' },
+  bar: tono('var(--c-may)'),
+  may: tono('var(--c-may)'),
+  min: tono('var(--c-min)'),
+  fgl: tono('var(--c-fgl)'),
+  fbt: tono('var(--c-fbt)'),
+  total: tono('var(--text)'),
 };
+
+// Íconos de línea para los indicadores (mismo trazo que el menú).
+const ICONOS = {
+  venta: '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
+  objetivo: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
+  avance: '<path d="M4 18l6-6 4 4 6-8"/><path d="M14 8h6v6"/>',
+  tienda: '<path d="M3 9l1.6-5h14.8L21 9"/><path d="M4 9v11h16V9"/><path d="M9.5 20v-5.5h5V20"/>',
+  calendario: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',
+};
+const icono = (nombre) => `<span class="kpi-ico"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICONOS[nombre]}</svg></span>`;
 
 const state = {
   user: null,
@@ -45,6 +57,9 @@ async function init() {
   }
   $('user-name').textContent = state.user.nombre;
   $('user-rol').textContent = ROL_TEXTO[state.user.rol] || state.user.rol;
+  $('user-avatar').textContent = state.user.nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
+  setupTema();
+  setupMenu();
   $('tabs').hidden = false;
   document.querySelectorAll('.solo-admin').forEach((el) => { el.hidden = !isAdmin(); });
 
@@ -72,6 +87,65 @@ async function init() {
 
 const isAdmin = () => state.user?.rol === 'admin';
 
+// ---------- Tema y menú ----------
+
+function setupTema() {
+  const pintar = () => {
+    const claro = document.documentElement.dataset.tema === 'claro';
+    $('tema-txt').textContent = claro ? 'Tema oscuro' : 'Tema claro';
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', claro ? '#EEF1F5' : '#0E1217');
+  };
+  $('tema-btn').addEventListener('click', () => {
+    const claro = document.documentElement.dataset.tema !== 'claro';
+    if (claro) document.documentElement.dataset.tema = 'claro';
+    else delete document.documentElement.dataset.tema;
+    guardarPref('tema', claro ? 'claro' : 'oscuro');
+    pintar();
+  });
+  pintar();
+}
+
+// En celular el menú lateral se abre y cierra con el botón del encabezado.
+function setupMenu() {
+  const abrir = (si) => {
+    document.body.classList.toggle('menu-abierto', si);
+    $('sidebar-fondo').hidden = !si;
+    $('menu-btn').setAttribute('aria-expanded', String(si));
+  };
+  $('menu-btn').addEventListener('click', () => abrir(!document.body.classList.contains('menu-abierto')));
+  $('sidebar-fondo').addEventListener('click', () => abrir(false));
+  $('tabs').addEventListener('click', (e) => { if (e.target.closest('.tab')) abrir(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('menu-abierto')) abrir(false); });
+}
+
+const TITULO_VISTA = { ventas: 'Cargar ventas', usuarios: 'Usuarios', dashboard: 'Dashboard', sucursales: 'Sucursales' };
+
+// Números grandes que "cuentan" hasta su valor al aparecer (respeta "reducir movimiento").
+const sinMovimiento = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+function contarNumeros(raiz) {
+  if (sinMovimiento()) return;
+  raiz.querySelectorAll('[data-contar]').forEach((el) => {
+    const texto = el.textContent;
+    const m = /(-?\d{1,3}(?:\.\d{3})*|-?\d+)(,\d+)?/.exec(texto);
+    if (!m) return;
+    const decimales = m[2] ? m[2].length - 1 : 0;
+    const final = Number(m[1].replace(/\./g, '') + (m[2] ? '.' + m[2].slice(1) : ''));
+    if (!Number.isFinite(final) || final === 0) return;
+    const antes = texto.slice(0, m.index), despues = texto.slice(m.index + m[0].length);
+    const fmt = (v) => v.toLocaleString('es-PY', { minimumFractionDigits: decimales, maximumFractionDigits: decimales });
+    const inicio = performance.now(), dur = 900;
+    const paso = (t) => {
+      const p = Math.min((t - inicio) / dur, 1);
+      const e = 1 - Math.pow(1 - p, 3);
+      el.textContent = antes + fmt(final * e) + despues;
+      if (p < 1) requestAnimationFrame(paso);
+      else el.textContent = texto;
+    };
+    requestAnimationFrame(paso);
+  });
+}
+
 const VISTAS = ['ventas', 'usuarios', 'dashboard', 'sucursales'];
 
 function currentView() {
@@ -85,7 +159,11 @@ function route() {
   const view = currentView();
   if (location.hash.slice(1) !== view) history.replaceState(null, '', `#${view}`);
   for (const v of VISTAS) $(`view-${v}`).hidden = v !== view;
-  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === view));
+  document.querySelectorAll('.tab').forEach((t) => {
+    t.classList.toggle('active', t.dataset.view === view);
+    if (t.dataset.view === view) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
+  });
+  $('topbar-titulo').textContent = TITULO_VISTA[view] || '';
   if (view === 'ventas') loadVentas();
   if (view === 'usuarios') loadUsuarios();
   if (view === 'dashboard') refreshDashboard(true);
@@ -858,6 +936,7 @@ function renderSucursales() {
   else if (suc.sub === 'informe') { el.innerHTML = informeHtml(); if (suc.informe.mes !== d.mes) cargarInforme(d.mes); }
   else if (suc.sub === 'alertas') el.innerHTML = alertasHtml();
   else el.innerHTML = resumenSucHtml();
+  contarNumeros(el);
 }
 
 function resumenSucHtml() {
@@ -878,7 +957,7 @@ function resumenSucHtml() {
     const wd = new Date(Date.UTC(c.y, c.m - 1, dd)).getUTCDay();
     const finde = wd === 5 || wd === 6 || wd === 0;
     cols.push(`<div class="sd-col" title="${DIA_CORTO[wd]} ${fmtFecha(fecha)}: ${v === undefined ? 'sin datos' : fmtMillones(v)}">
-      <div style="height:${v ? ((v / max) * 100).toFixed(1) : 0}%;background:${finde ? COLOR.min.fuerte : '#FCD9A0'}"></div></div>`);
+      <div style="height:${v ? ((v / max) * 100).toFixed(1) : 0}%;background:${finde ? COLOR.min.fuerte : 'var(--dia-normal)'}"></div></div>`);
     labels.push(`<span class="${finde ? 'finde' : ''}">${dd}</span>`);
   }
 
@@ -890,19 +969,19 @@ function resumenSucHtml() {
 
   return `
     <div class="kpis">
-      <div class="card kpi" style="border-top:4px solid ${COLOR.min.fuerte}">
-        <span class="kpi-label">Venta Minorista del mes</span>
-        <span class="kpi-value">${fmtMillones(res.total)}</span>
+      <div class="card kpi" style="--acento:var(--c-min)">
+        <div class="kpi-top">${icono('venta')}<span class="kpi-label">Venta Minorista del mes</span></div>
+        <span class="kpi-value" data-contar>${fmtMillones(res.total)}</span>
         <span class="kpi-sub">${diasCargados} día${diasCargados === 1 ? '' : 's'} cargado${diasCargados === 1 ? '' : 's'} · hasta el ${fmtFecha(res.dias.at(-1).fecha)}</span>
       </div>
-      <div class="card kpi" style="border-top:4px solid #1D4ED8">
-        <span class="kpi-label">Sucursales con venta</span>
-        <span class="kpi-value">${res.sucursales.length}</span>
+      <div class="card kpi" style="--acento:var(--c-fbt)">
+        <div class="kpi-top">${icono('tienda')}<span class="kpi-label">Sucursales con venta</span></div>
+        <span class="kpi-value" data-contar>${res.sucursales.length}</span>
         <span class="kpi-sub">Promedio ${fmtMillones(res.total / Math.max(res.sucursales.length, 1))} por sucursal</span>
       </div>
-      <div class="card kpi" style="border-top:4px solid #0D9488">
-        <span class="kpi-label">Promedio por día</span>
-        <span class="kpi-value">${fmtMillones(res.total / Math.max(diasCargados, 1))}</span>
+      <div class="card kpi" style="--acento:var(--c-fgl)">
+        <div class="kpi-top">${icono('calendario')}<span class="kpi-label">Promedio por día</span></div>
+        <span class="kpi-value" data-contar>${fmtMillones(res.total / Math.max(diasCargados, 1))}</span>
         <span class="kpi-sub">Mejor día: ${DIA_CORTO[new Date(`${mejor.fecha}T12:00:00Z`).getUTCDay()]} ${fmtFecha(mejor.fecha)} · ${fmtMillones(mejor.monto)}</span>
       </div>
     </div>
@@ -999,12 +1078,6 @@ function renderRankingTabla() {
 
 // ---- Mapa de calor: sucursales × días, cada sucursal en su propia escala ----
 
-// Mezcla de dos colores hex (t entre 0 y 1).
-function mezclar(a, b, t) {
-  const n = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
-  return `rgb(${[0, 1, 2].map((i) => Math.round(n(a, i) + (n(b, i) - n(a, i)) * t)).join(',')})`;
-}
-
 function calorHtml() {
   const res = suc.res;
   const fechas = res.dias.map((x) => x.fecha);
@@ -1013,7 +1086,7 @@ function calorHtml() {
     const max = Math.max(...Object.values(s.dias), 1);
     const celdas = fechas.map((f) => {
       const v = s.dias[f] || 0;
-      const color = v ? mezclar('#FFF1DC', '#C2410C', Math.min(v / max, 1)) : '#E5E7EB';
+      const color = v ? `color-mix(in srgb, var(--calor-alto) ${(Math.min(v / max, 1) * 100).toFixed(0)}%, var(--calor-bajo))` : 'var(--sin-venta)';
       return `<i style="background:${color}" title="${esc(s.sucursal)} · ${DIA_CORTO[wdDe(f)]} ${fmtFecha(f)}: ${v ? fmtMillones(v) : 'sin venta'}"></i>`;
     }).join('');
     return `<div class="calor-fila" data-suc="${esc(s.sucursal)}" role="button" tabindex="0"><span class="calor-nombre">${esc(s.sucursal)}</span>${celdas}</div>`;
@@ -1025,7 +1098,7 @@ function calorHtml() {
           <h2>Mapa de calor</h2>
           <p class="muted small">Cada fila es una sucursal (de la que más vende a la que menos) y cada columna un día. Cada sucursal en su propia escala: más oscuro es su mejor día y gris, sin venta. Tocá una fila para ver el detalle.</p>
         </div>
-        <div class="calor-leyenda"><i style="background:#E5E7EB"></i>sin venta <i style="background:#FFF1DC"></i>bajo <i style="background:#C2410C"></i>su mejor día</div>
+        <div class="calor-leyenda"><i style="background:var(--sin-venta)"></i>sin venta <i style="background:var(--calor-bajo)"></i>bajo <i style="background:var(--calor-alto)"></i>su mejor día</div>
       </div>
       <div class="calor-wrap">
         <div class="calor" style="--dias:${fechas.length}">
@@ -1255,6 +1328,7 @@ async function renderComparacion() {
   // Mantener el foco y el cursor en el buscador mientras se escribe.
   const buscando = document.activeElement?.id === 'cmp-buscar' ? document.activeElement.selectionStart : null;
   el.innerHTML = html;
+  if (buscando === null) contarNumeros(el); // al escribir en el buscador no se repite la animación
   if (buscando !== null) {
     const b = $('cmp-buscar');
     b.focus();
@@ -1308,8 +1382,8 @@ function comparacionParHtml(r) {
     </tr>`).join('');
   return `
     <div class="cmp-tot">
-      <div><span>${etiquetaDia(r.fechaA)}</span><strong>${fmtMillones(t.a)}</strong><small>${r.conVentaA} sucursales con venta</small>${sinDato(r.fechaA, t.a)}</div>
-      <div><span>${etiquetaDia(r.fechaB)}</span><strong>${fmtMillones(t.b)}</strong><small>${r.conVentaB} sucursales con venta</small>${sinDato(r.fechaB, t.b)}</div>
+      <div><span>${etiquetaDia(r.fechaA)}</span><strong data-contar>${fmtMillones(t.a)}</strong><small>${r.conVentaA} sucursales con venta</small>${sinDato(r.fechaA, t.a)}</div>
+      <div><span>${etiquetaDia(r.fechaB)}</span><strong data-contar>${fmtMillones(t.b)}</strong><small>${r.conVentaB} sucursales con venta</small>${sinDato(r.fechaB, t.b)}</div>
       <div class="cmp-tot-var"><span>Variación</span><strong class="${varClase(t.variacion)}">${fmtVar(t.variacion)}</strong><small>${t.diferencia >= 0 ? '+' : '−'}${fmtMillones(Math.abs(t.diferencia))}</small></div>
     </div>
     ${dejaron || nuevas ? `<p class="muted small" style="margin:0 0 12px">${dejaron ? `${dejaron} sucursal${dejaron === 1 ? '' : 'es'} vendieron el ${fmtDiaMes(r.fechaB)} y no el ${fmtDiaMes(r.fechaA)}. ` : ''}${nuevas ? `${nuevas} vendieron el ${fmtDiaMes(r.fechaA)} y no el ${fmtDiaMes(r.fechaB)}.` : ''}</p>` : ''}
@@ -1415,7 +1489,7 @@ function abrirPanel(nombre) {
     const v = s.dias[x.fecha] || 0;
     const wd = wdDe(x.fecha);
     return `<div class="sdd-dia" title="${DIA_CORTO[wd]} ${fmtFecha(x.fecha)}: ${v ? fmtMillones(v) : 'sin venta'}">
-      <div class="sdd-bar"><div style="height:${((v / maxDia) * 100).toFixed(1)}%;background:${esFinde(wd) ? COLOR.min.fuerte : '#FCD9A0'}"></div></div>
+      <div class="sdd-bar"><div style="height:${((v / maxDia) * 100).toFixed(1)}%;background:${esFinde(wd) ? COLOR.min.fuerte : 'var(--dia-normal)'}"></div></div>
       <span class="${esFinde(wd) ? 'finde' : ''}">${Number(x.fecha.slice(8))}</span>
       <small>${v ? fmtM1(v) : '0'}</small>
     </div>`;
@@ -1521,7 +1595,7 @@ function unidadCard(titulo, calendario, c, color, manual, extra = '') {
         </div>
         ${chipEstado(c.proyeccionPct)}
       </div>
-      <div class="u-big"><strong style="color:${color.fuerte}">${fmtPct(c.avance)}</strong><span>de avance · proyecta ${fmtPct(c.proyeccionPct)}${c.referencial ? ' (referencial)' : ''}</span></div>
+      <div class="u-big"><strong style="color:${color.fuerte}" data-contar>${fmtPct(c.avance)}</strong><span>de avance · proyecta ${fmtPct(c.proyeccionPct)}${c.referencial ? ' (referencial)' : ''}</span></div>
       ${bar(c.avance, c.proyeccionPct, color)}
       <div class="u-stats">
         <div><span>Real</span><strong>${fmtMillones(c.real)}</strong></div>
@@ -1587,7 +1661,7 @@ function composicionHtml(r) {
     acc += t.real > 0 ? (r.unidades[u.id].real / t.real) * 100 : 0;
     return `${COLOR[u.id].fuerte} ${desde.toFixed(2)}% ${acc.toFixed(2)}%`;
   }).join(', ');
-  const fondo = t.real > 0 ? `conic-gradient(${stops})` : '#EEF0F3';
+  const fondo = t.real > 0 ? `conic-gradient(${stops})` : 'var(--track)';
   const part = (v) => (t.real > 0 ? fmtPct(v / t.real) : '—');
   // color puede ser una lista (Baratote muestra los colores de sus dos canales).
   const item = (nombre, v, color, sub = false) => `
@@ -1601,8 +1675,9 @@ function composicionHtml(r) {
       <h2>Composición de la venta</h2>
       <p class="muted small" style="margin:4px 0 0">Venta acumulada al corte por unidad y canal.</p>
       <div class="donut-wrap">
-        <div class="donut" style="background:${fondo}">
-          <div class="donut-hole"><strong>${fmtMillones(t.real)}</strong><span>venta total</span></div>
+        <div class="donut-box">
+          <div class="donut" style="background:${fondo}"></div>
+          <div class="donut-hole"><strong data-contar>${fmtMillones(t.real)}</strong><span>venta total</span></div>
         </div>
         <ul class="donut-legend">
           ${item('Baratote', r.baratote.real, [COLOR.may.fuerte, COLOR.min.fuerte])}
@@ -1650,8 +1725,8 @@ function comparativaHtml(r, corte) {
           <span>vs mes ant. ${varHtml(c.varAnt)} · vs año ant. ${varHtml(c.varAa)}</span>
         </div>
         ${b('Proyección', c.proyeccion, color.fuerte)}
-        ${b('Mes ant.', c.ant, '#94A3B8')}
-        ${b('Año ant.', c.aa, '#CBD5E1')}
+        ${b('Mes ant.', c.ant, 'var(--cmp-ant)')}
+        ${b('Año ant.', c.aa, 'var(--cmp-aa)')}
       </div>`;
   };
   return `
@@ -1667,16 +1742,14 @@ function comparativaHtml(r, corte) {
 }
 
 // Medidor semicircular 0–120%; la marca blanca es el objetivo (100%).
-const GAUGE_COLOR = { ok: '#60A5FA', warn: '#FBBF24', risk: '#F87171' };
-
+// El arco se dibuja en CSS desde 0 hasta --ang (animado); el color sale del estado.
 function gauge(p, clase) {
   const ang = (Math.min(Math.max(p, 0), 1.2) / 1.2) * 180;
   return `
-    <div class="gauge" role="img" aria-label="Proyección ${fmtPct(p)} del objetivo">
-      <div class="gauge-arc" style="background:conic-gradient(from 270deg, ${GAUGE_COLOR[clase]} 0deg ${ang.toFixed(1)}deg, rgba(255,255,255,.14) ${ang.toFixed(1)}deg 180deg, transparent 180deg 360deg)"></div>
-      <div class="gauge-hole"></div>
+    <div class="gauge gauge-${clase}" role="img" aria-label="Proyección ${fmtPct(p)} del objetivo">
+      <div class="gauge-arc" style="--ang:${ang.toFixed(1)}deg"></div>
       <div class="gauge-target"></div>
-      <div class="gauge-text"><strong>${fmtPct(p)}</strong><span>del objetivo</span></div>
+      <div class="gauge-text"><strong data-contar>${fmtPct(p)}</strong><span>del objetivo</span></div>
     </div>`;
 }
 
@@ -1712,7 +1785,7 @@ function proyeccionHtml(r, corte) {
       <div class="proy-top">
         <div class="proy-main">
           <span class="proy-label">Proyección al cierre · ${esc(nombreMes(corte))}</span>
-          <div class="proy-amount">${fmtMillones(t.proyeccion)}</div>
+          <div class="proy-amount" data-contar>${fmtMillones(t.proyeccion)}</div>
           <div class="proy-state"><span class="chip ${est.clase}">${est.texto}</span><span>Objetivo ${fmtMillones(t.objetivo)}</span></div>
           <p class="proy-brecha">${brechaTxt}</p>
           <p class="proy-ritmo">Para llegar hacen falta <b>${fmtMillones(t.necesarioDia)}</b> por día · hoy el promedio es <b>${fmtMillones(t.promedioDia)}</b> por día</p>
@@ -1728,7 +1801,7 @@ function proyeccionHtml(r, corte) {
         ${unidad('Mayorista', r.unidades.may, COLOR.may.fuerte, true)}
         ${unidad('Minorista', r.unidades.min, COLOR.min.fuerte, true)}
         ${unidad('Fineglass', r.unidades.fgl, COLOR.fgl.fuerte)}
-        ${unidad('Fineboats', r.unidades.fbt, '#60A5FA')}
+        ${unidad('Fineboats', r.unidades.fbt, COLOR.fbt.fuerte)}
       </div>
       <p class="proy-nota">${r.unidades.min.ponderada ? 'Minorista se proyecta según el peso de cada día de la semana (el fin de semana pesa más). ' : ''}La proyección de Fineboats es referencial: sus ventas no siguen un ritmo diario. Igual suma en la proyección total.</p>
     </section>`;
@@ -1863,19 +1936,19 @@ function renderDashboard() {
     ${proyeccionHtml(r, p.corte)}
 
     <div class="kpis">
-      <div class="card kpi" style="border-top:4px solid #1D4ED8">
-        <span class="kpi-label">Venta acumulada</span>
-        <span class="kpi-value">${fmtMillones(t.real)}</span>
+      <div class="card kpi" style="--acento:var(--c-fbt)">
+        <div class="kpi-top">${icono('venta')}<span class="kpi-label">Venta acumulada</span></div>
+        <span class="kpi-value" data-contar>${fmtMillones(t.real)}</span>
         <span class="kpi-sub">Al corte del ${fmtFecha(p.corte)}</span>
       </div>
-      <div class="card kpi" style="border-top:4px solid #0D9488">
-        <span class="kpi-label">Objetivo del mes</span>
-        <span class="kpi-value">${fmtMillones(t.objetivo)}</span>
+      <div class="card kpi" style="--acento:var(--c-fgl)">
+        <div class="kpi-top">${icono('objetivo')}<span class="kpi-label">Objetivo del mes</span></div>
+        <span class="kpi-value" data-contar>${fmtMillones(t.objetivo)}</span>
         <span class="kpi-sub">Faltan ${fmtMillones(t.faltante)}</span>
       </div>
-      <div class="card kpi" style="border-top:4px solid #F59E0B">
-        <span class="kpi-label">Avance sobre objetivo</span>
-        <span class="kpi-value">${fmtPct(t.avance)}</span>
+      <div class="card kpi" style="--acento:var(--c-min)">
+        <div class="kpi-top">${icono('avance')}<span class="kpi-label">Avance sobre objetivo</span></div>
+        <span class="kpi-value" data-contar>${fmtPct(t.avance)}</span>
         <span class="kpi-sub">Ritmo ideal a hoy ${fmtPct(t.ritmoIdeal)}</span>
       </div>
     </div>
@@ -1886,8 +1959,8 @@ function renderDashboard() {
       ${unidadCard('Fineboats', 'lun-dom', u.fbt, COLOR.fbt, r.manual)}
     </div>
     <div class="leyenda">
-      <span><i class="sw" style="background:#4B5563"></i>Venta real (color de la unidad)</span>
-      <span><i class="sw" style="background:#D1D5DB"></i>Proyección al cierre (tono claro)</span>
+      <span><i class="sw" style="background:var(--text-2)"></i>Venta real (color de la unidad)</span>
+      <span><i class="sw" style="background:var(--track-fuerte)"></i>Proyección al cierre (tono claro)</span>
       <span><i class="sw target"></i>Objetivo (100%)</span>
     </div>
 
@@ -1914,6 +1987,7 @@ function renderDashboard() {
         <p class="nota">Necesario/día en <span class="necesario-alto">naranja</span>: hay que vender por día más que el promedio actual para llegar al objetivo. En <span class="necesario-ok">azul</span>: con el ritmo actual alcanza.</p>
       </div>
     </div>`;
+  contarNumeros(el);
 }
 
 init();
