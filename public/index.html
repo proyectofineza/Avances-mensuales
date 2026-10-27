@@ -87,7 +87,9 @@
     const error = document.getElementById('login-error');
     const btn = document.getElementById('login-btn');
 
-    const destino = (rol) => (rol === 'admin' ? 'app.html#ventas' : 'app.html#dashboard');
+    // Si llegó desde un link a una sección (por ejemplo el aviso de Teams), vuelve a esa sección.
+    const pedida = ['dashboard', 'sucursales', 'ventas', 'usuarios'].find((v) => location.hash === `#${v}`);
+    const destino = (rol) => (pedida ? `app.html#${pedida}` : rol === 'admin' ? 'app.html#ventas' : 'app.html#dashboard');
 
     me().then((u) => location.replace(destino(u.rol))).catch(() => {});
 

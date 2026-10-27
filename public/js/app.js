@@ -53,7 +53,7 @@ async function init() {
   try {
     state.user = await API.me();
   } catch {
-    location.replace('index.html');
+    location.replace(`index.html${location.hash}`); // después de ingresar vuelve a la misma sección
     return;
   }
   $('user-name').textContent = state.user.nombre;

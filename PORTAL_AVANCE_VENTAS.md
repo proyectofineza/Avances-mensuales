@@ -415,6 +415,10 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Antes de publicar se pide confirmar si la fecha de corte es anterior a ayer o posterior a hoy, o si las ventas son iguales a las de la publicación anterior con otra fecha.
 - La tarjeta de Teams dice **"Ventas hasta el DD/MM/AAAA · publicado el DD/MM/AAAA HH:MM por …"**, para no confundir la fecha de corte con el día de publicación.
 
+### 12.22 Link al reporte en Teams
+- Las tarjetas de Teams traen el link **"Ver el reporte"** (al dashboard) o **"Ver sucursales"**, como texto en la tarjeta y como botón. La dirección sale de `PORTAL_URL` si está cargada; si no, de la dirección principal del sitio que da Netlify (`URL`) o de la del pedido, así que funciona sin configurar nada (`enlacePortal` en `netlify/lib/teams.mjs`).
+- Si quien abre el link no tiene sesión, después de ingresar vuelve a esa sección (`index.html#sección`).
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

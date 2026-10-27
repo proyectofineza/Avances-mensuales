@@ -5,8 +5,23 @@ import {
 
 export const teamsConfigurado = () => Boolean(process.env.TEAMS_WEBHOOK_URL);
 
-export function armarTarjeta(published, { prueba = false } = {}) {
+// Link a una sección del portal. Base: PORTAL_URL si está cargada; si no, la dirección
+// principal del sitio que da Netlify (URL) o la de la solicitud (origen).
+export function enlacePortal(seccion, origen) {
+  const base = process.env.PORTAL_URL || process.env.URL || origen;
+  if (!base) return null;
+  try { return new URL(`/app.html#${seccion}`, base).href; } catch { return null; }
+}
+
+// Link visible en el texto (por si la app de Teams no muestra los botones) y botón.
+const conEnlace = (url, titulo) => (url ? {
+  body: [{ type: 'TextBlock', text: `[${titulo} →](${url})`, wrap: true, spacing: 'Medium' }],
+  actions: [{ type: 'Action.OpenUrl', title: titulo, url }],
+} : { body: [], actions: [] });
+
+export function armarTarjeta(published, { prueba = false, origen } = {}) {
   const r = calcularReporte(published);
+  const enlace = conEnlace(enlacePortal('dashboard', origen), 'Ver el reporte');
   return {
     $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
     type: 'AdaptiveCard',
@@ -43,15 +58,15 @@ export function armarTarjeta(published, { prueba = false } = {}) {
         text: `Proyección vs ${mesAnterior(published.corte)}: ${fmtVar(r.total.varAnt)} · vs ${mismoMesAnioAnterior(published.corte)}: ${fmtVar(r.total.varAa)}`,
         wrap: true,
       }] : []),
+      ...enlace.body,
     ],
-    actions: process.env.PORTAL_URL
-      ? [{ type: 'Action.OpenUrl', title: 'Abrir dashboard', url: process.env.PORTAL_URL }]
-      : [],
+    actions: enlace.actions,
   };
 }
 
 // Alertas de sucursales tras cargar la planilla (alertas = alertasSucursales()).
-export function tarjetaAlertasSucursales(mes, alertas, por) {
+export function tarjetaAlertasSucursales(mes, alertas, por, origen) {
+  const enlace = conEnlace(enlacePortal('sucursales', origen), 'Ver sucursales');
   const lista = (arr, fmt) => arr.slice(0, 8).map(fmt).join(' · ') + (arr.length > 8 ? ` y ${arr.length - 8} más` : '');
   const bloque = (titulo, arr, fmt, color) => (arr.length ? [
     { type: 'TextBlock', text: `${titulo} (${arr.length})`, weight: 'Bolder', color, wrap: true, spacing: 'Medium' },
@@ -70,10 +85,9 @@ export function tarjetaAlertasSucursales(mes, alertas, por) {
       ...bloque('Sin venta en los últimos días', alertas.sinVentaReciente, (s) => s.sucursal, 'Attention'),
       ...bloque('Vienen vendiendo menos', alertas.caidas, (s) => `${s.sucursal} ${fmtVar(s.variacion)}`, 'Warning'),
       ...bloque('Vienen creciendo', alertas.crecen, (s) => `${s.sucursal} ${fmtVar(s.variacion)}`, 'Good'),
+      ...enlace.body,
     ],
-    actions: process.env.PORTAL_URL
-      ? [{ type: 'Action.OpenUrl', title: 'Ver sucursales', url: new URL('/app#sucursales', process.env.PORTAL_URL).href }]
-      : [],
+    actions: enlace.actions,
   };
 }
 

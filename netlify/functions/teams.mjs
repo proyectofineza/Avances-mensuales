@@ -18,7 +18,7 @@ export default handler(async (req) => {
     }
     // Usa lo publicado; si todavía no hay nada, manda datos en cero.
     const published = (await getJSON('published')) || { corte: hoyAsuncion(), obj: {}, real: {} };
-    const res = await enviarTeams({ ...published, por: user.nombre }, { prueba: true });
+    const res = await enviarTeams({ ...published, por: user.nombre }, { prueba: true, origen: new URL(req.url).origin });
     if (!res.ok) throw new HttpError(502, res.detalle);
     return json({ ok: true, canal });
   }

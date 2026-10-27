@@ -32,7 +32,7 @@ export default handler(async (req) => {
 
   let teams = 'omitido';
   if (body.avisarTeams && teamsConfigurado()) {
-    teams = (await enviarTeams(published)).ok ? 'enviado' : 'error';
+    teams = (await enviarTeams(published, { origen: new URL(req.url).origin })).ok ? 'enviado' : 'error';
   }
 
   return json({ published, teams, canal: process.env.TEAMS_CANAL || '' });
