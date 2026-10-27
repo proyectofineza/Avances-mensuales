@@ -410,6 +410,11 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Botones **Excel**, **PDF** y **Compartir** en Ranking, Zonas y Comparar días (Informe IA: PDF y Compartir).
 - Excel: CSV con `;` y BOM, que Excel en español abre directo; exporta todas las sucursales del filtro actual con zona, encargado y objetivo. PDF: el diálogo de imprimir del navegador ("Guardar como PDF"), en tema claro y sin menús ni botones. Compartir: el menú del teléfono (WhatsApp, Teams, correo) con un resumen en texto; en la compu se copia al portapapeles.
 
+### 12.21 Fecha de corte cuidada
+- Al abrir **Cargar ventas**, si la fecha de corte quedó de una carga anterior (antes de ayer), se cambia sola a **ayer** y se avisa debajo del campo. No cruza de mes: si ayer es de un mes nuevo, solo avisa.
+- Antes de publicar se pide confirmar si la fecha de corte es anterior a ayer o posterior a hoy, o si las ventas son iguales a las de la publicación anterior con otra fecha.
+- La tarjeta de Teams dice **"Ventas hasta el DD/MM/AAAA · publicado el DD/MM/AAAA HH:MM por …"**, para no confundir la fecha de corte con el día de publicación.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

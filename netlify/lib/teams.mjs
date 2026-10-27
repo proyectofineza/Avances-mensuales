@@ -1,6 +1,6 @@
 // Aviso a un canal de Teams (Workflows → "solicitud de webhook") con una Adaptive Card.
 import {
-  calcularReporte, mesAnterior, mismoMesAnioAnterior, fmtFecha, fmtPct, fmtVar,
+  calcularReporte, mesAnterior, mismoMesAnioAnterior, fmtFecha, fmtFechaHora, fmtPct, fmtVar,
 } from '../../public/js/calc.js';
 
 export const teamsConfigurado = () => Boolean(process.env.TEAMS_WEBHOOK_URL);
@@ -14,7 +14,11 @@ export function armarTarjeta(published, { prueba = false } = {}) {
     body: [
       ...(prueba ? [{ type: 'TextBlock', text: 'AVISO DE PRUEBA', color: 'Attention', weight: 'Bolder', size: 'Small' }] : []),
       { type: 'TextBlock', text: 'Reporte de ventas actualizado', weight: 'Bolder', size: 'Large', wrap: true },
-      { type: 'TextBlock', text: `Corte al ${fmtFecha(published.corte)} · publicado por ${published.por}`, isSubtle: true, spacing: 'None', wrap: true },
+      {
+        type: 'TextBlock',
+        text: `Ventas hasta el ${fmtFecha(published.corte)} · publicado${published.publicadoEn ? ` el ${fmtFechaHora(published.publicadoEn)}` : ''} por ${published.por}`,
+        isSubtle: true, spacing: 'None', wrap: true,
+      },
       {
         type: 'FactSet',
         facts: [

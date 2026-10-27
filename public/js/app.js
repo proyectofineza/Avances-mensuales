@@ -293,6 +293,7 @@ function setupVentas() {
 
   $('corte').addEventListener('change', () => {
     state.draft.corte = $('corte').value;
+    $('corte-aviso').hidden = true;
     fillDias();
     onDraftChange();
   });
@@ -370,12 +371,31 @@ async function loadVentas() {
     state.history = dash.history;
     if (draft.actualizado) $('draft-saved').textContent = `Borrador guardado ${fmtFechaHora(draft.actualizado)}${draft.por ? ' por ' + draft.por : ''}.`;
     else $('draft-saved').textContent = '';
+    sugerirCorte();
     fillVentasForm();
     renderUltimaPub();
     loadTeamsEstado();
   } catch (err) {
     handleError(err, $('ventas-error'));
   }
+}
+
+// Si la fecha de corte quedó vieja (de una carga anterior), propone la de ayer, que es hasta
+// donde suelen llegar las ventas. No cruza de mes: un mes nuevo arranca con cifras nuevas.
+function sugerirCorte() {
+  const d = state.draft;
+  const ayer = sumarDias(hoyAsuncion(), -1);
+  const aviso = $('corte-aviso');
+  aviso.hidden = true;
+  if (!d.corte || d.corte >= ayer) return;
+  if (d.corte.slice(0, 7) === ayer.slice(0, 7)) {
+    aviso.innerHTML = `La fecha de corte era el <b>${fmtFecha(d.corte)}</b> (de la carga anterior): la cambié a <b>${fmtFecha(ayer)}</b>, ayer. Si tus cifras llegan hasta otro día, cambiala.`;
+    d.corte = ayer;
+    onDraftChange();
+  } else {
+    aviso.innerHTML = `La fecha de corte es el <b>${fmtFecha(d.corte)}</b>. Si ya estás cargando ${esc(nombreMes(ayer))}, cambiá la fecha y cargá las cifras del mes nuevo.`;
+  }
+  aviso.hidden = false;
 }
 
 function fillVentasForm() {
@@ -480,11 +500,30 @@ function saveNow() {
   return p;
 }
 
+// Avisos antes de publicar: fecha de corte vieja o futura, o cifras iguales a la publicación anterior.
+function dudasAntesDePublicar(d) {
+  const hoy = hoyAsuncion();
+  const ayer = sumarDias(hoy, -1);
+  const dudas = [];
+  if (d.corte > hoy) dudas.push(`La fecha de corte (${fmtFecha(d.corte)}) es posterior a hoy.`);
+  else if (d.corte < ayer) {
+    const dias = Math.round((new Date(`${hoy}T12:00:00Z`) - new Date(`${d.corte}T12:00:00Z`)) / 864e5);
+    dudas.push(`La fecha de corte es el ${fmtFecha(d.corte)}, hace ${dias} días. La proyección se calcula con esa fecha: si tus ventas llegan hasta ayer (${fmtFecha(ayer)}), cambiala antes de publicar.`);
+  }
+  const p = state.published;
+  if (p && p.corte !== d.corte && IDS.every((id) => Number(p.real?.[id]) === Number(d.real?.[id]))) {
+    dudas.push(`Las ventas son las mismas que en la publicación del ${fmtFecha(p.corte)}, pero con otra fecha de corte. ¿Actualizaste las cifras?`);
+  }
+  return dudas;
+}
+
 async function publicar() {
   const errEl = $('ventas-error');
   errEl.hidden = true;
   const msg = validarReporte(state.draft);
   if (msg) { showMsg(errEl, msg, false); return; }
+  const dudas = dudasAntesDePublicar(state.draft);
+  if (dudas.length && !confirm(`${dudas.join('\n\n')}\n\n¿Publicar igual?`)) return;
 
   const btn = $('btn-publicar');
   btn.disabled = true;

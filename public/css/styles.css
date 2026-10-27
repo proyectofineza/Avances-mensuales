@@ -1109,3 +1109,8 @@ body.panel-abierto { overflow: hidden; }
 /* Panel: marcar la sucursal como cerrada (admin) */
 .panel-cierre { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border); display: grid; gap: 8px; justify-items: start; }
 .panel-cierre p { margin: 0; }
+
+/* Cargar ventas: aviso de la fecha de corte sugerida */
+.form-row:has(.corte-aviso:not([hidden])) { max-width: 560px; }
+.form-row:has(.corte-aviso:not([hidden])) input { max-width: 220px; }
+.corte-aviso { margin: 2px 0 0; padding: 8px 12px; border-radius: var(--r-ctl); font-size: 13px; background: var(--warn-bg); color: var(--text); border: 1px solid var(--vidrio-borde); }
