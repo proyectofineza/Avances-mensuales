@@ -428,6 +428,15 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Teams: con fecha de corte el último día del mes la tarjeta se titula **"Cierre de Octubre 2026"** y el link lleva al cierre.
 - Dashboard: aviso con link al cierre los primeros 10 días del mes, o mientras el mes nuevo no se publicó.
 
+### 12.24 Objetivo sugerido
+- Nuevo menú de admin **Objetivo sugerido**. Tabla con la forma de la planilla de trabajo: Baratote (Minorista + Mayorista), Minorista, Mayorista, Evento, Plástico, Fineglass, Fineboats y General, con el mismo mes de los dos años anteriores (con su variación), el mes anterior y el **sugerido** editable, más la variación del sugerido contra el año anterior.
+- **Pegar planilla**: se pega la tabla de Excel desde la fila AÑO hasta GENERAL (uno o varios meses). Los meses ya terminados se guardan como historia (`historia-mensual`); el mes en curso y los que vienen, como sugerido (`sugerido/AAAA-MM`). Baratote y General se calculan con la suma; si los de la planilla no coinciden, se avisa cuáles y por cuánto. Lectura en `public/js/objetivos.js`.
+- Si un mes no está en la planilla, se usa el cierre publicado en el portal (marcado "portal").
+- **Crecimiento sobre el año anterior**: aplica un % a cada negocio del año anterior para armar el sugerido rápido.
+- **Confirmar como objetivo** (solo el mes en curso): copia Minorista, Mayorista, Fineglass y Fineboats como objetivo en Cargar ventas y completa la comparativa (mes anterior y mismo mes del año anterior). Si la carga estaba en otro mes, pasa al mes en curso con las ventas en cero (y avisa si el mes anterior todavía no tiene cierre). Queda marcado "Confirmado" con fecha y usuario; si se edita el sugerido, hay que confirmarlo de nuevo.
+- Evento y Plástico no son unidades del portal: suman en el General de la tabla, pero no se cargan como objetivo.
+- API (admin): `GET /api/objetivos?mes=AAAA-MM`, `POST { tipo: 'planilla' | 'sugerido' | 'confirmar' }`.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

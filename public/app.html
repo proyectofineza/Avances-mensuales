@@ -44,6 +44,10 @@
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>
         <span>Cargar ventas</span>
       </a>
+      <a class="tab solo-admin" href="#objetivos" data-view="objetivos">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></svg>
+        <span>Objetivo sugerido</span>
+      </a>
       <a class="tab solo-admin" href="#usuarios" data-view="usuarios">
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M16 4.1a4 4 0 0 1 0 7.8"/><path d="M22 21a7 7 0 0 0-4-6.3"/></svg>
         <span>Usuarios</span><span class="tab-badge" id="tab-badge" hidden></span>
@@ -298,6 +302,35 @@
     <!-- Dashboard -->
     <section id="view-dashboard" hidden>
       <div id="dash"></div>
+    </section>
+
+    <!-- Admin · Objetivo sugerido: años anteriores del mismo mes, sugerido y confirmación -->
+    <section id="view-objetivos" hidden>
+      <div class="card-head dash-head">
+        <div>
+          <h1 id="obj-titulo">Objetivo sugerido</h1>
+          <p class="muted" id="obj-sub"></p>
+        </div>
+        <div class="suc-mes">
+          <label for="obj-mes" class="small">Mes</label>
+          <input type="month" id="obj-mes">
+        </div>
+      </div>
+      <div id="obj-contenido"><div class="card empty">Cargando…</div></div>
+
+      <details class="card suc-carga" id="obj-planilla" style="margin-top:16px">
+        <summary>
+          <span class="suc-carga-titulo">Pegar planilla</span>
+          <span class="muted small">la tabla de años anteriores y el sugerido, como la armás en Excel</span>
+        </summary>
+        <p class="muted small" style="margin:14px 0 8px">Copiá en Excel desde la fila <b>AÑO</b> hasta <b>GENERAL</b> (podés copiar varios meses juntos) y pegala acá. Los meses que ya terminaron se guardan como historia; el mes en curso y los que vienen, como sugerido. Baratote y General se calculan solos.</p>
+        <textarea id="obj-texto" rows="8" placeholder="AÑO&#9;2024&#9;2025&#9;2026&#10;NEGOCIO&#9;Noviembre&#10;BARATOTE&#9;…&#10;MINORISTA&#9;…"></textarea>
+        <div class="actions">
+          <button class="btn btn-primary" type="button" id="obj-leer">Revisar y guardar</button>
+        </div>
+        <div class="alert form-msg" id="obj-planilla-msg" hidden></div>
+        <div class="suc-control warn" id="obj-diferencias" hidden></div>
+      </details>
     </section>
 
     <!-- Cierre de mes: resumen final del mes anterior (o del que se elija) -->
