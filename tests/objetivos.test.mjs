@@ -1,6 +1,8 @@
 // Lectura de la planilla del objetivo sugerido.
 import assert from 'node:assert/strict';
-import { leerPlanillaObjetivos, registrosPorMes, totales, variacion, diferenciasTotales, calcularSugerido } from '../public/js/objetivos.js';
+import {
+  leerPlanillaObjetivos, registrosPorMes, totales, variacion, diferenciasTotales, calcularSugerido, leerPlanillaMensual,
+} from '../public/js/objetivos.js';
 
 // La planilla tal como se pega de Excel (dos bloques; "MAYO" es un resto del encabezado).
 const planilla = [
@@ -73,5 +75,24 @@ const mal = leerPlanillaObjetivos('AÑO\t2025\nNEGOCIO\tMarzo\nOTRA COSA\t5\nFIN
 assert.equal(mal.errores.length, 2);
 // Separado por punto y coma (CSV de Excel)
 assert.equal(registrosPorMes(leerPlanillaObjetivos('AÑO;2025\nNEGOCIO;Setiembre\nFINEBOATS;1.000').bloques)['2025-09'].fbt, 1000);
+
+// Planilla de meses cerrados, una fila por mes (con Evento y General que se ignoran)
+const mensual = leerPlanillaMensual([
+  'Año\tMes\tMinorista\tMayorista\tEvento\tFineglass\tFineboats\tGeneral',
+  '2024\tEnero\t11.950.000.000\t6.100.000.000\t5\t3.900.000.000\t250.000.000\t1',
+  '2024\t2\t11.000.000.000\t5.900.000.000\t\t3.800.000.000\t\t1',
+  '2025\tSetiembre\t12.000.000.000\t6.000.000.000\t\t4.000.000.000\t200.000.000',
+  '2025\tTrece\t1\t1\t\t1\t1',
+  '2025\tOctubre\tabc\t6.000.000.000\t\t4.000.000.000\t200.000.000',
+].join('\n'));
+assert.equal(mensual.formato, 'filas');
+assert.deepEqual(Object.keys(mensual.registros), ['2024-01', '2024-02', '2025-09', '2025-10']);
+assert.deepEqual(mensual.registros['2024-01'], { min: 11.95e9, may: 6.1e9, fgl: 3.9e9, fbt: 2.5e8 });
+assert.deepEqual(mensual.registros['2024-02'], { min: 11e9, may: 5.9e9, fgl: 3.8e9 }); // Fineboats vacío: sin dato
+assert.equal('min' in mensual.registros['2025-10'], false);
+assert.equal(mensual.errores.length, 2); // mes "Trece" y monto "abc"
+// Sin encabezado Año/Mes: usa el formato de bloques
+assert.equal(leerPlanillaMensual(planilla).formato, 'bloques');
+assert.equal(leerPlanillaMensual(planilla).registros['2025-11'].min, 14128920265);
 
 console.log('objetivos: todas las pruebas pasaron');

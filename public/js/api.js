@@ -29,6 +29,7 @@ export const getObjetivos = (mes) => api('GET', `objetivos${mes ? `?mes=${encode
 export const guardarPlanillaObjetivos = (registros) => api('POST', 'objetivos', { tipo: 'planilla', registros });
 export const guardarSugerido = (mes, valores) => api('POST', 'objetivos', { tipo: 'sugerido', mes, valores });
 export const confirmarSugerido = (mes) => api('POST', 'objetivos', { tipo: 'confirmar', mes });
+export const getAnual = () => api('GET', 'anual');
 export const getCierre = (mes) => api('GET', `cierre${mes ? `?mes=${encodeURIComponent(mes)}` : ''}`);
 export const getClima = (mes) => api('GET', `clima${mes ? `?mes=${encodeURIComponent(mes)}` : ''}`);
 export const getSucursales = (mes) => api('GET', `sucursales${mes ? `?mes=${encodeURIComponent(mes)}` : ''}`);

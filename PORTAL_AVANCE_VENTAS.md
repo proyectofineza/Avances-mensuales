@@ -438,6 +438,15 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - **Confirmar como objetivo** (solo el mes en curso): copia Minorista, Mayorista, Fineglass y Fineboats como objetivo en Cargar ventas y completa la comparativa (mes anterior y mismo mes del año anterior). Si la carga estaba en otro mes, pasa al mes en curso con las ventas en cero (y avisa si el mes anterior todavía no tiene cierre). Queda marcado "Confirmado" con fecha y usuario; si se edita el sugerido, hay que confirmarlo de nuevo.
 - API (admin): `GET /api/objetivos?mes=AAAA-MM`, `POST { tipo: 'planilla' | 'sugerido' | 'confirmar' }`.
 
+### 12.25 Comparativo anual
+- Nuevo menú **Comparativo anual** (todos los usuarios): el año en curso contra los dos anteriores, por unidad (Total, Baratote, Minorista, Mayorista, Fineglass, Fineboats).
+- Indicadores: acumulado del año (enero al último mes cerrado) contra los mismos meses de los dos años anteriores; ventaja o atraso en guaraníes contra el año anterior y si viene creciendo o achicándose (meses seguidos); último mes contra el anterior y contra el mismo mes del año anterior; proyección del año (lo cerrado + lo publicado del mes en curso + el resto como el año anterior movido por la tendencia de los últimos 3 meses, limitada a ±50%).
+- Gráfico de líneas animado (SVG): el año en curso resaltado con área y puntos, los anteriores en gris, la proyección punteada. Vista **Mes a mes** (el eje arranca cerca del mínimo para ver las diferencias) o **Acumulado**. Anotaciones automáticas: mejor mes y mayor caída contra el año anterior, ventaja acumulada, cierre proyectado. Al pasar el mouse o tocar un mes, el detalle de los tres años con su variación.
+- Barras animadas de la variación de cada mes contra el año anterior (verdes y rojas) y tabla de calor por unidad y mes con el acumulado; tocar una unidad la muestra en el gráfico. PDF y Compartir.
+- En el celular los gráficos se dibujan a su ancho (360) para que el texto se lea.
+- Datos (`GET /api/anual`): la planilla cargada (`historia-mensual`) manda; si un mes no está, el cierre del portal (`cierre/AAAA-MM`), marcado "parcial" si no llega al último día. El mes en curso es lo publicado. Cálculos en `public/js/anual.js`.
+- **Cargar meses cerrados** (admin, en la misma pantalla): se pega una tabla con una fila por mes (Año, Mes, Minorista, Mayorista, Fineglass, Fineboats; el mes por nombre o número; Evento, Plástico y totales se ignoran). También acepta el formato de bloques del objetivo sugerido. Va al mismo historial que usa el Objetivo sugerido. Desde que el portal tiene el cierre de cada mes, los meses se suman solos.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

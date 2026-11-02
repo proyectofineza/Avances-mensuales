@@ -135,6 +135,48 @@ export function diferenciasTotales(bloques) {
   return out;
 }
 
+// Planilla de meses cerrados con una fila por mes:
+//   Año  Mes      Minorista  Mayorista  Fineglass  Fineboats   (Evento, Plástico y totales se ignoran)
+//   2024 Enero    11.950...  6.100...   ...
+// El mes puede ser el nombre o el número. Si no tiene ese encabezado, se intenta el formato
+// de bloques del objetivo sugerido (AÑO / NEGOCIO / filas por unidad).
+// Devuelve { registros: { 'AAAA-MM': { min, may, fgl, fbt } }, errores, formato }.
+export function leerPlanillaMensual(texto) {
+  const filas = celdas(texto).filter((f) => f.some((c) => c));
+  const iCab = filas.findIndex((f) => f.some((c) => /^(anos?|anio)$/.test(sinTilde(c))) && f.some((c) => sinTilde(c) === 'mes'));
+  if (iCab < 0) {
+    const r = leerPlanillaObjetivos(texto);
+    return { registros: registrosPorMes(r.bloques), errores: r.errores, formato: 'bloques' };
+  }
+  const cab = filas[iCab].map(sinTilde);
+  const iAnio = cab.findIndex((c) => /^(anos?|anio)$/.test(c));
+  const iMes = cab.indexOf('mes');
+  const cols = NEGOCIOS.map((n) => ({ id: n.id, i: cab.findIndex((c) => n.re.test(c)) })).filter((c) => c.i >= 0);
+  const registros = {};
+  const errores = [];
+  if (!cols.length) errores.push({ linea: iCab + 1, motivo: 'No encontré columnas de Minorista, Mayorista, Fineglass o Fineboats.' });
+  filas.slice(iCab + 1).forEach((f, k) => {
+    const linea = iCab + k + 2;
+    const anio = Number(f[iAnio]);
+    const mesTxt = f[iMes];
+    const mes = /^\d{1,2}$/.test(mesTxt || '') ? Number(mesTxt) : numeroMes(mesTxt);
+    if (!(anio >= 2000 && anio <= 2100) || !(mes >= 1 && mes <= 12)) {
+      errores.push({ linea, motivo: `Año o mes inválido: "${f[iAnio] ?? ''} ${mesTxt ?? ''}".` });
+      return;
+    }
+    const v = {};
+    for (const c of cols) {
+      const celda = f[c.i] ?? '';
+      if (!celda) continue;
+      const n = parseMonto(celda);
+      if (n === null) errores.push({ linea, motivo: `Monto inválido en ${NEGOCIOS.find((x) => x.id === c.id).nombre}: "${celda}".` });
+      else v[c.id] = n;
+    }
+    if (Object.keys(v).length) registros[`${anio}-${String(mes).padStart(2, '0')}`] = v;
+  });
+  return { registros, errores, formato: 'filas' };
+}
+
 export const variacion = (a, b) => (b > 0 && a !== null && a !== undefined ? a / b - 1 : null);
 
 // ---- Sugerido según el movimiento ----
