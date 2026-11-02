@@ -6,7 +6,9 @@ import {
   fmtFechaHora, nombreMes, fmtCI, hoyAsuncion, ultimoDiaDelMes, esUltimoDiaDelMes,
 } from './calc.js';
 import { armarContexto, textoParaCopiar, informeAHtml, MAX_TEXTO } from './informe.js';
-import { NEGOCIOS, leerPlanillaObjetivos, registrosPorMes, totales, variacion, diferenciasTotales } from './objetivos.js';
+import {
+  NEGOCIOS, leerPlanillaObjetivos, registrosPorMes, totales, variacion, diferenciasTotales, calcularSugerido, TOPE_TENDENCIA,
+} from './objetivos.js';
 import {
   leerPlanilla, resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, ultimoDiaCompleto, ultimasSemanas, NO_MINORISTA,
   leerMaestro, leerObjetivos, parseFecha, avanceSucursales, resumenZonas, controlMaestro, zonaSugerida,
@@ -2247,7 +2249,7 @@ function cerrarPanel() {
 // Mismo mes de los dos años anteriores, el mes anterior y el sugerido editable;
 // confirmarlo lo copia como objetivo en Cargar ventas.
 
-const objetivos = { datos: null, turno: 0 };
+const objetivos = { datos: null, calculado: null, turno: 0 };
 const nombreCorto = (mes) => nombreMes(`${mes}-01`).split(' ')[0].toLowerCase();
 
 function setupObjetivos() {
@@ -2295,17 +2297,25 @@ function renderObjetivos() {
   const nombre = nombreMes(`${d.mes}-01`);
   const enCurso = d.mes === d.mesEnCurso;
   const s = d.sugerido;
-  $('obj-titulo').textContent = `Objetivo sugerido · ${nombre}`;
-  $('obj-sub').innerHTML = s?.confirmado
-    ? `<span class="chip ok">Confirmado</span> el ${fmtFechaHora(s.confirmado)} por ${esc(s.confirmadoPor)}: es el objetivo cargado en Cargar ventas.`
-    : s?.valores && Object.keys(s.valores).length
-      ? `<span class="chip warn">Sin confirmar</span> Guardado ${fmtFechaHora(s.actualizado)} por ${esc(s.por)}.`
-      : 'Todavía no hay sugerido para este mes: completalo abajo o pegá tu planilla.';
-
   const h1 = d.historia[y - 1]?.valores || null;
   const h2 = d.historia[y - 2]?.valores || null;
   const ant = d.anterior?.valores || null;
-  const sug = s?.valores || {};
+  // Lo que calcula el portal según el movimiento; si todavía no hay sugerido guardado, arranca con eso.
+  const calc = calcularSugerido(h1, d.movimiento);
+  objetivos.calculado = calc;
+  const guardado = s?.valores && Object.keys(s.valores).length ? s.valores : null;
+  const sug = guardado || calc.valores;
+  const editable = enCurso || d.mes > d.mesEnCurso;
+
+  $('obj-titulo').textContent = `Objetivo sugerido · ${nombre}`;
+  $('obj-sub').innerHTML = s?.confirmado
+    ? `<span class="chip ok">Confirmado</span> el ${fmtFechaHora(s.confirmado)} por ${esc(s.confirmadoPor)}: es el objetivo cargado en Cargar ventas.`
+    : guardado
+      ? `<span class="chip warn">Sin confirmar</span> Guardado ${fmtFechaHora(s.actualizado)} por ${esc(s.por)}.`
+      : Object.keys(calc.valores).length
+        ? '<span class="chip">Calculado</span> El sugerido de abajo lo calculó el portal según el movimiento de las ventas: revisalo, ajustalo si hace falta y confirmalo.'
+        : 'Todavía no hay datos para calcular el sugerido: pegá tu planilla abajo.';
+
   const fuente = (h) => (h?.fuente === 'portal' ? ' <small class="muted" title="Del cierre publicado en el portal">(portal)</small>' : '');
   const monto = (v) => (v === undefined || v === null ? '<span class="muted">—</span>' : fmtMiles(v));
   const varCelda = (a, b) => { const v = variacion(a, b); return v === null ? '<span class="muted">—</span>' : varHtml(v); };
@@ -2313,31 +2323,42 @@ function renderObjetivos() {
 
   const filaNegocio = (n) => `
     <tr class="${n.id === 'min' || n.id === 'may' ? 'sub-row' : ''}">
-      <td data-label="Negocio">${esc(n.nombre)}${n.unidad ? '' : ' <small class="muted" title="No es una unidad del portal: suma en el General, pero no se carga como objetivo">*</small>'}</td>
+      <td data-label="Negocio">${esc(n.nombre)}</td>
       <td class="r opc" data-label="${y - 2}">${monto(h2?.[n.id])}</td>
       <td class="r" data-label="${y - 1}">${conVar(h1?.[n.id], h2?.[n.id])}</td>
       <td class="r opc" data-label="Mes anterior">${monto(ant?.[n.id])}</td>
-      <td class="r obj-sug" data-label="Sugerido ${y}"><input type="text" inputmode="numeric" data-neg="${n.id}" value="${sug[n.id] !== undefined ? fmtMiles(sug[n.id]) : ''}" aria-label="Sugerido ${esc(n.nombre)} ${y}"${enCurso || d.mes > d.mesEnCurso ? '' : ' disabled'}></td>
+      <td class="r" data-label="Calculado">${conVar(calc.valores[n.id], h1?.[n.id])}</td>
+      <td class="r obj-sug" data-label="Sugerido ${y}"><input type="text" inputmode="numeric" data-neg="${n.id}" value="${sug[n.id] !== undefined ? fmtMiles(sug[n.id]) : ''}" aria-label="Sugerido ${esc(n.nombre)} ${y}"${editable ? '' : ' disabled'}></td>
       <td class="r" data-label="vs ${y - 1}" data-var="${n.id}">${varCelda(sug[n.id], h1?.[n.id])}</td>
     </tr>`;
   const filaTotal = (clave, titulo, clase) => {
-    const t = (v) => (v ? totales(v)[clave] : null);
+    const t = (v) => (v && Object.keys(v).length ? totales(v)[clave] : null);
     return `
     <tr class="${clase}">
       <td data-label="Negocio">${titulo}</td>
       <td class="r opc" data-label="${y - 2}">${monto(t(h2))}</td>
       <td class="r" data-label="${y - 1}">${conVar(t(h1), t(h2))}</td>
       <td class="r opc" data-label="Mes anterior">${monto(t(ant))}</td>
-      <td class="r" data-label="Sugerido ${y}" data-total="${clave}">${monto(totales(sug)[clave] || null)}</td>
-      <td class="r" data-label="vs ${y - 1}" data-var="${clave}">${varCelda(totales(sug)[clave], t(h1))}</td>
+      <td class="r" data-label="Calculado">${conVar(t(calc.valores), t(h1))}</td>
+      <td class="r" data-label="Sugerido ${y}" data-total="${clave}">${monto(t(sug))}</td>
+      <td class="r" data-label="vs ${y - 1}" data-var="${clave}">${varCelda(t(sug), t(h1))}</td>
     </tr>`;
   };
   const neg = (id) => NEGOCIOS.find((n) => n.id === id);
   const mesAnt = sumarDias(`${d.mes}-01`, -1).slice(0, 7);
   const sinHistoria = !h1 && !h2;
 
+  // Explicación del cálculo, unidad por unidad.
+  const mesesTxt = (ms) => ms.map((m) => `${nombreCorto(m)} ${m.slice(0, 4)}`).join(', ');
+  const explicacion = Object.entries(calc.detalle).map(([id, x]) => {
+    const mov = x.tendencia === null
+      ? 'sin meses para comparar: queda igual'
+      : `${fmtVar(x.aplicada)} (${mesesTxt(x.meses)} contra el año anterior${x.topeada ? `: fue ${fmtVar(x.tendencia)}, se limitó a ${fmtVar(x.aplicada)}` : ''})`;
+    return `<li><b>${esc(neg(id).nombre)}:</b> ${esc(nombreCorto(d.mes))} ${y - 1} ${fmtMillones(x.base)} × ${mov} = <b>${fmtMillones(calc.valores[id])}</b></li>`;
+  }).join('');
+
   $('obj-contenido').innerHTML = `
-    ${sinHistoria ? `<p class="nota" style="margin:0 0 14px">No hay datos de ${esc(nombreCorto(d.mes))} de ${y - 2} ni de ${y - 1}. Pegá tu planilla abajo para verlos al lado del sugerido.</p>` : ''}
+    ${sinHistoria ? `<p class="nota" style="margin:0 0 14px">No hay datos de ${esc(nombreCorto(d.mes))} de ${y - 2} ni de ${y - 1}. Pegá tu planilla abajo para poder calcular el sugerido.</p>` : ''}
     <div class="card">
       <div class="table-wrap">
         <table class="obj-tabla tarjetas">
@@ -2346,6 +2367,7 @@ function renderObjetivos() {
             <th class="r opc">${y - 2}${fuente(d.historia[y - 2])}</th>
             <th class="r">${y - 1}${fuente(d.historia[y - 1])}</th>
             <th class="r opc">${esc(nombreMes(`${mesAnt}-01`))}${fuente(d.anterior)}</th>
+            <th class="r" title="Calculado por el portal según el movimiento de las ventas">Calculado</th>
             <th class="r">Sugerido ${y}</th>
             <th class="r">vs ${y - 1}</th>
           </tr></thead>
@@ -2353,21 +2375,25 @@ function renderObjetivos() {
             ${filaTotal('baratote', 'Baratote', 'grupo-row')}
             ${filaNegocio(neg('min'))}
             ${filaNegocio(neg('may'))}
-            ${filaNegocio(neg('evento'))}
-            ${filaNegocio(neg('plastico'))}
             ${filaNegocio(neg('fgl'))}
             ${filaNegocio(neg('fbt'))}
             ${filaTotal('general', 'General', 'total-row')}
           </tbody>
         </table>
       </div>
-      <p class="muted small" style="margin:12px 0 0">Baratote = Minorista + Mayorista. General = todos los negocios. * Evento y Plástico suman en el General de esta tabla, pero no son unidades del portal: no se cargan como objetivo. Debajo de ${y - 1}, la variación contra ${y - 2}.</p>
-      ${enCurso || d.mes > d.mesEnCurso ? `
+      <p class="muted small" style="margin:12px 0 0">Baratote = Minorista + Mayorista. General = las cuatro unidades. Debajo de ${y - 1} y de Calculado, la variación contra el año anterior.</p>
+      ${explicacion ? `
+      <details class="obj-explica" open>
+        <summary>Cómo se calculó</summary>
+        <p class="small" style="margin:8px 0 6px">Para cada unidad: lo que vendió en ${esc(nombreCorto(d.mes))} del año pasado, movido según cómo vienen las ventas de los últimos meses cerrados contra los mismos meses del año anterior (hasta 3 meses; el movimiento se limita a ±${Math.round(TOPE_TENDENCIA * 100)}%). Redondeado al millón.</p>
+        <ul class="small">${explicacion}</ul>
+      </details>` : ''}
+      ${editable ? `
       <div class="obj-acciones">
         <div class="obj-crecer">
-          <label for="obj-crec" class="small">Crecimiento sobre ${y - 1}</label>
-          <div><input type="text" inputmode="decimal" id="obj-crec" value="5" aria-label="Porcentaje de crecimiento"><span>%</span>
-          <button class="btn btn-sm" type="button" data-obj="crecer"${h1 ? '' : ' disabled title="No hay datos del año anterior"'}>Aplicar</button></div>
+          <label for="obj-crec" class="small">Usar lo calculado con un ajuste de</label>
+          <div><input type="text" inputmode="decimal" id="obj-crec" value="0" aria-label="Ajuste en porcentaje"><span>%</span>
+          <button class="btn btn-sm" type="button" data-obj="crecer"${Object.keys(calc.valores).length ? '' : ' disabled title="No hay datos para calcular"'}>Aplicar</button></div>
         </div>
         <div class="actions" style="margin:0">
           <button class="btn" type="button" data-obj="guardar">Guardar sugerido</button>
@@ -2399,15 +2425,13 @@ function recalcularSugerido() {
   }
 }
 
+// Pone en el sugerido lo calculado por el portal, con un ajuste opcional (por ejemplo +3%).
 function aplicarCrecimiento() {
-  const d = objetivos.datos;
-  const [y] = d.mes.split('-').map(Number);
-  const h1 = d.historia[y - 1]?.valores;
-  const g = Number(String($('obj-crec').value).replace(',', '.'));
-  if (!h1 || !Number.isFinite(g)) return;
+  const calc = objetivos.calculado?.valores || {};
+  const g = Number(String($('obj-crec').value).replace(',', '.')) || 0;
   document.querySelectorAll('#obj-contenido input[data-neg]').forEach((el) => {
-    const base = h1[el.dataset.neg];
-    if (base !== undefined) el.value = fmtMiles(Math.round(base * (1 + g / 100)));
+    const base = calc[el.dataset.neg];
+    if (base !== undefined) el.value = fmtMiles(Math.round((base * (1 + g / 100)) / 1e6) * 1e6);
   });
   recalcularSugerido();
 }
@@ -2428,15 +2452,15 @@ async function guardarSugeridoUI(silencioso = false) {
 async function confirmarSugeridoUI() {
   const d = objetivos.datos;
   const v = leerSugeridoUI();
-  const falta = NEGOCIOS.filter((n) => n.unidad && !(v[n.id] > 0));
+  const falta = NEGOCIOS.filter((n) => !(v[n.id] > 0));
   if (falta.length) { showMsg($('obj-msg'), `Completá el sugerido de ${falta.map((n) => n.nombre).join(', ')}.`, false); return; }
   let draft = null;
   try { draft = await API.getDraft(); } catch { /* sin borrador */ }
   const mesCarga = draft?.corte?.slice(0, 7);
   const lineas = [
     `Se va a cargar como objetivo de ${nombreMes(`${d.mes}-01`)}:`,
-    ...NEGOCIOS.filter((n) => n.unidad).map((n) => `• ${n.nombre}: ${fmtMillones(v[n.id])}`),
-    `Total: ${fmtMillones(NEGOCIOS.filter((n) => n.unidad).reduce((s, n) => s + v[n.id], 0))}`,
+    ...NEGOCIOS.map((n) => `• ${n.nombre}: ${fmtMillones(v[n.id])}`),
+    `Total: ${fmtMillones(NEGOCIOS.reduce((s, n) => s + v[n.id], 0))}`,
   ];
   if (mesCarga && mesCarga !== d.mes) {
     lineas.push('', `La carga de ventas pasa de ${nombreCorto(mesCarga)} a ${nombreCorto(d.mes)}, con las ventas en cero.`);

@@ -429,12 +429,13 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Dashboard: aviso con link al cierre los primeros 10 días del mes, o mientras el mes nuevo no se publicó.
 
 ### 12.24 Objetivo sugerido
-- Nuevo menú de admin **Objetivo sugerido**. Tabla con la forma de la planilla de trabajo: Baratote (Minorista + Mayorista), Minorista, Mayorista, Evento, Plástico, Fineglass, Fineboats y General, con el mismo mes de los dos años anteriores (con su variación), el mes anterior y el **sugerido** editable, más la variación del sugerido contra el año anterior.
-- **Pegar planilla**: se pega la tabla de Excel desde la fila AÑO hasta GENERAL (uno o varios meses). Los meses ya terminados se guardan como historia (`historia-mensual`); el mes en curso y los que vienen, como sugerido (`sugerido/AAAA-MM`). Baratote y General se calculan con la suma; si los de la planilla no coinciden, se avisa cuáles y por cuánto. Lectura en `public/js/objetivos.js`.
+- Nuevo menú de admin **Objetivo sugerido**. Tabla con Baratote (Minorista + Mayorista), Minorista, Mayorista, Fineglass, Fineboats y General: el mismo mes de los dos años anteriores (con su variación), el mes anterior, lo **calculado** por el portal y el **sugerido** editable, más la variación del sugerido contra el año anterior.
+- **Cálculo según el movimiento** (`calcularSugerido` en `public/js/objetivos.js`), por unidad: el mismo mes del año anterior × la tendencia de los últimos meses cerrados (hasta 3) contra los mismos meses del año anterior (suma de esos meses, así pesan más los meses grandes). La tendencia se limita a ±50% y el resultado se redondea al millón. Un recuadro "Cómo se calculó" muestra la cuenta de cada unidad. Si no hay sugerido guardado, el sugerido arranca con lo calculado.
+- Para la tendencia solo se usan meses completos: de la planilla o cierres del portal con fecha de corte el último día del mes.
+- **Usar lo calculado con un ajuste de X%**: pone lo calculado en el sugerido, con un ajuste opcional (por ejemplo +3%).
+- **Pegar planilla**: se pega la tabla de Excel desde la fila AÑO hasta GENERAL (uno o varios meses). Los meses ya terminados se guardan como historia (`historia-mensual`); si trae el mes en curso o uno que viene, se toma como sugerido (`sugerido/AAAA-MM`). Baratote y General se calculan con la suma; si los de la planilla no coinciden, se avisa cuáles y por cuánto. **Evento y Plástico no se usan** (el General de la planilla los incluye: se tienen en cuenta solo para ese control).
 - Si un mes no está en la planilla, se usa el cierre publicado en el portal (marcado "portal").
-- **Crecimiento sobre el año anterior**: aplica un % a cada negocio del año anterior para armar el sugerido rápido.
 - **Confirmar como objetivo** (solo el mes en curso): copia Minorista, Mayorista, Fineglass y Fineboats como objetivo en Cargar ventas y completa la comparativa (mes anterior y mismo mes del año anterior). Si la carga estaba en otro mes, pasa al mes en curso con las ventas en cero (y avisa si el mes anterior todavía no tiene cierre). Queda marcado "Confirmado" con fecha y usuario; si se edita el sugerido, hay que confirmarlo de nuevo.
-- Evento y Plástico no son unidades del portal: suman en el General de la tabla, pero no se cargan como objetivo.
 - API (admin): `GET /api/objetivos?mes=AAAA-MM`, `POST { tipo: 'planilla' | 'sugerido' | 'confirmar' }`.
 
 ## 13. Fuera de alcance (por ahora)

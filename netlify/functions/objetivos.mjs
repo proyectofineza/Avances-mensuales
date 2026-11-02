@@ -1,15 +1,16 @@
 // Objetivo sugerido (admin): ventas del mismo mes de años anteriores, el sugerido del mes
 // y su confirmación como objetivo del mes en curso.
-//   historia-mensual   → { 'AAAA-MM': { min, may, evento, plastico, fgl, fbt } } (de la planilla)
+//   historia-mensual   → { 'AAAA-MM': { min, may, fgl, fbt } } (de la planilla)
 //   sugerido/AAAA-MM   → { mes, valores, actualizado, por, confirmado, confirmadoPor }
-// GET  ?mes=AAAA-MM                    → { mes, sugerido, historia: { AAAA: { valores, fuente } }, anterior }
+// GET  ?mes=AAAA-MM                    → { mes, sugerido, historia: { AAAA: { valores, fuente } }, anterior,
+//                                          movimiento: [{ mes, actual, anterior }] }
 // POST { tipo: 'planilla', registros } → meses ya terminados van a la historia; el mes en curso
 //                                        y los que vienen, al sugerido de cada mes
 // POST { tipo: 'sugerido', mes, valores } → guarda el sugerido editado
 // POST { tipo: 'confirmar', mes }      → copia el sugerido como objetivo en Cargar ventas (borrador)
 import { handler, json, readBody, requireUser, HttpError } from '../lib/auth.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
-import { hoyAsuncion, normalizarReporte, IDS } from '../../public/js/calc.js';
+import { hoyAsuncion, normalizarReporte, IDS, esUltimoDiaDelMes } from '../../public/js/calc.js';
 import { NEGOCIOS, UNIDADES_OBJ } from '../../public/js/objetivos.js';
 
 const MES_RE = /^\d{4}-\d{2}$/;
@@ -32,12 +33,30 @@ const mesDesplazado = (mes, n) => {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 };
 
-// Ventas de un mes ya terminado: la planilla manda; si no está, el cierre publicado en el portal.
-async function ventasDelMes(mes, historia) {
-  if (historia[mes]) return { valores: historia[mes], fuente: 'planilla' };
+// Ventas de un mes ya terminado: la planilla manda; si no está, el cierre publicado en el portal
+// (con soloCompleto, solo si ese cierre llega al último día del mes).
+async function ventasDelMes(mes, historia, { soloCompleto = false } = {}) {
+  if (historia[mes]) return { valores: limpiar(historia[mes]), fuente: 'planilla' };
   const cierre = await getJSON(`cierre/${mes}`);
-  if (cierre?.real) return { valores: Object.fromEntries(IDS.map((id) => [id, cierre.real[id] || 0])), fuente: 'portal', corte: cierre.corte };
-  return null;
+  if (!cierre?.real) return null;
+  const completo = esUltimoDiaDelMes(cierre.corte);
+  if (soloCompleto && !completo) return null;
+  return { valores: Object.fromEntries(IDS.map((id) => [id, cierre.real[id] || 0])), fuente: 'portal', corte: cierre.corte, completo };
+}
+
+// Últimos meses cerrados antes de `mes` (hasta 3, el más reciente primero) que tienen
+// también el mismo mes del año anterior: es el "movimiento" para calcular el sugerido.
+async function movimiento(mes, historia, cuantos = 3) {
+  const pares = [];
+  for (let k = 1; k <= cuantos; k++) {
+    const m = mesDesplazado(mes, -k);
+    const [actual, anterior] = await Promise.all([
+      ventasDelMes(m, historia, { soloCompleto: true }),
+      ventasDelMes(mesDesplazado(m, -12), historia, { soloCompleto: true }),
+    ]);
+    if (actual && anterior) pares.push({ mes: m, actual: actual.valores, anterior: anterior.valores });
+  }
+  return pares;
 }
 
 export default handler(async (req) => {
@@ -60,6 +79,7 @@ export default handler(async (req) => {
       sugerido: await getJSON(`sugerido/${mes}`),
       historia: anios,
       anterior: await ventasDelMes(mesDesplazado(mes, -1), historia),
+      movimiento: await movimiento(mes, historia),
     });
   }
 
@@ -101,7 +121,7 @@ export default handler(async (req) => {
   if (body.tipo === 'confirmar') {
     if (mes !== mesEnCurso) throw new HttpError(400, 'Solo se puede confirmar como objetivo el sugerido del mes en curso.');
     const sugerido = await getJSON(`sugerido/${mes}`);
-    const falta = NEGOCIOS.filter((n) => n.unidad && !(sugerido?.valores?.[n.id] > 0));
+    const falta = NEGOCIOS.filter((n) => !(sugerido?.valores?.[n.id] > 0));
     if (falta.length) throw new HttpError(400, `Falta el sugerido de ${falta.map((n) => n.nombre).join(', ')}.`);
 
     const fuente = (await getJSON('draft')) || (await getJSON('published')) || { corte: hoy };

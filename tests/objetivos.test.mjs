@@ -1,6 +1,6 @@
 // Lectura de la planilla del objetivo sugerido.
 import assert from 'node:assert/strict';
-import { leerPlanillaObjetivos, registrosPorMes, totales, variacion, diferenciasTotales } from '../public/js/objetivos.js';
+import { leerPlanillaObjetivos, registrosPorMes, totales, variacion, diferenciasTotales, calcularSugerido } from '../public/js/objetivos.js';
 
 // La planilla tal como se pega de Excel (dos bloques; "MAYO" es un resto del encabezado).
 const planilla = [
@@ -34,18 +34,34 @@ assert.equal(r.bloques[0].mes, 10); // "Octubre" (el "MAYO" de al lado se ignora
 assert.equal(r.bloques[1].mes, 11);
 const reg = registrosPorMes(r.bloques);
 assert.deepEqual(Object.keys(reg).sort(), ['2024-10', '2024-11', '2025-10', '2025-11', '2026-10', '2026-11']);
-assert.deepEqual(reg['2026-11'], { min: 14500e6, may: 8200e6, evento: 0, plastico: 0, fgl: 6300e6, fbt: 565e6 });
-assert.equal(reg['2025-10'].evento, 162207142);
-assert.equal('evento' in reg['2024-10'], false); // celda vacía = sin dato
-assert.equal('plastico' in reg['2025-11'], false);
+// Evento y Plástico no se usan
+assert.deepEqual(reg['2026-11'], { min: 14500e6, may: 8200e6, fgl: 6300e6, fbt: 565e6 });
+assert.equal('evento' in reg['2025-10'], false);
 
-// Los totales coinciden con los de la planilla (Baratote y General)
+// Baratote = Minorista + Mayorista; General = las cuatro unidades
 assert.deepEqual(totales(reg['2026-11']), { baratote: 22700e6, general: 29565e6 });
-assert.deepEqual(totales(reg['2025-10']), { baratote: 17705498405, general: 22539861203 });
-assert.deepEqual(totales(reg['2024-11']), { baratote: 21577421836, general: 26068693224 }); // la planilla dice 21.744 M de Baratote 2024: no cierra con Min + May
-// Totales de la planilla que no cierran con la suma: Baratote oct y nov 2024, Baratote y General nov 2025
+assert.deepEqual(totales(reg['2025-10']), { baratote: 17705498405, general: 22377654061 });
+// Totales de la planilla que no cierran con la suma (el General de la planilla incluye Evento y Plástico,
+// así que oct 2025 no se marca): Baratote oct y nov 2024, Baratote y General nov 2025
 assert.deepEqual(diferenciasTotales(r.bloques).map((d) => `${d.mes}/${d.anio} ${d.campo}`), ['10/2024 baratote', '11/2024 baratote', '11/2025 baratote', '11/2025 general']);
 assert.equal(diferenciasTotales(r.bloques)[2].calculado, 19238470906);
+
+// Sugerido según el movimiento: noviembre 2025 × (octubre 2026 / octubre 2025), redondeado al millón
+const s = calcularSugerido(reg['2025-11'], [{ mes: '2026-10', actual: reg['2026-10'], anterior: reg['2025-10'] }]);
+assert.deepEqual(s.valores, { min: 12937e6, may: 7451e6, fgl: 6048e6, fbt: 274e6 });
+assert.equal(s.detalle.min.tendencia.toFixed(4), '-0.0844');
+assert.equal(s.detalle.fbt.topeada, true); assert.equal(s.detalle.fbt.aplicada, 0.5); // +105% → tope +50%
+assert.deepEqual(s.detalle.may.meses, ['2026-10']);
+// Varios meses: se suman (los meses grandes pesan más); sin datos del año anterior no hay tendencia
+const s2 = calcularSugerido({ min: 100e6 }, [
+  { mes: 'm1', actual: { min: 120 }, anterior: { min: 100 } },
+  { mes: 'm2', actual: { min: 300 }, anterior: { min: 300 } },
+  { mes: 'm3', actual: { min: 50 }, anterior: {} },
+]);
+assert.equal(s2.valores.min, 105e6); // (120 + 300) / (100 + 300) = +5% (no +10%, el promedio simple)
+assert.deepEqual(s2.detalle.min.meses, ['m1', 'm2']);
+const s3 = calcularSugerido({ fgl: 50e6, may: 0 }, []);
+assert.deepEqual(s3.valores, { fgl: 50e6 }); assert.equal(s3.detalle.fgl.tendencia, null);
 assert.equal(variacion(110, 100).toFixed(2), '0.10');
 assert.equal(variacion(5, 0), null);
 
