@@ -419,6 +419,15 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Las tarjetas de Teams traen el link **"Ver el reporte"** (al dashboard) o **"Ver sucursales"**, como texto en la tarjeta y como botón. La dirección sale de `PORTAL_URL` si está cargada; si no, de la dirección principal del sitio que da Netlify (`URL`) o de la del pedido, así que funciona sin configurar nada (`enlacePortal` en `netlify/lib/teams.mjs`).
 - Si quien abre el link no tiene sesión, después de ingresar vuelve a esa sección (`index.html#sección`).
 
+### 12.23 Cierre de mes
+- Nuevo menú **Cierre de mes** (todos los usuarios; en el celular, botón **Cierre** en la barra de abajo). Por defecto muestra el mes anterior al actual y se puede elegir cualquier mes publicado.
+- Muestra: venta final del mes contra el objetivo (cumplimiento, diferencia, estado **Cumplido / Cerca / No cumplido**), comparación con el mes anterior y el mismo mes del año anterior, resultado por unidad, cómo se movió la proyección en cada publicación, resumen de sucursales (total, las 5 que más y menos vendieron, cumplimiento de objetivos por sucursal y zonas) y el análisis de IA del mes si se publicó. Exporta a Excel, PDF y Compartir.
+- Si el último reporte del mes no llega al último día, avisa que el cierre está incompleto y muestra la proyección; el admin tiene el botón **Cargar el cierre**.
+- **Cargar ventas** al empezar un mes: si la fecha de corte es de un mes anterior y no es su último día, la cambia al último día del mes ("Falta cerrar octubre"). Con el cierre ya cargado, avisa que hay que cambiar la fecha para empezar el mes nuevo. Publicar el cierre no pide confirmación por la fecha.
+- Datos: cada publicación guarda en `cierre/AAAA-MM` el reporte completo con la fecha de corte más alta del mes (comparativa incluida); antes de pasar a otro mes se guarda el último publicado del mes que termina. Publicar el cierre de un mes ya pasado (con el mes nuevo ya publicado) no mueve el dashboard hacia atrás. `GET /api/cierre?mes=AAAA-MM` → `{ mes, meses, reporte, history }`.
+- Teams: con fecha de corte el último día del mes la tarjeta se titula **"Cierre de Octubre 2026"** y el link lleva al cierre.
+- Dashboard: aviso con link al cierre los primeros 10 días del mes, o mientras el mes nuevo no se publicó.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

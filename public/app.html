@@ -35,6 +35,10 @@
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l1.6-5h14.8L21 9"/><path d="M4 9v11h16V9"/><path d="M9.5 20v-5.5h5V20"/><path d="M3 9h18"/></svg>
         <span>Sucursales</span>
       </a>
+      <a class="tab" href="#cierre" data-view="cierre">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M8.5 15l2.5 2.5 4.5-5"/></svg>
+        <span>Cierre de mes</span>
+      </a>
       <p class="nav-grupo solo-admin">Administración</p>
       <a class="tab solo-admin" href="#ventas" data-view="ventas">
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>
@@ -296,6 +300,21 @@
       <div id="dash"></div>
     </section>
 
+    <!-- Cierre de mes: resumen final del mes anterior (o del que se elija) -->
+    <section id="view-cierre" hidden>
+      <div class="card-head dash-head">
+        <div>
+          <h1 id="cierre-titulo">Cierre de mes</h1>
+          <p class="muted" id="cierre-sub"></p>
+        </div>
+        <div class="suc-mes">
+          <label for="cierre-mes" class="small">Mes</label>
+          <select id="cierre-mes"></select>
+        </div>
+      </div>
+      <div id="cierre-contenido"><div class="card empty">Cargando el cierre…</div></div>
+    </section>
+
     <!-- Ventas por sucursal (Baratote Minorista) -->
     <section id="view-sucursales" hidden>
       <div class="card-head dash-head">
@@ -413,6 +432,10 @@
     <a class="tab tab-inf" href="#sucursales" data-view="sucursales">
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l1.6-5h14.8L21 9"/><path d="M4 9v11h16V9"/><path d="M9.5 20v-5.5h5V20"/><path d="M3 9h18"/></svg>
       <span>Sucursales</span>
+    </a>
+    <a class="tab tab-inf" href="#cierre" data-view="cierre">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M8.5 15l2.5 2.5 4.5-5"/></svg>
+      <span>Cierre</span>
     </a>
     <a class="tab tab-inf solo-admin" href="#ventas" data-view="ventas">
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>

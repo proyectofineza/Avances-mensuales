@@ -1,6 +1,6 @@
 // Aviso a un canal de Teams (Workflows → "solicitud de webhook") con una Adaptive Card.
 import {
-  calcularReporte, mesAnterior, mismoMesAnioAnterior, fmtFecha, fmtFechaHora, fmtPct, fmtVar,
+  calcularReporte, mesAnterior, mismoMesAnioAnterior, fmtFecha, fmtFechaHora, fmtPct, fmtVar, nombreMes, esUltimoDiaDelMes,
 } from '../../public/js/calc.js';
 
 export const teamsConfigurado = () => Boolean(process.env.TEAMS_WEBHOOK_URL);
@@ -21,14 +21,18 @@ const conEnlace = (url, titulo) => (url ? {
 
 export function armarTarjeta(published, { prueba = false, origen } = {}) {
   const r = calcularReporte(published);
-  const enlace = conEnlace(enlacePortal('dashboard', origen), 'Ver el reporte');
+  // Con corte el último día del mes, el aviso es el cierre y lleva a la pantalla de cierre.
+  const cierre = esUltimoDiaDelMes(published.corte);
+  const enlace = cierre
+    ? conEnlace(enlacePortal('cierre', origen), `Ver el cierre de ${nombreMes(published.corte).split(' ')[0].toLowerCase()}`)
+    : conEnlace(enlacePortal('dashboard', origen), 'Ver el reporte');
   return {
     $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
     type: 'AdaptiveCard',
     version: '1.4',
     body: [
       ...(prueba ? [{ type: 'TextBlock', text: 'AVISO DE PRUEBA', color: 'Attention', weight: 'Bolder', size: 'Small' }] : []),
-      { type: 'TextBlock', text: 'Reporte de ventas actualizado', weight: 'Bolder', size: 'Large', wrap: true },
+      { type: 'TextBlock', text: cierre ? `Cierre de ${nombreMes(published.corte)}` : 'Reporte de ventas actualizado', weight: 'Bolder', size: 'Large', wrap: true },
       {
         type: 'TextBlock',
         text: `Ventas hasta el ${fmtFecha(published.corte)} · publicado${published.publicadoEn ? ` el ${fmtFechaHora(published.publicadoEn)}` : ''} por ${published.por}`,

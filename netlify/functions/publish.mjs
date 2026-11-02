@@ -19,12 +19,31 @@ export default handler(async (req) => {
     publicadoEn: new Date().toISOString(),
     por: user.nombre,
   };
-  await setJSON('published', published);
+  const mes = published.corte.slice(0, 7);
+  const anterior = await getJSON('published');
+  const mesAnterior = anterior?.corte?.slice(0, 7);
+
+  // Cierre de cada mes (cierre/AAAA-MM): el reporte completo con la fecha de corte más alta,
+  // comparativa incluida. Antes de pasar a otro mes se guarda el último publicado del que termina.
+  const guardarCierre = async (rep) => {
+    const k = `cierre/${rep.corte.slice(0, 7)}`;
+    const actual = await getJSON(k);
+    if (!actual || actual.corte <= rep.corte) await setJSON(k, rep);
+  };
+  if (anterior && mesAnterior !== mes) await guardarCierre(anterior);
+  await guardarCierre(published);
+
+  // Publicar el cierre de un mes ya pasado no mueve el dashboard hacia atrás.
+  const actualizaDashboard = !mesAnterior || mes >= mesAnterior;
+  if (actualizaDashboard) await setJSON('published', published);
 
   // Historial del mes: un punto por fecha de corte (se reemplaza si se republica).
-  const key = `history/${published.corte.slice(0, 7)}`;
+  const key = `history/${mes}`;
   const history = (await getJSON(key, [])).filter((h) => h.corte !== published.corte);
-  history.push({ corte: published.corte, real: published.real, obj: published.obj, dias: published.dias, pesos: published.pesos });
+  history.push({
+    corte: published.corte, real: published.real, obj: published.obj, dias: published.dias, pesos: published.pesos,
+    publicadoEn: published.publicadoEn, por: published.por,
+  });
   history.sort((a, b) => a.corte.localeCompare(b.corte));
   await setJSON(key, history);
 
@@ -35,7 +54,7 @@ export default handler(async (req) => {
     teams = (await enviarTeams(published, { origen: new URL(req.url).origin })).ok ? 'enviado' : 'error';
   }
 
-  return json({ published, teams, canal: process.env.TEAMS_CANAL || '' });
+  return json({ published, actualizaDashboard, teams, canal: process.env.TEAMS_CANAL || '' });
 });
 
 export const config = { path: '/api/publish' };

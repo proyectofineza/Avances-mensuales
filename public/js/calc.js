@@ -332,6 +332,13 @@ export function nombreMes(corte) {
   return c ? `${MESES[c.m - 1]} ${c.y}` : '';
 }
 
+// Último día del mes de una fecha (YYYY-MM-DD), y si la fecha es ese día.
+export function ultimoDiaDelMes(fecha) {
+  const c = parseCorte(fecha);
+  return c ? `${fecha.slice(0, 8)}${String(new Date(Date.UTC(c.y, c.m, 0)).getUTCDate()).padStart(2, '0')}` : null;
+}
+export const esUltimoDiaDelMes = (fecha) => Boolean(fecha) && ultimoDiaDelMes(fecha) === fecha;
+
 export function hoyAsuncion() {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Asuncion', year: 'numeric', month: '2-digit', day: '2-digit',

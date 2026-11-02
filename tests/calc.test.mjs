@@ -145,4 +145,18 @@ assert.equal(fmtFecha('2026-10-05'), '05/10/2026');
 assert.equal(fmtCI('4567890'), '4.567.890');
 assert.equal(nombreMes('2026-10-22'), 'Octubre 2026');
 
+// Último día del mes (cierre)
+import { ultimoDiaDelMes, esUltimoDiaDelMes } from '../public/js/calc.js';
+assert.equal(ultimoDiaDelMes('2026-10-05'), '2026-10-31');
+assert.equal(ultimoDiaDelMes('2026-11-30'), '2026-11-30');
+assert.equal(ultimoDiaDelMes('2028-02-10'), '2028-02-29'); // bisiesto
+assert.equal(ultimoDiaDelMes('mal'), null);
+assert.equal(esUltimoDiaDelMes('2026-10-31'), true);
+assert.equal(esUltimoDiaDelMes('2026-10-30'), false);
+assert.equal(esUltimoDiaDelMes(''), false);
+// Con el corte el último día, la proyección es lo vendido (todas las unidades, también Fineglass y Minorista)
+const cierreOct = calcularReporte({ corte: '2026-10-31', obj: { may: 100, min: 100, fgl: 100, fbt: 100 }, real: { may: 90, min: 110, fgl: 95, fbt: 50 } });
+for (const id of ['may', 'min', 'fgl', 'fbt']) assert.equal(Math.round(cierreOct.unidades[id].proyeccion), cierreOct.unidades[id].real);
+assert.equal(cierreOct.unidades.fgl.diasOperados, 22); assert.equal(cierreOct.unidades.fgl.diasMes, 22);
+
 console.log('calc: todas las pruebas pasaron');
