@@ -67,6 +67,8 @@ async function init() {
   setupMenu();
   $('tabs').hidden = false;
   document.querySelectorAll('.solo-admin').forEach((el) => { el.hidden = !isAdmin(); });
+  // En la barra del celular, los comerciales usan el lugar de Cargar y Usuarios para el Comparativo anual.
+  document.querySelectorAll('.solo-comercial').forEach((el) => { el.hidden = isAdmin(); });
 
   $('btn-salir').addEventListener('click', async () => {
     try { await API.logout(); } finally { location.replace('index.html'); }
