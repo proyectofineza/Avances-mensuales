@@ -3,6 +3,7 @@ import { handler, json, requireUser, HttpError } from '../lib/auth.mjs';
 import { getJSON } from '../lib/store.mjs';
 import { hoyAsuncion } from '../../public/js/calc.js';
 import { teamsConfigurado, enviarTeams } from '../lib/teams.mjs';
+import { mesesCerrados, conComparativa } from '../lib/meses.mjs';
 
 export default handler(async (req) => {
   const user = await requireUser(req, ['admin']);
@@ -18,7 +19,8 @@ export default handler(async (req) => {
     }
     // Usa lo publicado; si todavía no hay nada, manda datos en cero.
     const published = (await getJSON('published')) || { corte: hoyAsuncion(), obj: {}, real: {} };
-    const res = await enviarTeams({ ...published, por: user.nombre }, { prueba: true, origen: new URL(req.url).origin });
+    const { meses } = await mesesCerrados();
+    const res = await enviarTeams({ ...conComparativa(published, meses), por: user.nombre },{ prueba: true, origen: new URL(req.url).origin });
     if (!res.ok) throw new HttpError(502, res.detalle);
     return json({ ok: true, canal });
   }

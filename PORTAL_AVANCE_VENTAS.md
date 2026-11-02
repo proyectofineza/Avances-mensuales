@@ -454,6 +454,10 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Cuadro **Qué falta para igualar** el año anterior, por unidad: vendido en el año, total del año anterior, lo que falta, cuánto por mes y cuánto hay que crecer en los meses que quedan contra esos meses del año anterior; si la proyección alcanza o no (`faltaParaIgualar`).
 - Celular: los comerciales tienen **Anual** en la barra de abajo (en el lugar de Cargar y Usuarios del admin).
 
+### 12.27 Comparativa del dashboard con los datos del Comparativo anual
+- La comparativa de la proyección (mes anterior y mismo mes del año anterior) del dashboard, del Cierre de mes y del aviso de Teams sale de los mismos meses cerrados que el Comparativo anual: la planilla (`historia-mensual`) y, si un mes no está, el cierre del portal (`netlify/lib/meses.mjs`: `mesesCerrados`, `conComparativa`).
+- Lo cargado a mano en la tabla de comparativa de Cargar ventas queda solo para las unidades que esos meses no tienen. Se aplica al leer: lo guardado no cambia.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

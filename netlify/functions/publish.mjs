@@ -2,6 +2,7 @@ import { handler, json, readBody, requireUser, HttpError } from '../lib/auth.mjs
 import { getJSON, setJSON, deleteKey } from '../lib/store.mjs';
 import { normalizarReporte, validarReporte } from '../../public/js/calc.js';
 import { teamsConfigurado, enviarTeams } from '../lib/teams.mjs';
+import { mesesCerrados, conComparativa } from '../lib/meses.mjs';
 
 export default handler(async (req) => {
   if (req.method !== 'POST') throw new HttpError(405, 'Método no permitido.');
@@ -51,7 +52,8 @@ export default handler(async (req) => {
 
   let teams = 'omitido';
   if (body.avisarTeams && teamsConfigurado()) {
-    teams = (await enviarTeams(published, { origen: new URL(req.url).origin })).ok ? 'enviado' : 'error';
+    const { meses } = await mesesCerrados();
+    teams = (await enviarTeams(conComparativa(published, meses), { origen: new URL(req.url).origin })).ok ? 'enviado' : 'error';
   }
 
   return json({ published, actualizaDashboard, teams, canal: process.env.TEAMS_CANAL || '' });
