@@ -6,7 +6,7 @@ import {
   fmtFechaHora, nombreMes, fmtCI, hoyAsuncion, ultimoDiaDelMes, esUltimoDiaDelMes,
 } from './calc.js';
 import { armarContexto, textoParaCopiar, informeAHtml, MAX_TEXTO } from './informe.js';
-import { VISTAS_UNIDAD, resumenAnual, tablaVariaciones } from './anual.js';
+import { VISTAS_UNIDAD, resumenAnual, tablaVariaciones, faltaParaIgualar } from './anual.js';
 import {
   leerPlanillaMensual, NEGOCIOS, leerPlanillaObjetivos, registrosPorMes, totales, variacion, diferenciasTotales, calcularSugerido, TOPE_TENDENCIA,
 } from './objetivos.js';
@@ -2256,7 +2256,7 @@ function cerrarPanel() {
 
 const MES_CORTO = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const MES_LARGO = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-const anual = { datos: null, u: leerPref('anual-u', 'total'), modo: leerPref('anual-modo', 'mes'), puntos: null };
+const anual = { datos: null, u: leerPref('anual-u', 'total'), modo: leerPref('anual-modo', 'mes'), cmp: leerPref('anual-cmp', '0-1'), ver: leerPref('anual-ver', 'pct'), puntos: null };
 
 function setupAnual() {
   const el = $('anual-contenido');
@@ -2265,6 +2265,10 @@ function setupAnual() {
     if (u) { anual.u = u.dataset.anualU; guardarPref('anual-u', anual.u); renderAnual(); return; }
     const m = e.target.closest('[data-anual-modo]');
     if (m) { anual.modo = m.dataset.anualModo; guardarPref('anual-modo', anual.modo); renderAnual(); return; }
+    const c = e.target.closest('[data-anual-cmp]');
+    if (c) { anual.cmp = c.dataset.anualCmp; guardarPref('anual-cmp', anual.cmp); renderAnual(); return; }
+    const v = e.target.closest('[data-anual-ver]');
+    if (v) { anual.ver = v.dataset.anualVer; guardarPref('anual-ver', anual.ver); renderAnual(); return; }
     const exp = e.target.closest('[data-anual-exp]');
     if (exp) exportarAnual(exp.dataset.anualExp);
   });
@@ -2365,6 +2369,7 @@ function renderAnual() {
       <h3 class="an-sub">Cada mes contra el mismo mes de ${Y - 1}</h3>
       ${barrasAnualHtml(r)}
     </div>
+    ${faltaAnualHtml(d, Y, r.n)}
     ${calorAnualHtml(d.meses, Y, r.n)}
     <div class="an-exportar">
       <button class="btn btn-sm" type="button" data-anual-exp="pdf">PDF</button>
@@ -2502,30 +2507,76 @@ function barrasAnualHtml(r) {
     </svg>`;
 }
 
-// Tabla de calor: cada unidad, mes por mes, contra el año anterior.
+// Tabla de calor: cada unidad, mes por mes, contra otro año (elegible), en % o en diferencia de Gs.
+// anual.cmp dice qué años: '0-1' = año en curso contra el anterior, '0-2' contra dos antes, '1-2' los dos anteriores.
 function calorAnualHtml(meses, Y, n) {
-  const filas = tablaVariaciones(meses, Y, n);
+  const [ka, kb] = (anual.cmp || '0-1').split('-').map(Number);
+  const A = Y - ka, B = Y - kb;
+  const hasta = ka === 0 ? n : 12;
+  const enGs = anual.ver === 'gs';
+  const filas = tablaVariaciones(meses, A, hasta, B);
+  const millones = (v) => `${v >= 0 ? '+' : '−'}${fmtMiles(Math.abs(v) / 1e6)}`;
   const celda = (c) => {
     if (c.variacion === null) return `<td class="an-c-vacia">${c.valor === null ? '' : '—'}</td>`;
     const fuerza = Math.round(10 + Math.min(Math.abs(c.variacion) / 0.3, 1) * 45);
     const color = c.variacion >= 0 ? 'var(--pos)' : 'var(--neg)';
-    return `<td style="background:color-mix(in srgb, ${color} ${fuerza}%, transparent)" title="${fmtMillones(c.valor)} · ${Y - 1}: ${fmtMillones(c.anterior)}">${fmtVar(c.variacion).replace(/,\d%$/, '%')}</td>`;
+    return `<td style="background:color-mix(in srgb, ${color} ${fuerza}%, transparent)" title="${A}: ${fmtMillones(c.valor)} · ${B}: ${fmtMillones(c.anterior)} · ${fmtVar(c.variacion)}">${enGs ? millones(c.diferencia) : fmtVar(c.variacion).replace(/,\d%$/, '%')}</td>`;
   };
+  const acu = (f) => (f.acumulado === null ? '—' : enGs ? millones(f.diferencia) : fmtVar(f.acumulado));
+  const seg = (attr, actual, opciones) => opciones.map(([v, t]) => `<button type="button" data-${attr}="${v}" class="${v === actual ? 'active' : ''}">${t}</button>`).join('');
   return `
     <div class="card an-calor">
-      <h2>Cada unidad contra ${Y - 1}</h2>
-      <p class="muted small" style="margin:4px 0 12px">Variación de cada mes contra el mismo mes del año anterior. Tocá una unidad para verla en el gráfico.</p>
+      <div class="card-head an-controles">
+        <h2>Cada unidad: ${A} contra ${B}</h2>
+        <div class="an-calor-ctrl">
+          <div class="seg-btns" role="group" aria-label="Años a comparar">${seg('anual-cmp', anual.cmp, [['0-1', `${Y} vs ${Y - 1}`], ['0-2', `${Y} vs ${Y - 2}`], ['1-2', `${Y - 1} vs ${Y - 2}`]])}</div>
+          <div class="seg-btns" role="group" aria-label="Mostrar">${seg('anual-ver', anual.ver, [['pct', '%'], ['gs', 'Millones Gs.']])}</div>
+        </div>
+      </div>
+      <p class="muted small" style="margin:4px 0 12px">${enGs ? `Diferencia en millones de Gs. de cada mes de ${A} contra el mismo mes de ${B}` : `Variación de cada mes de ${A} contra el mismo mes de ${B}`}${ka === 0 ? `; el acumulado va de enero a ${MES_LARGO[n - 1]}` : ''}. Tocá una unidad para verla en el gráfico.</p>
       <div class="table-wrap">
-        <table class="an-calor-tabla">
+        <table class="an-calor-tabla${enGs ? ' an-calor-gs' : ''}">
           <thead><tr><th></th>${MES_CORTO.map((m) => `<th>${m}</th>`).join('')}<th>Acum.</th></tr></thead>
           <tbody>${filas.map((f) => `
             <tr class="${f.id === anual.u ? 'act' : ''}${f.id === 'min' || f.id === 'may' ? ' sub' : ''}">
               <th><button type="button" class="btn-link" data-anual-u="${f.id}">${esc(f.nombre)}</button></th>
               ${f.celdas.map(celda).join('')}
-              <td class="an-c-acu ${f.acumulado === null ? '' : f.acumulado >= 0 ? 'var-pos' : 'var-neg'}">${f.acumulado === null ? '—' : fmtVar(f.acumulado)}</td>
+              <td class="an-c-acu ${f.acumulado === null ? '' : f.acumulado >= 0 ? 'var-pos' : 'var-neg'}">${acu(f)}</td>
             </tr>`).join('')}</tbody>
         </table>
       </div>
+    </div>`;
+}
+
+// Qué falta para igualar el año anterior completo, por unidad, y si la proyección alcanza.
+function faltaAnualHtml(d, Y, n) {
+  const filas = faltaParaIgualar(d.meses, d.enCurso);
+  if (!filas.length) return '';
+  const quedan = `${MES_LARGO[n]}${n < 11 ? ` a ${MES_LARGO[11]}` : ''}`;
+  const mill = (v) => fmtMiles(v / 1e6); // en millones, para que entre en el celular
+  const estado = (f) => (f.falta <= 0
+    ? `<span class="chip ok">Ya superó ${Y - 1}</span>`
+    : f.alcanza === null ? '' : `<span class="chip ${f.alcanza ? 'ok' : 'risk'}">${f.alcanza ? 'La proyección alcanza' : 'La proyección no alcanza'}</span>`);
+  return `
+    <div class="card an-falta">
+      <h2>Qué falta para igualar ${Y - 1}</h2>
+      <p class="muted small" style="margin:4px 0 12px">Lo vendido de enero a ${MES_LARGO[n - 1]} contra todo ${Y - 1}, y cuánto hay que vender en lo que queda (${quedan}) para empatar el año. En millones de Gs.</p>
+      <div class="table-wrap">
+        <table class="suc-tabla an-falta-tabla">
+          <thead><tr><th>Unidad</th><th class="r">Vendido ${Y}</th><th class="r opc">Total ${Y - 1}</th><th class="r">Falta</th><th class="r opc">Por mes</th><th class="r">Crecer</th><th class="opc"></th></tr></thead>
+          <tbody>${filas.map((f) => `
+            <tr class="${f.id === 'min' || f.id === 'may' ? 'sub' : ''}${f.id === anual.u ? ' act' : ''}">
+              <td><button type="button" class="btn-link" data-anual-u="${f.id}">${esc(f.nombre)}</button></td>
+              <td class="r">${mill(f.vendido)}</td>
+              <td class="r opc">${mill(f.totalAnterior)}</td>
+              <td class="r"><b>${f.falta > 0 ? mill(f.falta) : '—'}</b></td>
+              <td class="r opc">${f.falta > 0 ? mill(f.porMes) : '—'}</td>
+              <td class="r ${f.crecimientoNecesario === null || f.falta <= 0 ? '' : f.crecimientoNecesario > 0 ? 'var-neg' : 'var-pos'}">${f.falta <= 0 || f.crecimientoNecesario === null ? '—' : fmtVar(f.crecimientoNecesario)}</td>
+              <td class="opc">${estado(f)}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <p class="nota" style="margin:10px 0 0">"Crecer": cuánto más que en esos mismos meses de ${Y - 1} hay que vender para empatar el año. En rojo, si hace falta crecer; en verde, si alcanza aun vendiendo menos.</p>
     </div>`;
 }
 

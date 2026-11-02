@@ -1218,6 +1218,15 @@ body.panel-abierto { overflow: hidden; }
 .an-calor-tabla tbody tr.act th .btn-link { color: var(--primary); font-weight: 800; }
 .an-calor-tabla td { text-align: center; padding: 7px 4px; border-radius: 6px; font-weight: 600; min-width: 46px; animation: fundido .5s both; }
 .an-c-vacia { color: var(--text-2); }
+.an-calor .an-controles h2 { margin: 0; }
+.an-calor-ctrl { display: flex; flex-wrap: wrap; gap: 8px; }
+.an-calor-gs td { font-size: 11px; min-width: 54px; }
+.an-falta { margin-bottom: 16px; }
+.an-falta-tabla tr.sub td:first-child { padding-left: 22px; }
+.an-falta-tabla tr.act .btn-link { color: var(--primary); font-weight: 800; }
+.an-falta-tabla .chip { white-space: nowrap; }
+.an-falta-tabla td { white-space: nowrap; }
+@media (max-width: 600px) { .an-falta-tabla tr.sub td:first-child { padding-left: 12px; } }
 .an-c-acu { font-weight: 800 !important; border: 1px solid var(--vidrio-borde); }
 .an-exportar { display: flex; gap: 8px; justify-content: flex-end; }
 @media (max-width: 600px) {

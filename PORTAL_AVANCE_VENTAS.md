@@ -447,6 +447,13 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Datos (`GET /api/anual`): la planilla cargada (`historia-mensual`) manda; si un mes no está, el cierre del portal (`cierre/AAAA-MM`), marcado "parcial" si no llega al último día. El mes en curso es lo publicado. Cálculos en `public/js/anual.js`.
 - **Cargar meses cerrados** (admin, en la misma pantalla): se pega una tabla con una fila por mes (Año, Mes, Minorista, Mayorista, Fineglass, Fineboats; el mes por nombre o número; Evento, Plástico y totales se ignoran). También acepta el formato de bloques del objetivo sugerido. Va al mismo historial que usa el Objetivo sugerido. Desde que el portal tiene el cierre de cada mes, los meses se suman solos.
 
+### 12.26 Comparativo anual: colores, años a comparar y "qué falta"
+- Cada año con su color en el gráfico: el año en curso en azul (área y puntos), el anterior en ámbar (puntos llenos), el de hace dos años en violeta (línea cortada, puntos huecos); el año se lee al final de cada línea anterior y en el detalle.
+- Si el mes en curso todavía no tiene ventas publicadas (proyección en 0), la proyección de ese mes sale de la tendencia, como los meses siguientes.
+- Tabla por unidad con selector de años: **año en curso vs anterior**, **vs dos años antes** y **anterior vs dos años antes** (año completo), en **%** o en **diferencia en millones de Gs.** (`tablaVariaciones(meses, anio, hasta, base)`).
+- Cuadro **Qué falta para igualar** el año anterior, por unidad: vendido en el año, total del año anterior, lo que falta, cuánto por mes y cuánto hay que crecer en los meses que quedan contra esos meses del año anterior; si la proyección alcanza o no (`faltaParaIgualar`).
+- Celular: los comerciales tienen **Anual** en la barra de abajo (en el lugar de Cargar y Usuarios del admin).
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

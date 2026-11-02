@@ -1,6 +1,6 @@
 // Comparativo anual: acumulado del año, brecha, proyección y tabla de variaciones.
 import assert from 'node:assert/strict';
-import { valorUnidad, resumenAnual, tablaVariaciones } from '../public/js/anual.js';
+import { valorUnidad, resumenAnual, tablaVariaciones, faltaParaIgualar } from '../public/js/anual.js';
 
 const k = (a, m) => `${a}-${String(m).padStart(2, '0')}`;
 const meses = {};
@@ -63,5 +63,19 @@ assert.equal(min.celdas[0].variacion, 101 / 100 - 1);
 assert.equal(min.celdas[10].valor, null); assert.equal(min.celdas[10].variacion, null);
 assert.equal(tabla.find((x) => x.id === 'fbt').acumulado, 0);
 assert.equal(tabla.length, 6);
+assert.equal(min.diferencia, (101 + 90 + 103 + 104 + 105 + 106 + 107 + 108 + 109 + 110) - 1000);
+// Contra dos años antes, y un año pasado completo contra el suyo
+const vs24 = tablaVariaciones(meses, 2026, 10, 2024).find((x) => x.id === 'min');
+assert.equal(vs24.celdas[0].variacion, 101 / 90 - 1);
+const t25 = tablaVariaciones(meses, 2025, 12).find((x) => x.id === 'total');
+assert.equal(t25.acumulado, 145 / 125 - 1); assert.equal(t25.diferencia, 240);
+
+// Cuánto falta para igualar 2025: total 1740, vendido ytd26; quedan nov y dic (290 en 2025)
+const falta = faltaParaIgualar(meses, null).find((x) => x.id === 'total');
+assert.equal(falta.totalAnterior, 1740); assert.equal(falta.vendido, ytd26);
+assert.equal(falta.falta, 1740 - ytd26); assert.equal(falta.mesesQuedan, 2);
+assert.equal(falta.crecimientoNecesario, (1740 - ytd26) / 290 - 1);
+assert.equal(falta.alcanza, true);
+assert.deepEqual(faltaParaIgualar({ '2026-01': { min: 5 } }, null), []);
 
 console.log('anual: todas las pruebas pasaron');

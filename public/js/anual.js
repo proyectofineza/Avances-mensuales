@@ -91,16 +91,40 @@ export function resumenAnual(meses, enCurso, u = 'total') {
   return { anio, n, series, ytd, varYtd1: variacion(ytd.y, ytd.y1), varYtd2: variacion(ytd.y, ytd.y2), ventaja: ytd.y1 !== null ? ytd.y - ytd.y1 : null, racha, variaciones, ultimoMes, mejor, peor, proyeccion };
 }
 
-// Variación de cada unidad contra el año anterior, mes por mes (tabla de calor), más el acumulado.
-export function tablaVariaciones(meses, anio, hasta) {
+// Variación de cada unidad contra otro año (por defecto el anterior), mes por mes (tabla de calor),
+// más el acumulado de los meses que tienen los dos años hasta el mes `hasta`.
+export function tablaVariaciones(meses, anio, hasta, base = anio - 1) {
   return VISTAS_UNIDAD.map((u) => {
     const celdas = Array.from({ length: 12 }, (_, i) => {
       const a = valorUnidad(meses[clave(anio, i + 1)], u.id);
-      const b = valorUnidad(meses[clave(anio - 1, i + 1)], u.id);
-      return { valor: a, anterior: b, variacion: variacion(a, b) };
+      const b = valorUnidad(meses[clave(base, i + 1)], u.id);
+      return { valor: a, anterior: b, variacion: variacion(a, b), diferencia: a !== null && b !== null ? a - b : null };
     });
     const conAmbos = celdas.slice(0, hasta).filter((c) => c.valor !== null && c.anterior !== null);
-    const acumulado = conAmbos.length ? variacion(conAmbos.reduce((s, c) => s + c.valor, 0), conAmbos.reduce((s, c) => s + c.anterior, 0)) : null;
-    return { ...u, celdas, acumulado };
+    const sa = conAmbos.reduce((s, c) => s + c.valor, 0), sb = conAmbos.reduce((s, c) => s + c.anterior, 0);
+    const acumulado = conAmbos.length ? variacion(sa, sb) : null;
+    return { ...u, celdas, acumulado, diferencia: conAmbos.length ? sa - sb : null };
   });
+}
+
+// Cuánto falta para igualar el año anterior completo, por unidad: lo vendido en los meses cerrados,
+// el total del año anterior, lo que falta y cuánto hay que crecer en los meses que quedan
+// (contra esos mismos meses del año anterior). Solo unidades con el año anterior completo.
+export function faltaParaIgualar(meses, enCurso) {
+  return VISTAS_UNIDAD.map((u) => {
+    const r = resumenAnual(meses, enCurso, u.id);
+    if (!r || r.n >= 12) return null;
+    const y1 = r.series[r.anio - 1];
+    if (y1.some((v) => v === null)) return null;
+    const totalAnterior = suma(y1, 12);
+    const quedan = y1.slice(r.n).reduce((s, v) => s + v, 0);
+    const falta = totalAnterior - r.ytd.y;
+    return {
+      ...u, vendido: r.ytd.y, totalAnterior, falta, mesesQuedan: 12 - r.n,
+      porMes: falta > 0 ? falta / (12 - r.n) : 0,
+      crecimientoNecesario: quedan > 0 ? falta / quedan - 1 : null,
+      proyeccion: r.proyeccion?.total ?? null,
+      alcanza: r.proyeccion ? r.proyeccion.total >= totalAnterior : null,
+    };
+  }).filter(Boolean);
 }
