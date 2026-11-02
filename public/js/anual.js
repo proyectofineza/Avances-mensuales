@@ -80,7 +80,9 @@ export function resumenAnual(meses, enCurso, u = 'total') {
     const t = pares.length ? pares.reduce((s, i) => s + y[i], 0) / pares.reduce((s, i) => s + y1[i], 0) - 1 : 0;
     const factor = 1 + Math.min(Math.max(t, -TOPE), TOPE);
     const serieP = Array(12).fill(null);
-    const curso = enCurso?.mes === clave(anio, n + 1) ? valorUnidad(enCurso.proyeccion, u) : null;
+    // Si el mes en curso todavía no tiene ventas publicadas (proyección en 0), sale de la tendencia.
+    const pub = enCurso?.mes === clave(anio, n + 1) ? valorUnidad(enCurso.proyeccion, u) : null;
+    const curso = pub > 0 ? pub : null;
     for (let i = n; i < 12; i++) serieP[i] = i === n && curso !== null ? curso : y1[i] * factor;
     const total = suma(y, n) + serieP.reduce((s, v) => s + (v || 0), 0);
     proyeccion = { serie: serieP, total, tendencia: t, enCurso: curso !== null, vsAnioAnterior: variacion(total, suma(y1, 12)) };

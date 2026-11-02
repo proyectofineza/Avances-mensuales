@@ -2289,7 +2289,8 @@ async function loadAnual() {
 const nombreUnidad = (u) => VISTAS_UNIDAD.find((x) => x.id === u)?.nombre || '';
 // En el celular los gráficos se dibujan a su ancho, así el texto no queda diminuto.
 const anualMovil = matchMedia('(max-width: 600px)');
-const medidasAnual = () => (anualMovil.matches ? { W: 360, IZQ: 40, DER: 10 } : { W: 720, IZQ: 50, DER: 18 });
+// DER deja lugar para el nombre de cada año al final de su línea.
+const medidasAnual = () => (anualMovil.matches ? { W: 360, IZQ: 40, DER: 34 } : { W: 720, IZQ: 50, DER: 44 });
 anualMovil.addEventListener('change', () => { if (currentView() === 'anual' && anual.datos) renderAnual(); });
 const acumular = (s) => { let t = 0; return s.map((v) => (v === null ? null : (t += v))); };
 
@@ -2406,6 +2407,15 @@ function lineasAnualHtml(r) {
   const grilla = marcas.map((v) => `<line x1="${IZQ}" x2="${W - DER}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" class="ac-grilla"/><text x="${IZQ - 6}" y="${(y(v) + 4).toFixed(1)}" class="ac-eje" text-anchor="end">${fmtMiles(v / 1e6)}</text>`).join('');
   const meses = MES_CORTO.map((m, i) => `<text x="${x(i).toFixed(1)}" y="${H - 8}" class="ac-eje${i === ultimo ? ' an-eje-act' : ''}" text-anchor="middle">${m}</text>`).join('');
   const puntos = sy.map((v, i) => (v === null ? '' : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${i === ultimo ? 5 : 3.2}" class="an-punto" style="animation-delay:${(0.25 + i * 0.09).toFixed(2)}s"/>`)).join('');
+  // Años anteriores con su color y su marca (lleno para el anterior, hueco para el de hace dos años).
+  const marcasAnt = (s, clase, r_) => s.map((v, i) => (v === null ? '' : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${r_}" class="${clase}" style="animation-delay:${(0.4 + i * 0.07).toFixed(2)}s"/>`)).join('');
+  // Nombre de los años anteriores al final de su línea, separados para que no se encimen
+  // (el año en curso ya se distingue por el área y los puntos).
+  const finales = [[s2, Y - 2, 'an-anio-2'], [s1, Y - 1, 'an-anio-1']]
+    .map(([s, anio, clase]) => { const i = s.findLastIndex((v) => v !== null && v !== undefined); return i < 0 ? null : { i, yy: y(s[i]) + 4, anio, clase }; })
+    .filter(Boolean).sort((a, b) => a.yy - b.yy);
+  finales.forEach((f, k) => { if (k && f.i === finales[k - 1].i && f.yy - finales[k - 1].yy < 13) f.yy = finales[k - 1].yy + 13; });
+  const anios = finales.map((f) => `<text x="${(x(f.i) + 7).toFixed(1)}" y="${f.yy.toFixed(1)}" class="an-anio ${f.clase}">${f.anio}</text>`).join('');
 
   // Anotaciones: lo que hay que mirar.
   const nota = (i, v, texto, abajo = false, clase = '') => {
@@ -2429,10 +2439,12 @@ function lineasAnualHtml(r) {
       <path d="${area}" class="an-area"/>
       <path d="${linea(s2)}" class="an-linea an-l2" pathLength="1"/>
       <path d="${linea(s1)}" class="an-linea an-l1" pathLength="1"/>
+      ${marcasAnt(s2, 'an-p2', 2.4)}${marcasAnt(s1, 'an-p1', 2.6)}
       ${sp ? `<path d="${linea(sp)}" class="an-proy"/>` : ''}
       <path d="${linea(sy)}" class="an-linea an-ly" pathLength="1"/>
       ${puntos}
       ${notas.join('')}
+      ${anios}
       <line class="an-guia" id="an-guia" x1="0" x2="0" y1="${ARR - 10}" y2="${H - ABA}" visibility="hidden"/>
       ${hits}
     </svg>`;
@@ -2453,8 +2465,8 @@ function mostrarMesAnual(i) {
     <strong>${MES_LARGO[i][0].toUpperCase() + MES_LARGO[i].slice(1)}${p.acu ? ' · acumulado' : ''}</strong>
     ${fila(p.Y, p.sy[i], 'an-tip-y', p.s1[i])}
     ${proyectado !== null ? fila(`${p.Y} proy.`, proyectado, 'an-tip-p', p.s1[i]) : ''}
-    ${fila(p.Y - 1, p.s1[i], '', p.s2[i])}
-    ${fila(p.Y - 2, p.s2[i], '')}`;
+    ${fila(p.Y - 1, p.s1[i], 'an-tip-1', p.s2[i])}
+    ${fila(p.Y - 2, p.s2[i], 'an-tip-2')}`;
   tip.hidden = false;
   const caja = svg.getBoundingClientRect();
   const izq = (xv / W) * caja.width;

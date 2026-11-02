@@ -41,6 +41,10 @@ assert.equal(r.proyeccion.serie[9], null);
 
 // Sin mes en curso publicado: noviembre también sale de la tendencia
 assert.equal(resumenAnual(meses, null, 'total').proyeccion.enCurso, false);
+// Mes en curso recién empezado (proyección en 0): también sale de la tendencia, no de un cero
+const recien = resumenAnual(meses, { mes: '2026-11', real: {}, proyeccion: { min: 0, may: 0, fgl: 0, fbt: 0 } }, 'total');
+assert.equal(recien.proyeccion.enCurso, false);
+assert.ok(Math.abs(recien.proyeccion.serie[10] - 145 * t) < 1e-9);
 // Fineboats: igual que 2025 → sin brecha que crezca
 const fb = resumenAnual(meses, null, 'fbt');
 assert.equal(fb.varYtd1, 0); assert.equal(fb.peor, null);
