@@ -459,6 +459,42 @@
         </div>
       </details>
 
+      <details class="card solo-admin suc-carga" id="sa-card">
+        <summary>
+          <span class="suc-carga-titulo">Portal de sucursales</span>
+          <span class="muted small">PIN, equipos autorizados, ubicación e historial de cada sucursal</span>
+        </summary>
+        <p class="muted small" style="margin:14px 0 0">Cada sucursal entra en <b id="sa-link"></b> y ve solo su venta, su objetivo, su puesto y su historial. Para entrar necesita: el <b>PIN de la sucursal</b>, un <b>equipo autorizado</b> (se autoriza una vez, en el local, con un código que generás acá) y, si el equipo tiene GPS, <b>estar en el local</b>.</p>
+        <div class="sa-form">
+          <div>
+            <label for="sa-suc">Sucursal</label>
+            <input id="sa-suc" list="sa-suc-lista" autocomplete="off" placeholder="Ej.: ATYRA">
+            <datalist id="sa-suc-lista"></datalist>
+          </div>
+          <div>
+            <label for="sa-pin">PIN nuevo (4 a 6 números)</label>
+            <input id="sa-pin" inputmode="numeric" maxlength="6" autocomplete="off">
+          </div>
+          <div><button class="btn btn-primary" type="button" id="sa-pin-btn">Asignar PIN</button></div>
+        </div>
+        <div class="alert form-msg" id="sa-msg" hidden></div>
+        <div class="table-wrap" style="margin-top:14px">
+          <table class="suc-tabla sa-tabla">
+            <thead><tr><th>Sucursal</th><th>Ubicación</th><th>Equipos autorizados</th><th>Último intento</th><th class="r">Acciones</th></tr></thead>
+            <tbody id="sa-body"><tr><td colspan="5" class="muted">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+
+        <h3 style="margin:22px 0 6px">Historial por sucursal (meses anteriores)</h3>
+        <p class="muted small" style="margin:0 0 8px">Para el crecimiento interanual. Pegá desde Excel con los títulos <b>Sucursal</b>, <b>Año</b>, <b>Mes</b> y <b>Venta</b> (una fila por sucursal y mes), o <b>Sucursal</b> y una columna por mes (<b>Enero</b> … <b>Diciembre</b>, con columna <b>Año</b> o indicando el año abajo). Los meses que ya estaban se reemplazan para esas sucursales. <span id="sa-hist-estado"></span></p>
+        <textarea id="sa-hist-texto" rows="6" placeholder="Sucursal&#9;Año&#9;Enero&#9;Febrero&#9;…&#9;Diciembre&#10;ATYRA&#9;2025&#9;85.000.000&#9;79.500.000&#9;…&#9;120.000.000"></textarea>
+        <div class="actions">
+          <div id="sa-hist-anio-box" hidden><label for="sa-hist-anio" class="small">Año de la planilla</label> <input id="sa-hist-anio" type="number" min="2015" max="2100" style="width:110px"></div>
+          <button class="btn btn-primary" type="button" id="sa-hist-btn">Revisar y guardar</button>
+        </div>
+        <div class="alert form-msg" id="sa-hist-msg" hidden></div>
+      </details>
+
       <nav class="subtabs" id="suc-subtabs" role="tablist" aria-label="Vistas de sucursales" hidden>
         <button type="button" role="tab" data-sub="resumen">Resumen</button>
         <button type="button" role="tab" data-sub="informe">Informe IA</button>

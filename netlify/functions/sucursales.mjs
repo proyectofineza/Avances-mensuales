@@ -10,6 +10,7 @@ import { getJSON, setJSON, deleteKey } from '../lib/store.mjs';
 import { parseCorte } from '../../public/js/calc.js';
 import { normalizarSucursal, MAX_FILAS, resumirMes, alertasSucursales } from '../../public/js/sucursales.js';
 import { teamsConfigurado, enviarTarjeta, tarjetaAlertasSucursales } from '../lib/teams.mjs';
+import { actualizarMensual } from '../lib/sucursal-acceso.mjs';
 
 const MES_RE = /^\d{4}-\d{2}$/;
 
@@ -57,6 +58,7 @@ export default handler(async (req) => {
       const conservadas = actual.filas.filter((f) => !fechas.has(f.fecha));
       const filas = [...conservadas, ...nuevas].sort((a, b) => a.fecha.localeCompare(b.fecha) || a.sucursal.localeCompare(b.sucursal));
       await setJSON(`sucursales/${mes}`, { mes, filas, actualizado: ahora, por: user.nombre });
+      await actualizarMensual(mes, filas);
       resumen.push({ mes, dias: fechas.size, filas: nuevas.length, reemplazadas: actual.filas.length - conservadas.length });
     }
     const index = new Set(await meses());
@@ -81,6 +83,7 @@ export default handler(async (req) => {
     const mes = url.searchParams.get('mes');
     if (!mes || !MES_RE.test(mes)) throw new HttpError(400, 'Indicá el mes a borrar.');
     await deleteKey(`sucursales/${mes}`);
+    await actualizarMensual(mes, null);
     await setJSON('sucursales/index', (await meses()).filter((m) => m !== mes));
     return json({ ok: true });
   }

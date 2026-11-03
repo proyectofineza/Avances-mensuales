@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es-PY">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mi sucursal · Fineza</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <meta name="theme-color" content="#0E1217">
+  <meta name="robots" content="noindex">
+  <script>
+    try { if (localStorage.getItem('tema') === 'claro') document.documentElement.dataset.tema = 'claro'; } catch (e) { /* sin almacenamiento */ }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="ps-body">
+  <!-- Ingreso: autorizar el equipo (una vez) o ingresar con el PIN de la sucursal -->
+  <main class="login" id="ps-ingreso" hidden>
+    <span class="login-logo-chip"><img class="login-logo" src="img/fineza.png" alt="Fineza"></span>
+    <p class="login-sub">Portal de sucursales · Baratote</p>
+
+    <form class="login-card" id="ps-autorizar" novalidate hidden>
+      <div>
+        <h1>Autorizar este equipo</h1>
+        <p class="muted" style="margin:4px 0 0">Este equipo todavía no está autorizado. Hacelo <b>desde el local</b> con el código de 8 números que te da el administrador. Se pide una sola vez.</p>
+      </div>
+      <div>
+        <label for="ps-codigo">Código de autorización</label>
+        <input id="ps-codigo" inputmode="numeric" maxlength="8" autocomplete="one-time-code" required>
+      </div>
+      <div>
+        <label for="ps-equipo-nombre">Nombre del equipo</label>
+        <input id="ps-equipo-nombre" maxlength="40" placeholder="Ej.: Celular de caja, PC del local" required>
+      </div>
+      <div class="alert alert-error" id="ps-aut-error" hidden></div>
+      <button class="btn btn-primary" type="submit" id="ps-aut-btn">Autorizar equipo</button>
+    </form>
+
+    <form class="login-card" id="ps-login" novalidate hidden>
+      <div>
+        <h1 id="ps-login-titulo">Ingresar</h1>
+        <p class="muted" style="margin:4px 0 0" id="ps-login-sub">Ingresá el PIN de la sucursal.</p>
+      </div>
+      <div>
+        <label for="ps-pin">PIN de la sucursal</label>
+        <input id="ps-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" required>
+      </div>
+      <div class="alert alert-error" id="ps-login-error" hidden></div>
+      <button class="btn btn-primary" type="submit" id="ps-login-btn">Ingresar</button>
+    </form>
+  </main>
+
+  <!-- Portal de la sucursal -->
+  <main class="ps-main" id="ps-portal" hidden>
+    <header class="ps-head">
+      <div>
+        <p class="muted small ps-marca">Baratote · Mi sucursal</p>
+        <h1 id="ps-nombre"></h1>
+        <p class="muted small" id="ps-actualizado"></p>
+      </div>
+      <div class="ps-head-ctl">
+        <select id="ps-mes" aria-label="Mes"></select>
+        <button class="btn btn-sm" type="button" id="ps-salir">Salir</button>
+      </div>
+    </header>
+    <div id="ps-contenido"><div class="card empty">Cargando…</div></div>
+  </main>
+
+  <script type="module" src="js/sucursal.js"></script>
+</body>
+</html>

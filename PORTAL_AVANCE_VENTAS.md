@@ -458,6 +458,18 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - La comparativa de la proyección (mes anterior y mismo mes del año anterior) del dashboard, del Cierre de mes y del aviso de Teams sale de los mismos meses cerrados que el Comparativo anual: la planilla (`historia-mensual`) y, si un mes no está, el cierre del portal (`netlify/lib/meses.mjs`: `mesesCerrados`, `conComparativa`).
 - Lo cargado a mano en la tabla de comparativa de Cargar ventas queda solo para las unidades que esos meses no tienen. Se aplica al leer: lo guardado no cambia.
 
+### 12.28 Portal de sucursales
+- Página aparte **`/sucursal.html`**: cada sucursal de Baratote Minorista ve solo lo suyo: venta del mes, avance contra su objetivo (con la marca de dónde debería estar hoy), proyección al cierre, cuánto tiene que vender por día para llegar, el mes contra el mismo mes del año anterior, su **puesto** (en cumplimiento del objetivo y en venta, sin ver datos de otras), venta por día y **crecimiento interanual** (el año y los dos anteriores, mes a mes, y el acumulado de los meses cerrados). Cálculos en `public/js/portal-sucursal.js` (`vistaSucursal`).
+- **Acceso** (tres controles): PIN de la sucursal + **equipo autorizado** + **ubicación**.
+  - El admin asigna el PIN y genera un **código de 8 dígitos** (30 minutos, un solo uso). En el local, el equipo abre `/sucursal.html`, carga el código y queda autorizado (cookie firmada `pav_equipo`, 400 días). Si al autorizar el GPS es preciso (≤ 150 m), al equipo se le exige la ubicación en cada ingreso; si no (PC sin GPS), entra solo con equipo autorizado. El admin lo puede cambiar por equipo.
+  - Ubicación de la sucursal: la toma el primer equipo con GPS que se autoriza, o el admin la carga desde Google Maps; radio 300 m por defecto (50 a 5.000). Al ingresar se descuenta la imprecisión del GPS hasta 150 m; con más de 1.000 m de imprecisión se rechaza.
+  - Ingresar desde otra sucursal o desde fuera del local se rechaza aunque se sepa el PIN; sin el equipo autorizado, no hay forma de entrar.
+  - Sesión de 10 horas (`pav_suc`). Se cierra si se cambia el PIN, se quita el equipo o se desactiva la sucursal. 5 PIN equivocados bloquean 15 minutos; 10 códigos equivocados por conexión, también.
+  - Las sesiones de sucursal no sirven en el portal interno ni al revés: otras cookies y tokens firmados con otro tipo (`crearToken`/`leerToken` en `auth.mjs`), y `readSession` rechaza tokens con tipo.
+  - Cada intento queda registrado (fecha, equipo, si entró, motivo, distancia); el admin ve el último.
+- **Administración**: Sucursales → *Portal de sucursales* (admin): asignar o cambiar PIN, código para equipo, ubicación y radio, exigir o no la ubicación por equipo, quitar equipos, activar/desactivar, y **historial por sucursal** (planilla de meses anteriores: Sucursal, Año, Mes, Venta, o Sucursal + una columna por mes).
+- Datos: `suc-acceso/<SUCURSAL>`, `suc-codigo/<código>`, `suc-historia` (planilla, manda) y `suc-mensual` (totales por sucursal de lo cargado en el portal; se actualiza al cargar o borrar un mes). Funciones `/api/suc/:accion` y `/api/suc-admin`.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

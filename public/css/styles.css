@@ -1240,3 +1240,67 @@ body.panel-abierto { overflow: hidden; }
 .kpis.an-kpis { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 @media (min-width: 1100px) { .kpis.an-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .kpis.an-kpis { grid-template-columns: 1fr 1fr; } .an-kpis .kpi-value { font-size: 20px; } }
+
+/* ---- Portal de cada sucursal (sucursal.html) ---- */
+.ps-body { min-height: 100vh; }
+.ps-body .login { margin: 0 auto; padding-top: 6vh; }
+.ps-main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 16px; }
+.ps-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.ps-head h1 { margin: 2px 0; font-size: 28px; letter-spacing: -.02em; }
+.ps-marca { margin: 0; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+.ps-head-ctl { display: flex; gap: 8px; align-items: center; }
+.ps-head-ctl select { width: auto; }
+.ps-hero { background: var(--hero); }
+.ps-avance { display: grid; gap: 8px; }
+.ps-avance-num b { font-size: 34px; font-weight: 800; letter-spacing: -.02em; }
+.ps-barra { position: relative; height: 16px; border-radius: 999px; background: var(--track); overflow: visible; }
+.ps-barra-fill { height: 100%; border-radius: 999px; background: var(--primary); transform-origin: left; animation: crecer-x .9s cubic-bezier(.2, .8, .2, 1) both; }
+.ps-barra-fill.warn { background: var(--ideal); }
+.ps-barra-fill.risk { background: var(--neg); }
+.ps-barra-ideal { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--ideal); }
+.ps-barra-meta { position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; background: var(--objetivo); opacity: .7; }
+.ps-avance-pie { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.kpis.ps-kpis { margin-bottom: 0; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.ps-kpis .kpi-value { font-size: 24px; }
+.ps-de { font-size: 15px; font-weight: 600; color: var(--text-2); }
+.ps-ok .kpi-value { color: var(--pos); }
+.ps-body .pos { color: var(--pos); }
+.ps-body .neg { color: var(--neg); }
+.ps-card .card-head { margin-bottom: 10px; }
+.ps-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.ps-eje { fill: var(--text-2); font-size: 11px; font-family: var(--fuente); }
+.ps-dia { fill: var(--primary); opacity: .85; transform-box: fill-box; transform-origin: bottom; animation: crecer-y .6s cubic-bezier(.2, .9, .3, 1.2) both; }
+.ps-dia-finde { fill: var(--c-min); }
+.ps-prom { stroke: var(--text-2); stroke-width: 1.2; stroke-dasharray: 4 4; }
+.ps-l { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; animation: trazar 1.2s cubic-bezier(.3, .7, .2, 1) both; }
+.ps-l0 { stroke: var(--primary); stroke-width: 3.2; }
+.ps-l1 { stroke: var(--an-y1); stroke-width: 2.2; }
+.ps-l2 { stroke: var(--an-y2); stroke-width: 2; opacity: .85; }
+.ps-p0 { fill: var(--primary); stroke: var(--bg); stroke-width: 2; }
+.ps-p1 { fill: var(--an-y1); stroke: var(--bg); stroke-width: 1.5; }
+.ps-p2 { fill: var(--bg); stroke: var(--an-y2); stroke-width: 1.8; }
+.ps-leyenda { display: flex; gap: 12px; color: var(--text-2); }
+.ps-leyenda span { display: inline-flex; align-items: center; gap: 6px; }
+.ps-sw { display: inline-block; width: 14px; height: 4px; border-radius: 2px; vertical-align: middle; }
+.ps-sw-0 { background: var(--primary); } .ps-sw-1 { background: var(--an-y1); } .ps-sw-2 { background: var(--an-y2); }
+.ps-sw-finde { width: 10px; height: 10px; background: var(--c-min); }
+.ps-tabla td, .ps-tabla th { white-space: nowrap; }
+.ps-fila-curso td { background: var(--vidrio-2); }
+@media (max-width: 600px) {
+  .ps-head h1 { font-size: 22px; }
+  .kpis.ps-kpis { grid-template-columns: 1fr 1fr; }
+  .ps-kpis .kpi-value { font-size: 18px; }
+  .ps-tabla .opc { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .ps-barra-fill, .ps-dia, .ps-l { animation: none; } }
+
+/* Admin: acceso de sucursales */
+.sa-tabla td { vertical-align: top; }
+.sa-equipos { display: grid; gap: 6px; }
+.sa-equipo { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sa-codigo { font-size: 26px; font-weight: 800; letter-spacing: .12em; font-variant-numeric: tabular-nums; }
+.sa-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; align-items: end; margin-top: 10px; }
+.ps-lproy { stroke: var(--primary); stroke-width: 2.4; stroke-dasharray: 2 6; stroke-linecap: round; }
+.ps-pproy { fill: var(--bg); stroke: var(--primary); stroke-width: 2; stroke-dasharray: 3 2; }
+.ps-mes-c { display: none; }
+@media (max-width: 600px) { .ps-tabla .ps-mes-l { display: none; } .ps-tabla .ps-mes-c { display: inline; } }

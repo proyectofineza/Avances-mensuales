@@ -7,6 +7,7 @@ import {
 } from './calc.js';
 import { armarContexto, textoParaCopiar, informeAHtml, MAX_TEXTO } from './informe.js';
 import { VISTAS_UNIDAD, resumenAnual, tablaVariaciones, faltaParaIgualar } from './anual.js';
+import { leerHistorialSucursales } from './portal-sucursal.js';
 import {
   leerPlanillaMensual, NEGOCIOS, leerPlanillaObjetivos, registrosPorMes, totales, variacion, diferenciasTotales, calcularSugerido, TOPE_TENDENCIA,
 } from './objetivos.js';
@@ -931,6 +932,158 @@ function setupSucursales() {
   $('suc-borrar-mes').addEventListener('click', borrarMesSucursales);
   API.getTeams().then((t) => { $('suc-teams-box').hidden = !t.configurado; }).catch(() => {});
   setupConfigSucursales();
+  setupPortalSucursales();
+}
+
+// ---- Portal de sucursales (admin): PIN, equipos autorizados, ubicación e historial ----
+
+let accesosSuc = [];
+
+function setupPortalSucursales() {
+  $('sa-link').textContent = `${location.origin}/sucursal.html`;
+  $('sa-pin').addEventListener('input', () => { $('sa-pin').value = $('sa-pin').value.replace(/\D/g, ''); });
+  $('sa-card').addEventListener('toggle', () => { if ($('sa-card').open) cargarAccesos(); });
+  $('sa-pin-btn').addEventListener('click', async () => {
+    const sucursal = $('sa-suc').value.trim().toUpperCase();
+    const pin = $('sa-pin').value;
+    if (!sucursal) return showMsg($('sa-msg'), 'Elegí la sucursal.', false);
+    if (!/^\d{4,6}$/.test(pin)) return showMsg($('sa-msg'), 'El PIN debe tener de 4 a 6 números.', false);
+    if (!nombresConocidos().includes(sucursal) && !confirm(`"${sucursal}" no figura entre las sucursales con ventas ni en el listado. ¿Crear el acceso igual?`)) return;
+    await accionAcceso({ tipo: 'pin', sucursal, pin }, () => { $('sa-pin').value = ''; });
+  });
+  $('sa-body').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-sa]');
+    if (!b) return;
+    const sucursal = b.dataset.suc;
+    const a = accesosSuc.find((x) => x.sucursal === sucursal);
+    if (b.dataset.sa === 'codigo') generarCodigo(sucursal);
+    else if (b.dataset.sa === 'ubicacion') editarUbicacion(a);
+    else if (b.dataset.sa === 'activo') accionAcceso({ tipo: 'activo', sucursal, activo: !a.activo });
+    else if (b.dataset.sa === 'gps') accionAcceso({ tipo: 'equipo', sucursal, id: b.dataset.id, exigeGps: b.dataset.valor === '1' });
+    else if (b.dataset.sa === 'quitar' && confirm(`¿Quitar el equipo "${b.dataset.nombre}" de ${sucursal}? Ya no va a poder ingresar desde ahí.`)) {
+      accionAcceso({ tipo: 'equipo', sucursal, id: b.dataset.id, quitar: true });
+    }
+  });
+  $('sa-hist-texto').addEventListener('input', () => { $('sa-hist-anio-box').hidden = true; });
+  $('sa-hist-btn').addEventListener('click', guardarHistorialSucursales);
+}
+
+async function cargarAccesos() {
+  $('sa-suc-lista').innerHTML = nombresConocidos().map((n) => `<option value="${esc(n)}">`).join('');
+  try {
+    const d = await API.getAccesosSucursal();
+    accesosSuc = d.accesos;
+    pintarAccesos();
+    $('sa-hist-estado').textContent = d.historia.meses.length
+      ? `Cargado: ${d.historia.sucursales} sucursales, de ${nombreMes(fechaDeMes(d.historia.meses[0]))} a ${nombreMes(fechaDeMes(d.historia.meses.at(-1)))}.`
+      : 'Todavía no hay historial cargado.';
+  } catch (err) {
+    handleError(err, $('sa-msg'));
+  }
+}
+
+function pintarAccesos() {
+  if (!accesosSuc.length) {
+    $('sa-body').innerHTML = '<tr><td colspan="5" class="muted">Todavía ninguna sucursal tiene acceso. Asigná un PIN para empezar.</td></tr>';
+    return;
+  }
+  const mapa = (u) => `https://www.google.com/maps?q=${u.lat},${u.lng}`;
+  $('sa-body').innerHTML = accesosSuc.map((a) => {
+    const u = a.ubicacion;
+    const ubic = u
+      ? `<a href="${mapa(u)}" target="_blank" rel="noopener">Ver en el mapa</a><br><span class="muted small">${u.fuente === 'manual' ? 'cargada a mano' : 'tomada al autorizar · revisala'} · radio ${a.radio} m</span>`
+      : '<span class="chip warn">Sin ubicación</span>';
+    const equipos = a.equipos.length ? `<div class="sa-equipos">${a.equipos.map((e) => `
+      <div class="sa-equipo">
+        <b>${esc(e.nombre)}</b>
+        <span class="chip ${e.exigeGps ? 'ok' : 'warn'}">${e.exigeGps ? 'Con GPS' : 'Sin GPS'}</span>
+        ${e.distanciaAlta !== null && e.distanciaAlta > a.radio ? `<span class="chip risk" title="Distancia a la sucursal cuando se autorizó">autorizado a ${e.distanciaAlta} m</span>` : ''}
+        <span class="muted small">${e.ultimoIngreso ? `último ingreso ${fmtFechaHora(e.ultimoIngreso)}` : `autorizado ${fmtFechaHora(e.creado)}`}</span>
+        <button class="btn-link small" type="button" data-sa="gps" data-suc="${esc(a.sucursal)}" data-id="${esc(e.id)}" data-valor="${e.exigeGps ? '0' : '1'}">${e.exigeGps ? 'No exigir ubicación' : 'Exigir ubicación'}</button>
+        <button class="btn-link small" type="button" data-sa="quitar" data-suc="${esc(a.sucursal)}" data-id="${esc(e.id)}" data-nombre="${esc(e.nombre)}">Quitar</button>
+      </div>`).join('')}</div>` : '<span class="muted small">Ninguno: generá un código y autorizá el equipo en el local.</span>';
+    const ult = a.ingresos[0];
+    const intento = ult
+      ? `<span class="chip ${ult.ok ? 'ok' : 'risk'}">${ult.ok ? 'Ingresó' : 'Rechazado'}</span> <span class="muted small">${fmtFechaHora(ult.fecha)}${ult.distancia !== null && ult.distancia !== undefined ? ` · a ${ult.distancia} m` : ''}${ult.ok ? '' : `<br>${esc(ult.motivo)}`}</span>`
+      : '<span class="muted small">—</span>';
+    return `<tr>
+      <td><b>${esc(a.sucursal)}</b>${a.activo ? '' : ' <span class="chip risk">Desactivada</span>'}</td>
+      <td>${ubic}</td><td>${equipos}</td><td>${intento}</td>
+      <td class="r"><div class="actions" style="justify-content:flex-end;margin:0">
+        <button class="btn btn-sm btn-primary" type="button" data-sa="codigo" data-suc="${esc(a.sucursal)}">Código para equipo</button>
+        <button class="btn btn-sm" type="button" data-sa="ubicacion" data-suc="${esc(a.sucursal)}">Ubicación</button>
+        <button class="btn btn-sm" type="button" data-sa="activo" data-suc="${esc(a.sucursal)}">${a.activo ? 'Desactivar' : 'Activar'}</button>
+      </div></td></tr>`;
+  }).join('');
+}
+
+async function accionAcceso(datos, alTerminar) {
+  try {
+    const r = await API.accionAccesoSucursal(datos);
+    alTerminar?.();
+    await cargarAccesos();
+    showMsg($('sa-msg'), r.mensaje, true);
+  } catch (err) {
+    handleError(err, $('sa-msg'));
+  }
+}
+
+async function generarCodigo(sucursal) {
+  try {
+    const r = await API.accionAccesoSucursal({ tipo: 'codigo', sucursal });
+    const el = $('sa-msg');
+    el.className = 'alert form-msg alert-ok';
+    el.innerHTML = `Código para autorizar un equipo de <b>${esc(sucursal)}</b>: <div class="sa-codigo">${r.codigo.replace(/(\d{4})(\d{4})/, '$1 $2')}</div>
+      Vale por ${r.minutos} minutos y se usa una sola vez. En el local, abrí <b>${esc(location.origin)}/sucursal.html</b> en el equipo, permití la ubicación y cargá el código.`;
+    el.hidden = false;
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  } catch (err) {
+    handleError(err, $('sa-msg'));
+  }
+}
+
+function editarUbicacion(a) {
+  const actual = a.ubicacion ? `${a.ubicacion.lat}, ${a.ubicacion.lng}` : '';
+  const texto = prompt(`Ubicación de ${a.sucursal}: copiala de Google Maps (clic derecho sobre el local → las coordenadas).\nEjemplo: -25.2637, -57.5759`, actual);
+  if (texto === null) return;
+  const m = texto.match(/(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)/);
+  if (!m) return showMsg($('sa-msg'), 'No entendí la ubicación. Tiene que ser latitud, longitud (por ejemplo -25.2637, -57.5759).', false);
+  const radio = prompt('Radio permitido alrededor del local, en metros (50 a 5.000):', String(a.radio || 300));
+  if (radio === null) return;
+  accionAcceso({ tipo: 'ubicacion', sucursal: a.sucursal, lat: Number(m[1]), lng: Number(m[2]), radio: Number(radio) });
+}
+
+async function guardarHistorialSucursales() {
+  const msgEl = $('sa-hist-msg');
+  const texto = $('sa-hist-texto').value;
+  if (!texto.trim()) return showMsg(msgEl, 'Pegá la planilla.', false);
+  const anio = Number($('sa-hist-anio').value) || undefined;
+  const r = leerHistorialSucursales(texto, anio);
+  if (r.necesitaAnio) {
+    $('sa-hist-anio-box').hidden = false;
+    $('sa-hist-anio').focus();
+    return showMsg(msgEl, 'La planilla no tiene columna Año: indicá a qué año corresponde y volvé a tocar Revisar y guardar.', false);
+  }
+  const meses = Object.keys(r.registros).sort();
+  if (!meses.length) return showMsg(msgEl, r.errores[0]?.motivo || 'No encontré datos.', false);
+  const sucursales = new Set(meses.flatMap((m) => Object.keys(r.registros[m])));
+  const conocidas = new Set(nombresConocidos());
+  const raras = conocidas.size ? [...sucursales].filter((n) => !conocidas.has(n)) : [];
+  const avisos = [
+    r.errores.length ? `${r.errores.length} problema${r.errores.length === 1 ? '' : 's'} no se van a guardar (línea ${r.errores[0].linea}: ${r.errores[0].motivo})` : '',
+    raras.length ? `${raras.length} no coinciden con ninguna sucursal con ventas: ${raras.slice(0, 8).join(', ')}${raras.length > 8 ? '…' : ''}` : '',
+  ].filter(Boolean);
+  const detalle = `${sucursales.size} sucursales, de ${nombreMes(fechaDeMes(meses[0]))} a ${nombreMes(fechaDeMes(meses.at(-1)))}`;
+  if (!confirm(`Se va a guardar el historial: ${detalle}.${avisos.length ? '\n\n' + avisos.join('\n') : ''}\n\n¿Guardar?`)) return;
+  try {
+    await API.accionAccesoSucursal({ tipo: 'historial', registros: r.registros });
+    $('sa-hist-texto').value = '';
+    $('sa-hist-anio-box').hidden = true;
+    await cargarAccesos();
+    showMsg(msgEl, `Guardado: ${detalle}.${avisos.length ? ' ' + avisos.join('. ') + '.' : ''}`, true);
+  } catch (err) {
+    handleError(err, msgEl);
+  }
 }
 
 // ---- Configurar sucursales (admin): listado maestro y objetivos por mes ----

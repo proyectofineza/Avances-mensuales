@@ -33,6 +33,33 @@ export function createSessionCookie(ci) {
   return `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_HOURS * 3600}`;
 }
 
+// Tokens firmados para otros usos (portal de sucursales). El tipo entra en la firma, así un token
+// de un tipo no sirve como otro ni como sesión del portal.
+export function crearToken(tipo, datos, horas) {
+  const payload = Buffer.from(JSON.stringify({ ...datos, t: tipo, exp: Date.now() + horas * 3600e3 })).toString('base64url');
+  return `${payload}.${sign(`${tipo}:${payload}`)}`;
+}
+
+export function leerToken(tipo, valor) {
+  const [payload, sig] = String(valor || '').split('.');
+  if (!payload || !sig) return null;
+  const a = Buffer.from(sig);
+  const b = Buffer.from(sign(`${tipo}:${payload}`));
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    if (data.t !== tipo || !data.exp || data.exp < Date.now()) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export function leerCookie(req, nombre) {
+  const m = (req.headers.get('cookie') || '').match(new RegExp(`(?:^|;\\s*)${nombre}=([^;]+)`));
+  return m ? m[1] : null;
+}
+
 export function clearSessionCookie() {
   return `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
@@ -48,7 +75,7 @@ function readSession(req) {
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
-    if (!data.exp || data.exp < Date.now()) return null;
+    if (!data.exp || data.exp < Date.now() || data.t) return null;
     return data;
   } catch {
     return null;

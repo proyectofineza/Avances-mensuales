@@ -42,7 +42,9 @@ export const saveMaestro = (filas) => api('POST', 'sucursales-config', { tipo: '
 export const saveObjetivosSucursal = (mes, filas) => api('POST', 'sucursales-config', { tipo: 'objetivos', mes, filas });
 export const marcarCerrada = (sucursal, fecha) => api('POST', 'sucursales-config', { tipo: 'cerrada', sucursal, fecha });
 export const deleteSucursalesMes = (mes) => api('DELETE', `sucursales?mes=${encodeURIComponent(mes)}`);
-export const getTeams = () => api('GET', 'teams');
+export const getAccesosSucursal = () => api('GET', 'suc-admin');
+export const accionAccesoSucursal = (datos) => api('POST', 'suc-admin', datos);
+export const getTeams =() => api('GET', 'teams');
 export const testTeams = () => api('POST', 'teams');
 export const getUsers = () => api('GET', 'users');
 export const createUser = (user) => api('POST', 'users', user);

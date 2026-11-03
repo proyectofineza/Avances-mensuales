@@ -12,7 +12,7 @@ export const UNIDADES = [
 
 export const IDS = UNIDADES.map((u) => u.id);
 
-const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
+export const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 export function parseCorte(corte) {
