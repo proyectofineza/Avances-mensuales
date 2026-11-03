@@ -965,6 +965,13 @@ function setupPortalSucursales() {
     }
   });
   $('sa-hist-texto').addEventListener('input', () => { $('sa-hist-anio-box').hidden = true; });
+  $('sa-hist-archivo').addEventListener('change', async () => {
+    const f = $('sa-hist-archivo').files[0];
+    if (!f) return;
+    $('sa-hist-texto').value = await leerArchivo(f);
+    $('sa-hist-anio-box').hidden = true;
+    guardarHistorialSucursales();
+  });
   $('sa-hist-btn').addEventListener('click', guardarHistorialSucursales);
 }
 
@@ -1078,6 +1085,7 @@ async function guardarHistorialSucursales() {
   try {
     await API.accionAccesoSucursal({ tipo: 'historial', registros: r.registros });
     $('sa-hist-texto').value = '';
+    $('sa-hist-archivo').value = '';
     $('sa-hist-anio-box').hidden = true;
     await cargarAccesos();
     showMsg(msgEl, `Guardado: ${detalle}.${avisos.length ? ' ' + avisos.join('. ') + '.' : ''}`, true);

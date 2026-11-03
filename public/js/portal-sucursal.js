@@ -58,7 +58,7 @@ function separar(texto) {
 }
 
 // Dos formatos (con títulos):
-//   largo: Sucursal | Año | Mes | Venta        (una fila por sucursal y mes)
+//   largo: Sucursal | Año | Mes | Venta        (una fila por sucursal y mes; sin Año, se usa `anio`)
 //   ancho: Sucursal | Año | Enero | … | Diciembre  (una fila por sucursal y año; sin Año, se usa `anio`)
 // → { registros: { 'AAAA-MM': { SUCURSAL: monto } }, errores: [{ linea, motivo }], formato, necesitaAnio }
 export function leerHistorialSucursales(texto, anio) {
@@ -73,10 +73,10 @@ export function leerHistorialSucursales(texto, anio) {
   if (iSuc < 0) return { registros: {}, errores: [{ linea: 1, motivo: 'No encontré la columna Sucursal.' }] };
 
   const ancho = iMes < 0 && colMeses.length > 0;
-  if (!ancho && (iAnio < 0 || iMes < 0 || iVenta < 0)) {
-    return { registros: {}, errores: [{ linea: 1, motivo: 'La planilla tiene que tener Sucursal, Año, Mes y Venta, o Sucursal y una columna por mes (Enero … Diciembre).' }] };
+  if (!ancho && (iMes < 0 || iVenta < 0)) {
+    return { registros: {}, errores: [{ linea: 1, motivo: 'La planilla tiene que tener Sucursal, Mes y Venta (y Año, o se indica abajo), o Sucursal y una columna por mes (Enero … Diciembre).' }] };
   }
-  if (ancho && iAnio < 0 && !anio) return { registros: {}, errores: [], formato: 'ancho', necesitaAnio: true };
+  if (iAnio < 0 && !anio) return { registros: {}, errores: [], formato: ancho ? 'ancho' : 'largo', necesitaAnio: true };
 
   const registros = {}, errores = [];
   const poner = (y, m, suc, monto) => {

@@ -40,6 +40,10 @@ assert.deepEqual(a25.registros['2025-02'], { 'LUQUE 1': 6 });
 const conAnio = leerHistorialSucursales('Sucursal\tAño\tEne\tDic\nATYRA\t2024\t1.000\t2.000');
 assert.deepEqual(conAnio.registros, { '2024-01': { ATYRA: 1000 }, '2024-12': { ATYRA: 2000 } });
 assert.equal(leerHistorialSucursales('Sucursal\tVenta\nA\t1').errores.length, 1);
+// Largo sin Año (como sale de la tabla dinámica): pide el año
+const sinAnio = 'SUCURSAL,Mes,Suma de MONTO\n10 DE AGOSTO,enero,62552486\n10 DE AGOSTO,diciembre,86226286';
+assert.equal(leerHistorialSucursales(sinAnio).necesitaAnio, true);
+assert.deepEqual(leerHistorialSucursales(sinAnio, 2025).registros, { '2025-01': { '10 DE AGOSTO': 62552486 }, '2025-12': { '10 DE AGOSTO': 86226286 } });
 
 assert.deepEqual(totalesPorSucursal([{ sucursal: 'A', monto: 1 }, { sucursal: 'A', monto: 2 }, { sucursal: 'B', monto: 5 }]), { A: 3, B: 5 });
 

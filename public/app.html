@@ -486,7 +486,10 @@
         </div>
 
         <h3 style="margin:22px 0 6px">Historial por sucursal (meses anteriores)</h3>
-        <p class="muted small" style="margin:0 0 8px">Para el crecimiento interanual. Pegá desde Excel con los títulos <b>Sucursal</b>, <b>Año</b>, <b>Mes</b> y <b>Venta</b> (una fila por sucursal y mes), o <b>Sucursal</b> y una columna por mes (<b>Enero</b> … <b>Diciembre</b>, con columna <b>Año</b> o indicando el año abajo). Los meses que ya estaban se reemplazan para esas sucursales. <span id="sa-hist-estado"></span></p>
+        <p class="muted small" style="margin:0 0 8px">Para el crecimiento interanual. Subí un CSV o pegá desde Excel con los títulos <b>Sucursal</b>, <b>Mes</b> y <b>Venta</b> o <b>Monto</b> (una fila por sucursal y mes), o <b>Sucursal</b> y una columna por mes (<b>Enero</b> … <b>Diciembre</b>). Si no tiene columna <b>Año</b>, se indica abajo. Los meses que ya estaban se reemplazan para esas sucursales. <span id="sa-hist-estado"></span></p>
+        <label for="sa-hist-archivo">Archivo CSV</label>
+        <input type="file" id="sa-hist-archivo" accept=".csv,.txt,text/csv,text/plain">
+        <label for="sa-hist-texto" style="margin-top:10px">O pegá desde Excel</label>
         <textarea id="sa-hist-texto" rows="6" placeholder="Sucursal&#9;Año&#9;Enero&#9;Febrero&#9;…&#9;Diciembre&#10;ATYRA&#9;2025&#9;85.000.000&#9;79.500.000&#9;…&#9;120.000.000"></textarea>
         <div class="actions">
           <div id="sa-hist-anio-box" hidden><label for="sa-hist-anio" class="small">Año de la planilla</label> <input id="sa-hist-anio" type="number" min="2015" max="2100" style="width:110px"></div>
