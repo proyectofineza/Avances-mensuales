@@ -25,7 +25,10 @@ function ubicacion() {
 }
 
 const error = (el, texto) => { el.textContent = texto; el.hidden = !texto; };
-const soloDigitos = (el) => el.addEventListener('input', () => { el.value = el.value.replace(/\D/g, ''); });
+// Quita espacios y otros caracteres antes de limitar el largo, así un código pegado como "5963 8117" entra completo.
+const soloDigitos = (el) => el.addEventListener('input', () => {
+  el.value = el.value.replace(/\D/g, '').slice(0, Number(el.dataset.digitos) || undefined);
+});
 
 async function iniciar() {
   let estadoAcceso;

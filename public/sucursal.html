@@ -29,7 +29,7 @@
       </div>
       <div>
         <label for="ps-codigo">Código de autorización</label>
-        <input id="ps-codigo" inputmode="numeric" maxlength="8" autocomplete="one-time-code" required>
+        <input id="ps-codigo" inputmode="numeric" maxlength="20" data-digitos="8" autocomplete="one-time-code" required>
       </div>
       <div>
         <label for="ps-equipo-nombre">Nombre del equipo</label>
@@ -46,7 +46,7 @@
       </div>
       <div>
         <label for="ps-pin">PIN de la sucursal</label>
-        <input id="ps-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" required>
+        <input id="ps-pin" type="password" inputmode="numeric" maxlength="20" data-digitos="6" autocomplete="current-password" required>
       </div>
       <div class="alert alert-error" id="ps-login-error" hidden></div>
       <button class="btn btn-primary" type="submit" id="ps-login-btn">Ingresar</button>
