@@ -7,7 +7,7 @@ import {
 } from './calc.js';
 import { armarContexto, textoParaCopiar, informeAHtml, MAX_TEXTO } from './informe.js';
 import { VISTAS_UNIDAD, resumenAnual, tablaVariaciones, faltaParaIgualar } from './anual.js';
-import { leerHistorialSucursales } from './portal-sucursal.js';
+import { leerHistorialSucursales, fmtDistancia as fmtMetros } from './portal-sucursal.js';
 import {
   leerPlanillaMensual, NEGOCIOS, leerPlanillaObjetivos, registrosPorMes, totales, variacion, diferenciasTotales, calcularSugerido, TOPE_TENDENCIA,
 } from './objetivos.js';
@@ -1004,7 +1004,8 @@ function pintarAccesos() {
       <div class="sa-equipo">
         <b>${esc(e.nombre)}</b>
         <span class="chip ${e.exigeGps ? 'ok' : 'warn'}">${e.exigeGps ? 'Con GPS' : 'Sin GPS'}</span>
-        ${e.distanciaAlta !== null && e.distanciaAlta > a.radio ? `<span class="chip risk" title="Distancia a la sucursal cuando se autorizó">autorizado a ${e.distanciaAlta} m</span>` : ''}
+        ${e.exigeGps && e.distanciaAlta !== null && e.distanciaAlta > a.radio ? `<span class="chip risk" title="Distancia a la sucursal cuando se autorizó">autorizado a ${fmtMetros(e.distanciaAlta)}</span>` : ''}
+        ${!e.exigeGps && e.precisionAlta ? `<span class="muted small" title="Sin GPS, el navegador estima la ubicación por internet y puede errar varios km. Este equipo entra solo con el PIN.">ubicación aproximada (±${fmtMetros(e.precisionAlta)})</span>` : ''}
         <span class="muted small">${e.ultimoIngreso ? `último ingreso ${fmtFechaHora(e.ultimoIngreso)}` : `autorizado ${fmtFechaHora(e.creado)}`}</span>
         <button class="btn-link small" type="button" data-sa="gps" data-suc="${esc(a.sucursal)}" data-id="${esc(e.id)}" data-valor="${e.exigeGps ? '0' : '1'}">${e.exigeGps ? 'No exigir ubicación' : 'Exigir ubicación'}</button>
         <button class="btn-link small" type="button" data-sa="quitar" data-suc="${esc(a.sucursal)}" data-id="${esc(e.id)}" data-nombre="${esc(e.nombre)}">Quitar</button>

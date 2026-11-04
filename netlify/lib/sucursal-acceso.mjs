@@ -1,7 +1,7 @@
 // Acceso de cada sucursal a su portal: PIN de la sucursal + equipo autorizado + ubicación.
 //   suc-acceso/<SUCURSAL>  → { sucursal, activo, pinHash, pinSalt, pinVer, radio, ubicacion, equipos, ingresos, ... }
 //     ubicacion: { lat, lng, precision, fuente: 'equipo' | 'manual', fecha }
-//     equipos:   [{ id, nombre, creado, por, exigeGps, distanciaAlta, ultimoIngreso }]
+//     equipos:   [{ id, nombre, creado, por, exigeGps, precisionAlta, distanciaAlta, ultimoIngreso }]
 //     ingresos:  últimos intentos [{ fecha, equipo, ok, motivo, distancia }]
 //   suc-codigo/<CÓDIGO>    → { sucursal, exp, por }   código de un solo uso para autorizar un equipo
 //   suc-mensual            → { 'AAAA-MM': { SUCURSAL: monto } } totales de lo cargado en el portal
