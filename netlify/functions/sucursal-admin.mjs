@@ -6,10 +6,12 @@
 // POST { tipo: 'equipo', sucursal, id, quitar: true } → quita el equipo (ya no puede ingresar)
 // POST { tipo: 'ubicacion', sucursal, lat, lng, radio } → ubicación y radio del local
 // POST { tipo: 'activo', sucursal, activo }
+// POST { tipo: 'restablecer', sucursal }              → sin PIN, sin equipos ni intentos (mantiene ubicación)
+// POST { tipo: 'eliminar', sucursal }                 → borra el acceso (el historial de ventas no se toca)
 // POST { tipo: 'historial', registros: { 'AAAA-MM': { SUCURSAL: monto } } } → ventas mensuales de meses anteriores
 import { handler, json, readBody, requireUser, HttpError, hashPin } from '../lib/auth.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
-import { listarAccesos, getAcceso, setAcceso, accesoPublico, nuevoCodigo } from '../lib/sucursal-acceso.mjs';
+import { listarAccesos, getAcceso, setAcceso, borrarAcceso, anularCodigos, accesoPublico, nuevoCodigo } from '../lib/sucursal-acceso.mjs';
 import { normalizarSucursal } from '../../public/js/sucursales.js';
 import { leerPosicion, RADIO_DEFECTO } from '../../public/js/portal-sucursal.js';
 import { hoyAsuncion } from '../../public/js/calc.js';
@@ -106,6 +108,23 @@ export default handler(async (req) => {
     actual.radio = radio;
     await setAcceso(sucursal, actual);
     return json({ acceso: accesoPublico(actual), mensaje: `Se guardó la ubicación de ${sucursal} (radio ${radio} m).` });
+  }
+
+  if (body.tipo === 'restablecer') {
+    // Borra PIN, equipos e intentos; mantiene la ubicación y el radio. Las sesiones abiertas se cierran (pinVer cambia).
+    Object.assign(actual, {
+      activo: true, pinHash: null, pinSalt: null, pinVer: (actual.pinVer || 0) + 1, pinCambiado: ahora, pinPor: user.nombre,
+      equipos: [], ingresos: [], intentosFallidos: 0, bloqueadoHasta: null, restablecido: ahora,
+    });
+    await setAcceso(sucursal, actual);
+    await anularCodigos(sucursal);
+    return json({ acceso: accesoPublico(actual), mensaje: `Se restableció el acceso de ${sucursal}: sin PIN ni equipos. Asigná un PIN nuevo y autorizá el equipo otra vez.` });
+  }
+
+  if (body.tipo === 'eliminar') {
+    await borrarAcceso(sucursal);
+    await anularCodigos(sucursal);
+    return json({ mensaje: `Se eliminó el acceso de ${sucursal}. Su historial de ventas se mantiene.` });
   }
 
   if (body.tipo === 'activo') {

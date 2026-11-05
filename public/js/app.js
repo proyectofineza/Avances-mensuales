@@ -962,6 +962,10 @@ function setupPortalSucursales() {
     else if (b.dataset.sa === 'gps') accionAcceso({ tipo: 'equipo', sucursal, id: b.dataset.id, exigeGps: b.dataset.valor === '1' });
     else if (b.dataset.sa === 'quitar' && confirm(`¿Quitar el equipo "${b.dataset.nombre}" de ${sucursal}? Ya no va a poder ingresar desde ahí.`)) {
       accionAcceso({ tipo: 'equipo', sucursal, id: b.dataset.id, quitar: true });
+    } else if (b.dataset.sa === 'restablecer' && confirm(`¿Restablecer el acceso de ${sucursal}?\n\nSe borran el PIN y todos los equipos autorizados, y se cierran las sesiones abiertas. La ubicación se mantiene.\nDespués asignale un PIN nuevo y autorizá el equipo otra vez.`)) {
+      accionAcceso({ tipo: 'restablecer', sucursal });
+    } else if (b.dataset.sa === 'eliminar' && confirm(`¿Eliminar el acceso de ${sucursal}?\n\nSe borran el PIN, los equipos y la ubicación, y la sucursal sale de esta lista. El historial de ventas no se toca.`)) {
+      accionAcceso({ tipo: 'eliminar', sucursal });
     }
   });
   $('sa-hist-texto').addEventListener('input', () => { $('sa-hist-anio-box').hidden = true; });
@@ -1015,12 +1019,14 @@ function pintarAccesos() {
       ? `<span class="chip ${ult.ok ? 'ok' : 'risk'}">${ult.ok ? 'Ingresó' : 'Rechazado'}</span> <span class="muted small">${fmtFechaHora(ult.fecha)}${ult.distancia !== null && ult.distancia !== undefined ? ` · a ${ult.distancia} m` : ''}${ult.ok ? '' : `<br>${esc(ult.motivo)}`}</span>`
       : '<span class="muted small">—</span>';
     return `<tr>
-      <td><b>${esc(a.sucursal)}</b>${a.activo ? '' : ' <span class="chip risk">Desactivada</span>'}</td>
+      <td><b>${esc(a.sucursal)}</b>${a.activo ? '' : ' <span class="chip risk">Desactivada</span>'}${a.conPin ? '' : ' <span class="chip warn">Sin PIN</span>'}</td>
       <td>${ubic}</td><td>${equipos}</td><td>${intento}</td>
       <td class="r"><div class="actions" style="justify-content:flex-end;margin:0">
         <button class="btn btn-sm btn-primary" type="button" data-sa="codigo" data-suc="${esc(a.sucursal)}">Código para equipo</button>
         <button class="btn btn-sm" type="button" data-sa="ubicacion" data-suc="${esc(a.sucursal)}">Ubicación</button>
         <button class="btn btn-sm" type="button" data-sa="activo" data-suc="${esc(a.sucursal)}">${a.activo ? 'Desactivar' : 'Activar'}</button>
+        <button class="btn btn-sm" type="button" data-sa="restablecer" data-suc="${esc(a.sucursal)}" title="Borra el PIN y los equipos autorizados; mantiene la ubicación">Restablecer</button>
+        <button class="btn btn-sm btn-danger" type="button" data-sa="eliminar" data-suc="${esc(a.sucursal)}" title="Borra el acceso de la sucursal; el historial de ventas no se toca">Eliminar</button>
       </div></td></tr>`;
   }).join('');
 }

@@ -9,7 +9,7 @@
 // Las sesiones de sucursal usan sus propias cookies y tokens firmados con otro tipo:
 // no sirven para entrar al portal interno, y una sesión del portal no abre el de una sucursal.
 import crypto from 'node:crypto';
-import { getJSON, setJSON, store } from './store.mjs';
+import { getJSON, setJSON, deleteKey, store } from './store.mjs';
 import { crearToken, leerToken, leerCookie, HttpError } from './auth.mjs';
 import { totalesPorSucursal } from '../../public/js/portal-sucursal.js';
 
@@ -22,6 +22,14 @@ const MAX_INGRESOS = 40;
 const clave = (suc) => `suc-acceso/${encodeURIComponent(suc)}`;
 export const getAcceso = (suc) => getJSON(clave(suc));
 export const setAcceso = (suc, a) => setJSON(clave(suc), a);
+export const borrarAcceso = (suc) => deleteKey(clave(suc));
+
+// Anula los códigos de autorización pendientes de una sucursal (al restablecer o eliminar su acceso).
+export async function anularCodigos(suc) {
+  const { blobs } = await store().list({ prefix: 'suc-codigo/' });
+  const codigos = await Promise.all(blobs.map(async (b) => ({ key: b.key, c: await getJSON(b.key) })));
+  await Promise.all(codigos.filter(({ c }) => !c || c.sucursal === suc || c.exp < Date.now()).map(({ key }) => deleteKey(key)));
+}
 
 export async function listarAccesos() {
   const { blobs } = await store().list({ prefix: 'suc-acceso/' });
