@@ -13,8 +13,9 @@ import {
 } from './objetivos.js';
 import {
   leerPlanilla, resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, ultimoDiaCompleto, ultimasSemanas, NO_MINORISTA,
-  leerMaestro, leerObjetivos, parseFecha, avanceSucursales, resumenZonas, controlMaestro, zonaSugerida,
+  leerMaestro, leerObjetivos, parseFecha, avanceSucursales, resumenZonas, controlMaestro, zonaSugerida, normalizarSucursal,
 } from './sucursales.js';
+import { leerPlanillaHoras, tieneHora, minutos, NOMBRES_DIA } from './dia-comercial.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1116,8 +1117,78 @@ function setupConfigSucursales() {
     const base = e.target.closest('[data-cfg-base]');
     if (base) descargarBase(base.dataset.cfgBase);
     const g = e.target.closest('[data-cfg-guardar]');
-    if (g) guardarConfig(g.dataset.cfgGuardar);
+    if (g) { if (g.dataset.cfgGuardar === 'horario') guardarHorario(); else guardarConfig(g.dataset.cfgGuardar); }
   });
+  $('hc-body').addEventListener('input', pintarCruces);
+}
+
+// ---- Horario comercial (día comercial de las cargas con hora) ----
+
+const ORDEN_DIAS = [1, 2, 3, 4, 5, 6, 0];
+const quitarTildes = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+function pintarHorario() {
+  const h = suc.config?.horario;
+  if (!h) return;
+  $('hc-body').innerHTML = ORDEN_DIAS.map((wd) => `<tr>
+    <td>${NOMBRES_DIA[wd]}</td>
+    <td><input type="time" id="hc-ap-${wd}" value="${h.general[wd].apertura}" aria-label="Apertura ${NOMBRES_DIA[wd]}"></td>
+    <td><input type="time" id="hc-ci-${wd}" value="${h.general[wd].cierre}" aria-label="Cierre ${NOMBRES_DIA[wd]}"> <span class="hc-cruza" id="hc-x-${wd}"></span></td>
+  </tr>`).join('');
+  pintarCruces();
+  $('hc-propios').value = Object.entries(h.sucursales || {})
+    .flatMap(([s, dias]) => Object.entries(dias).map(([wd, d]) => [s, NOMBRES_DIA[wd], d.apertura, d.cierre].join(';'))).join('\n');
+  const propias = Object.keys(h.sucursales || {}).length;
+  $('hc-estado').textContent = h.actualizado
+    ? `Actualizado ${fmtFechaHora(h.actualizado)}${h.por ? ` por ${h.por}` : ''}${propias ? ` · ${propias} sucursal${propias === 1 ? '' : 'es'} con horario propio` : ''}.`
+    : 'Es el horario sugerido: revisalo y guardalo.';
+}
+
+// "cierra al día siguiente" al lado de cada cierre menor o igual que la apertura.
+function pintarCruces() {
+  for (const wd of ORDEN_DIAS) {
+    const ap = minutos($(`hc-ap-${wd}`)?.value), ci = minutos($(`hc-ci-${wd}`)?.value);
+    const el = $(`hc-x-${wd}`);
+    if (el) el.textContent = ap !== null && ci !== null && ci <= ap ? `del ${NOMBRES_DIA[(wd + 1) % 7].toLowerCase()}` : '';
+  }
+}
+
+// "LUQUE 1;Viernes;16:00;03:00" (o Todos) → { SUC: { wd: { apertura, cierre } } }.
+function leerHorariosPropios(texto) {
+  const dias = NOMBRES_DIA.map((n) => quitarTildes(n.toLowerCase()));
+  const sucursales = {}, errores = [];
+  String(texto).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).forEach((l, i) => {
+    const c = l.split(/\t|;|,/).map((x) => x.trim());
+    if (i === 0 && /sucursal/i.test(c[0])) return;
+    const suc = normalizarSucursal(c[0]);
+    const dia = quitarTildes(String(c[1] || '').toLowerCase());
+    const wds = dia === 'todos' ? [0, 1, 2, 3, 4, 5, 6] : [dias.findIndex((d) => d === dia || d.slice(0, 3) === dia.slice(0, 3))];
+    if (!suc || wds[0] < 0 || minutos(c[2]) === null || minutos(c[3]) === null) { errores.push(`línea ${i + 1}: "${l}"`); return; }
+    for (const wd of wds) (sucursales[suc] ||= {})[wd] = { apertura: c[2], cierre: c[3] };
+  });
+  return { sucursales, errores };
+}
+
+async function guardarHorario() {
+  const msgEl = $('hc-msg');
+  const general = {};
+  for (const wd of ORDEN_DIAS) {
+    const apertura = $(`hc-ap-${wd}`).value, cierre = $(`hc-ci-${wd}`).value;
+    if (minutos(apertura) === null || minutos(cierre) === null) { showMsg(msgEl, `Completá la apertura y el cierre del ${NOMBRES_DIA[wd].toLowerCase()}.`, false); return; }
+    general[wd] = { apertura, cierre };
+  }
+  const { sucursales, errores } = leerHorariosPropios($('hc-propios').value);
+  if (errores.length) { showMsg(msgEl, `Revisá los horarios propios (Sucursal;Día;Apertura;Cierre): ${errores.slice(0, 3).join(', ')}.`, false); return; }
+  const n = Object.keys(sucursales).length;
+  if (!confirm(`Se va a guardar el horario comercial${n ? ` y ${n} sucursal${n === 1 ? '' : 'es'} con horario propio` : ''}.\n\nSe aplica en las próximas cargas con hora; lo ya cargado no cambia hasta que vuelvas a cargar esos días.\n\n¿Guardar?`)) return;
+  try {
+    await API.saveHorarioComercial(general, sucursales);
+    suc.config = await API.getSucursalesConfig(suc.datos?.mes || hoyAsuncion().slice(0, 7));
+    pintarHorario();
+    showMsg(msgEl, 'Horario guardado. Se usa en las próximas cargas con hora.', true);
+  } catch (err) {
+    handleError(err, msgEl);
+  }
 }
 
 function pintarEstadoConfig() {
@@ -1332,13 +1403,17 @@ function revisarPlanilla() {
   msgEl.hidden = true;
   const texto = $('suc-texto').value;
   if (!texto.trim()) { showMsg(msgEl, 'Subí un archivo o pegá las filas de la planilla.', false); return; }
-  let r = leerPlanilla(texto);
+  // Con hora: se consolida por día comercial según el horario configurado.
+  const conHora = tieneHora(texto);
+  const leer = (mes) => (conHora ? leerPlanillaHoras(texto, mes, suc.config?.horario) : leerPlanilla(texto, mes));
+  let r = leer();
   if (r.necesitaMes) {
     $('suc-mes-carga-box').hidden = false;
-    r = leerPlanilla(texto, $('suc-mes-carga').value);
+    r = leer($('suc-mes-carga').value);
   } else {
     $('suc-mes-carga-box').hidden = true;
   }
+  r.conHora = conHora;
   suc.lectura = r;
 
   const errEl = $('suc-errores');
@@ -1358,9 +1433,42 @@ function revisarPlanilla() {
   const sucursales = new Set(r.filas.map((f) => f.sucursal)).size;
   const total = r.filas.reduce((s, f) => s + f.monto, 0);
   const meses = [...new Set(fechas.map((f) => f.slice(0, 7)))].map((m) => nombreMes(fechaDeMes(m))).join(', ');
-  $('suc-preview').textContent = `${fmtMiles(r.filas.length)} filas · ${sucursales} sucursales · del ${fmtFecha(fechas[0])} al ${fmtFecha(fechas.at(-1))} (${meses}) · total ${fmtMillones(total)}`;
+  $('suc-preview').textContent = r.conHora
+    ? `${fmtMiles(r.registros)} ventas con hora → ${fmtMiles(r.filas.length)} filas por día comercial · ${sucursales} sucursales · del ${fmtFecha(fechas[0])} al ${fmtFecha(fechas.at(-1))} (${meses}) · total ${fmtMillones(total)}`
+    : `${fmtMiles(r.filas.length)} filas · ${sucursales} sucursales · del ${fmtFecha(fechas[0])} al ${fmtFecha(fechas.at(-1))} (${meses}) · total ${fmtMillones(total)}`;
   $('suc-guardar').disabled = false;
-  pintarControlMaestro(r.filas, fechas.at(-1));
+  // Con hora, el último día del archivo puede traer solo la madrugada: el control se hace sobre el último día con venta normal.
+  let ultimoControl = fechas.at(-1);
+  if (r.conHora) {
+    const porDia = new Map();
+    for (const f of r.filas) porDia.set(f.fecha, (porDia.get(f.fecha) || 0) + 1);
+    const maximo = Math.max(...porDia.values());
+    ultimoControl = [...porDia].filter(([, n]) => n >= maximo / 2).map(([f]) => f).sort().at(-1) || ultimoControl;
+  }
+  pintarControlMaestro(r.filas, ultimoControl);
+  if (r.conHora) pintarResumenComercial(r);
+}
+
+// Qué hizo el día comercial con la planilla: madrugada movida, días que solo traen la madrugada, fuera de horario.
+function pintarResumenComercial(r) {
+  const el = $('suc-control');
+  const partes = [];
+  const pct = (v) => fmtPct(v / (r.total || 1));
+  partes.push(`<p><b>Día comercial:</b> ${fmtMiles(r.madrugada.registros)} ventas de madrugada (${fmtMillones(r.madrugada.monto)}, ${pct(r.madrugada.monto)}) pasan al día que abrió la noche anterior. Lo vendido hasta el cierre cuenta para ese día y no se repite en el siguiente.</p>`);
+  if (r.anteriores.length) {
+    const monto = r.filas.filter((f) => r.anteriores.includes(f.fecha)).reduce((s, f) => s + f.monto, 0);
+    partes.push(`<p><b>${r.anteriores.map((f) => `${DIA_CORTO[wdDe(f)]} ${fmtFecha(f)}`).join(', ')}:</b> la planilla trae solo su madrugada (${fmtMillones(monto)}). Se <b>suma</b> a lo que ya tenía ese día, sin reemplazarlo; si volvés a cargar esta planilla, se actualiza sin duplicar.</p>`);
+  }
+  if (r.fuera.registros) {
+    partes.push(`<p>${fmtMiles(r.fuera.registros)} ventas fuera del horario comercial (${fmtMillones(r.fuera.monto)}) en ${r.fuera.sucursales.length} sucursal${r.fuera.sucursales.length === 1 ? '' : 'es'}: se cuentan igual, en su día. ${esc(r.fuera.sucursales.slice(0, 12).join(', '))}${r.fuera.sucursales.length > 12 ? '…' : ''}</p>`);
+  }
+  if (r.precision === 'hora') {
+    partes.push('<p><b>Ojo:</b> la planilla viene agrupada por hora en punto (sin minutos). Las ventas de la hora del cierre (por ejemplo 00:00 a 00:59 con cierre a las 00:30) no se pueden partir y van completas al día anterior. Si podés, exportá con la hora exacta.</p>');
+  }
+  const previo = el.hidden ? '' : el.innerHTML;
+  el.innerHTML = previo + partes.join('');
+  el.className = `suc-control ${r.precision === 'hora' ? 'warn' : el.className.includes('warn') ? 'warn' : 'ok'}`;
+  el.hidden = false;
 }
 
 // Contra el listado maestro: qué sucursales no vinieron el último día de la planilla y cuáles no están en el listado.
@@ -1383,12 +1491,21 @@ function pintarControlMaestro(filas, ultima) {
 async function guardarPlanilla() {
   const msgEl = $('suc-msg');
   if (!suc.lectura?.filas.length) return;
+  // Una planilla sin hora sobre días que ya estaban por día comercial mezcla criterios: se pide confirmar.
+  const comerciales = new Set(suc.datos?.comerciales || []);
+  const pisa = suc.lectura.conHora ? [] : [...new Set(suc.lectura.filas.map((f) => f.fecha))].filter((f) => comerciales.has(f));
+  if (pisa.length && !confirm(`${pisa.length} día${pisa.length === 1 ? '' : 's'} de esta planilla (${pisa.slice(0, 5).map(fmtFecha).join(', ')}${pisa.length > 5 ? '…' : ''}) ya estaba${pisa.length === 1 ? '' : 'n'} cargado${pisa.length === 1 ? '' : 's'} por día comercial (con hora).\n\nEsta planilla no trae la hora: esos días van a quedar por día calendario y se pierde su detalle por hora.\n\n¿Guardar igual?`)) return;
   const btn = $('suc-guardar');
   btn.disabled = true;
   try {
     const avisar = !$('suc-teams-box').hidden && $('suc-teams').checked;
-    const res = await API.saveSucursales(suc.lectura.filas, avisar);
-    const partes = res.resumen.map((x) => `${nombreMes(fechaDeMes(x.mes))}: ${fmtMiles(x.filas)} filas de ${x.dias} día${x.dias === 1 ? '' : 's'}${x.reemplazadas ? ` (se reemplazaron ${fmtMiles(x.reemplazadas)} filas anteriores de esos días)` : ''}`);
+    const l = suc.lectura;
+    const res = await API.saveSucursales(l.filas, avisar, l.conHora ? { horas: l.horas, anteriores: l.anteriores, ultimaFecha: l.ultimaFecha } : null);
+    const partes = res.resumen.map((x) => {
+      const dias = x.dias ? `${fmtMiles(x.filas)} filas de ${x.dias} día${x.dias === 1 ? '' : 's'}` : '';
+      const madrugada = x.parciales ? `${dias ? ' y ' : ''}se sumó la madrugada de ${x.parciales === 1 ? 'su último día' : `${x.parciales} días`}` : '';
+      return `${nombreMes(fechaDeMes(x.mes))}: ${dias}${madrugada}${x.reemplazadas ? ` (se reemplazaron ${fmtMiles(x.reemplazadas)} filas anteriores de esos días)` : ''}`;
+    });
     const teams = res.teams ? (res.teams.ok ? ' Se avisó en Teams.' : ` No se pudo avisar en Teams: ${res.teams.detalle}`) : '';
     showMsg(msgEl, `Planilla guardada. ${partes.join(' · ')}.${teams}`, true);
     suc.lectura = null;
@@ -1431,6 +1548,7 @@ async function loadSucursales(mes) {
       if ($('cfg-obj-mes').value === datos.mes) suc.cfgObj = suc.config.objetivos;
       else if (!suc.cfgObj) cargarObjetivosConfig();
       pintarEstadoConfig();
+      pintarHorario();
     }
     suc.cache = {}; // puede haber cambiado una carga: se vuelven a pedir los otros meses
     cerrarPanel();
@@ -1459,7 +1577,10 @@ function renderSucursales() {
   suc.alertas = alertasSucursales(suc.res, { cerradas: suc.cerradas.keys() });
   const objetivos = (suc.config?.objetivos?.filas || []).filter((o) => !suc.cerradas.has(o.sucursal));
   suc.avance = avanceSucursales(suc.res, objetivos, ultimoDiaCompleto(suc.res.dias).fecha, pesosDelMes(d.mes));
-  $('suc-sub').textContent = `${nombreMes(fechaDeMes(d.mes))} · actualizado ${fmtFechaHora(d.actualizado)}${d.por ? ' por ' + d.por : ''}`;
+  const com = d.comerciales || [];
+  const criterio = !com.length ? '' : ` · por día comercial ${com.length === 1 ? `el ${fmtDiaMes(com[0])}` : `del ${fmtDiaMes(com[0])} al ${fmtDiaMes(com.at(-1))}`}`;
+  $('suc-sub').textContent = `${nombreMes(fechaDeMes(d.mes))} · actualizado ${fmtFechaHora(d.actualizado)}${d.por ? ' por ' + d.por : ''}${criterio}`;
+  $('suc-sub').title = com.length ? 'Días cargados con hora: lo vendido después de medianoche y hasta el cierre cuenta para el día que abrió la noche anterior.' : '';
 
   const nAlertas = suc.alertas.sinVentaReciente.length + suc.alertas.caidas.length;
   $('suc-alertas-n').textContent = nAlertas;

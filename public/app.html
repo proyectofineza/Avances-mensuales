@@ -395,7 +395,7 @@
           <span class="muted small">sucursal, fecha y monto · CSV o pegado de Excel</span>
         </summary>
         <div class="card-head" style="margin-top:14px">
-          <p class="muted small" style="margin:0">Columnas: <b>sucursal</b>, <b>fecha</b> y <b>monto</b>. Subí un archivo CSV o pegá las filas copiadas de Excel (con o sin títulos). Si cargás un día que ya estaba, se reemplaza ese día completo.</p>
+          <p class="muted small" style="margin:0">Columnas: <b>sucursal</b>, <b>fecha</b> y <b>monto</b>. Subí un archivo CSV o pegá las filas copiadas de Excel (con o sin títulos). Si cargás un día que ya estaba, se reemplaza ese día completo. Si la planilla trae la <b>hora</b> de cada venta (sucursal, hora, día o fecha, monto), se suma por <b>día comercial</b>: la madrugada va al día que abrió la noche anterior, según el horario comercial.</p>
           <button class="btn btn-sm btn-danger" type="button" id="suc-borrar-mes" hidden>Borrar este mes</button>
         </div>
         <div class="suc-carga-grid">
@@ -425,7 +425,7 @@
       <details class="card solo-admin suc-carga" id="suc-config">
         <summary>
           <span class="suc-carga-titulo">Configurar sucursales</span>
-          <span class="muted small">zona, encargado y objetivo de cada sucursal</span>
+          <span class="muted small">zona, encargado, objetivo y horario comercial</span>
         </summary>
         <div class="cfg-grid">
           <div class="cfg-bloque">
@@ -455,6 +455,21 @@
               <button class="btn btn-primary" type="button" data-cfg-guardar="objetivos">Revisar y guardar</button>
             </div>
             <div class="alert form-msg" id="cfg-obj-msg" hidden></div>
+          </div>
+          <div class="cfg-bloque cfg-horario">
+            <h3>Horario comercial</h3>
+            <p class="muted small">Se usa al cargar planillas <b>con hora</b>: lo vendido después de medianoche y antes del cierre se suma al día que abrió la noche anterior. Si el cierre es menor que la apertura, es del día siguiente. <span id="hc-estado"></span></p>
+            <table class="hc-tabla">
+              <thead><tr><th>Día</th><th>Apertura</th><th>Cierre</th></tr></thead>
+              <tbody id="hc-body"></tbody>
+            </table>
+            <label for="hc-propios" style="margin-top:12px">Horarios propios de algunas sucursales (opcional)</label>
+            <textarea id="hc-propios" rows="3" placeholder="Sucursal;Día;Apertura;Cierre&#10;LUQUE 1;Viernes;16:00;03:00&#10;ATYRA;Todos;08:00;20:00"></textarea>
+            <p class="muted small" style="margin:4px 0 0">Una línea por sucursal y día (o <b>Todos</b>). Los días que no cargues usan el horario general.</p>
+            <div class="actions">
+              <button class="btn btn-primary" type="button" data-cfg-guardar="horario">Guardar horario</button>
+            </div>
+            <div class="alert form-msg" id="hc-msg" hidden></div>
           </div>
         </div>
       </details>

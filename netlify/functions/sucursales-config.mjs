@@ -2,7 +2,9 @@
 //   sucursales-maestro          → { filas: [{ sucursal, zona, encargado }], actualizado, por }
 //   sucursales-objetivos/AAAA-MM → { mes, filas: [{ sucursal, objetivo }], actualizado, por }
 //   sucursales-cerradas          → { filas: [{ sucursal, fecha, por }] }
-// GET  ?mes=AAAA-MM (todos)                → { maestro, objetivos, cerradas }
+//   horario-comercial            → { general: {0..6: {apertura, cierre}}, sucursales: { SUC: { wd: {...} } }, actualizado, por }
+// GET  ?mes=AAAA-MM (todos)                → { maestro, objetivos, cerradas, horario }
+// POST { tipo: 'horario', general, sucursales } (admin) → horario comercial (día comercial de las cargas con hora)
 // POST { tipo: 'maestro', filas }  (admin) → reemplaza el listado maestro
 // POST { tipo: 'objetivos', mes, filas } (admin) → reemplaza los objetivos del mes
 // POST { tipo: 'cerrada', sucursal, fecha } (admin) → marca la sucursal como cerrada desde esa fecha;
@@ -11,6 +13,7 @@ import { handler, json, readBody, requireUser, HttpError } from '../lib/auth.mjs
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { normalizarSucursal } from '../../public/js/sucursales.js';
 import { parseCorte } from '../../public/js/calc.js';
+import { normalizarHorario } from '../../public/js/dia-comercial.js';
 
 const MES_RE = /^\d{4}-\d{2}$/;
 const MAX = 2000;
@@ -20,17 +23,28 @@ export default handler(async (req) => {
   if (req.method === 'GET') {
     await requireUser(req);
     const mes = new URL(req.url).searchParams.get('mes');
-    const [maestro, objetivos, cerradas] = await Promise.all([
+    const [maestro, objetivos, cerradas, horario] = await Promise.all([
       getJSON('sucursales-maestro'),
       mes && MES_RE.test(mes) ? getJSON(`sucursales-objetivos/${mes}`) : null,
       getJSON('sucursales-cerradas', { filas: [] }),
+      getJSON('horario-comercial'),
     ]);
-    return json({ maestro, objetivos, cerradas: cerradas.filas });
+    return json({
+      maestro, objetivos, cerradas: cerradas.filas,
+      horario: { ...normalizarHorario(horario), actualizado: horario?.actualizado || null, por: horario?.por || null },
+    });
   }
 
   if (req.method !== 'POST') throw new HttpError(405, 'Método no permitido.');
   const user = await requireUser(req, ['admin']);
   const body = await readBody(req);
+
+  if (body.tipo === 'horario') {
+    const horario = normalizarHorario({ general: body.general, sucursales: body.sucursales });
+    if (Object.keys(horario.sucursales).length > MAX) throw new HttpError(400, `El máximo es ${MAX} sucursales.`);
+    await setJSON('horario-comercial', { ...horario, actualizado: new Date().toISOString(), por: user.nombre });
+    return json({ ok: true, horario });
+  }
 
   if (body.tipo === 'cerrada') {
     const sucursal = normalizarSucursal(body.sucursal);

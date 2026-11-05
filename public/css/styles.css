@@ -1048,6 +1048,11 @@ body.panel-abierto { overflow: hidden; }
 .cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; margin-top: 16px; }
 .cfg-bloque h3 { margin-bottom: 4px; }
 .cfg-bloque input[type="file"] { height: auto; padding: 10px; }
+.hc-tabla { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+.hc-tabla th { text-align: left; font-weight: 600; color: var(--text-2); padding: 4px 6px; }
+.hc-tabla td { padding: 3px 6px; }
+.hc-tabla input { height: 34px; padding: 4px 8px; }
+.hc-cruza { color: var(--text-2); font-size: 11px; white-space: nowrap; }
 #suc-teams-box { margin-top: 12px; }
 .suc-control { margin-top: 12px; padding: 10px 14px; border-radius: var(--r-ctl); font-size: 13px; border: 1px solid var(--vidrio-borde); }
 .suc-control p { margin: 4px 0; }

@@ -48,7 +48,7 @@ export function parseFecha(v, mes) {
 }
 
 // Divide el texto en filas y celdas (tabulado de Excel, punto y coma o coma, con comillas).
-function celdas(texto) {
+export function celdas(texto) {
   const lineas = String(texto).replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim());
   if (!lineas.length) return [];
   const muestra = lineas.slice(0, 5).join('\n');
