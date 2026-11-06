@@ -798,7 +798,7 @@ const suc = {
   // Análisis del mes abierto: respuesta de /api/informe, último error y texto que se está editando.
   informe: { mes: null, datos: null, error: null, borrador: null },
   // Venta por hora (días cargados con hora): detalle del mes y filtro ('' | 'z:ZONA' | 's:SUCURSAL').
-  horas: { mes: null, datos: null, error: null, filtro: '' },
+  horas: { mes: null, datos: null, error: null, filtro: '', escala: 'dia' },
 };
 const fechaDeMes = (mes) => `${mes}-01`;
 const esFinde = (wd) => wd === 5 || wd === 6 || wd === 0;
@@ -876,6 +876,8 @@ function setupSucursales() {
     if (celda) { mostrarCeldaCalor(celda); return; }
     const calorModo = e.target.closest('[data-calor-modo]');
     if (calorModo) { suc.calor.modo = calorModo.dataset.calorModo; $('suc-contenido').innerHTML = calorHtml(); return; }
+    const hrEscala = e.target.closest('[data-hr-escala]');
+    if (hrEscala) { suc.horas.escala = hrEscala.dataset.hrEscala; $('suc-contenido').innerHTML = horasHtml(); return; }
     if (e.target.closest('[data-calor-todas]')) { suc.calor.todas = !suc.calor.todas; $('suc-contenido').innerHTML = calorHtml(); return; }
     const inf = e.target.closest('[data-inf]');
     if (inf) {
@@ -2012,6 +2014,13 @@ function mostrarCeldaCalor(i) {
 
 // ---- Venta por hora (días cargados con hora, por día comercial) ----
 
+// Semáforo continuo: rojo (poca venta) → amarillo → verde (cerca de la mejor hora).
+function colorSemaforo(v, ref) {
+  if (!v) return 'var(--sin-venta)';
+  const t = Math.max(0, Math.min(1, v / (ref || 1)));
+  return `hsl(${Math.round(t * 120)} 75% 45% / ${(0.35 + t * 0.3).toFixed(2)})`;
+}
+
 async function cargarHoras(mes) {
   suc.horas = { ...suc.horas, mes, datos: null, error: null };
   try {
@@ -2060,21 +2069,37 @@ function horasHtml() {
     <div><span class="muted small">Madrugada (+1)</span><b>${pct(madrugada)}</b><span class="muted small">${fmtMillones(madrugada)}</span></div>
   </div>`;
 
+  // Semáforo: cada hora contra la mejor hora del mismo día (o del mes, según la escala elegida).
   const maxCelda = Math.max(...r.horas.flatMap((x) => r.fechas.map((f) => r.celda(x, f))), 1);
+  const maxDia = Object.fromEntries(r.fechas.map((f) => [f, Math.max(...r.horas.map((x) => r.celda(x, f)), 1)]));
+  const refDe = (f) => (h.escala === 'mes' ? maxCelda : maxDia[f]);
   const maxHora = Math.max(...r.porHora, 1);
   const cabDias = r.fechas.map((f) => `<th class="${esFinde(wdDe(f)) ? 'finde' : ''}">${DIA_CORTO[wdDe(f)]}<br>${fmtDiaMes(f)}</th>`).join('');
   const filas = r.horas.map((x, i) => `<tr class="${x >= 24 ? 'hr-madrugada' : ''}">
       <th scope="row">${etiquetaHora(x)}</th>
       ${r.fechas.map((f) => {
         const v = r.celda(x, f);
-        return `<td style="background:${colorCalor(v, maxCelda, 'monto')}" title="${DIA_CORTO[wdDe(f)]} ${fmtFecha(f)} · ${etiquetaHora(x)}: ${v ? `Gs. ${fmtMiles(v)}` : 'sin venta'}">${!v ? '' : v < 50000 ? '<0,1' : fmtM1(v)}</td>`;
+        const ref = refDe(f);
+        const nivel = v ? (v / ref >= 2 / 3 ? 'bien' : v / ref >= 1 / 3 ? 'regular' : 'poco') : '';
+        const comp = v ? ` · ${fmtPct(v / ref)} de la mejor hora ${h.escala === 'mes' ? 'del mes' : 'del día'} (${nivel === 'bien' ? 'vende bien' : nivel === 'regular' ? 'regular' : 'vende poco'})` : '';
+        return `<td style="background:${colorSemaforo(v, ref)}" title="${DIA_CORTO[wdDe(f)]} ${fmtFecha(f)} · ${etiquetaHora(x)}: ${v ? `Gs. ${fmtMiles(v)}` : 'sin venta'}${comp}">${!v ? '' : v < 50000 ? '<0,1' : fmtM1(v)}</td>`;
       }).join('')}
       <td class="hr-total"><span class="hr-barra" style="width:${(r.porHora[i] / maxHora * 100).toFixed(0)}%"></span><b>${fmtM1(r.porHora[i])}</b></td>
       <td class="hr-pct">${pct(r.porHora[i])}</td>
     </tr>`).join('');
   const pie = `<tr class="hr-pie"><th scope="row">Total</th>${r.fechas.map((f) => `<td>${fmtM1(r.porDia[f])}</td>`).join('')}<td class="hr-total"><b>${fmtM1(r.total)}</b></td><td class="hr-pct">100%</td></tr>`;
   return cab(`${filtro}${kpis}
-    <p class="muted small" style="margin:0 0 8px">Montos en millones de guaraníes. Cuanto más naranja, más venta en esa hora.</p>
+    <div class="hr-semaforo">
+      <div class="calor-escala"><span>vende poco</span><i class="hr-escala"></i><span>vende bien</span></div>
+      <span class="calor-escala-sv"><i></i>sin venta</span>
+      <div class="seg-btns" role="group" aria-label="Comparar cada hora con">
+        <button type="button" data-hr-escala="dia" class="${h.escala !== 'mes' ? 'active' : ''}">Dentro de cada día</button>
+        <button type="button" data-hr-escala="mes" class="${h.escala === 'mes' ? 'active' : ''}">Todo el mes</button>
+      </div>
+    </div>
+    <p class="muted small" style="margin:0 0 8px">Montos en millones de guaraníes. ${h.escala === 'mes'
+      ? 'Cada hora se compara con la hora que más vendió en todo el mes: los días flojos quedan en rojo.'
+      : 'Cada hora se compara con la hora que más vendió <b>ese mismo día</b>: verde, cerca de la mejor hora; amarillo, a mitad; rojo, vende poco.'}</p>
     <div class="hr-wrap"><table class="hr-tabla">
       <thead><tr><th>Hora</th>${cabDias}<th>Total</th><th>%</th></tr></thead>
       <tbody>${filas}${pie}</tbody>

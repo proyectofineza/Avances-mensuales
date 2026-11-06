@@ -1059,6 +1059,9 @@ body.panel-abierto { overflow: hidden; }
 .hr-filtros label { margin: 0; }
 .hr-filtros select { max-width: 280px; }
 .hr-filtros .exportar { margin-left: auto; }
+.hr-semaforo { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; font-size: 12px; color: var(--text-2); }
+.hr-semaforo .seg-btns { margin-left: auto; }
+.calor-escala i.hr-escala { background: linear-gradient(90deg, hsl(0 75% 45% / .5), hsl(60 75% 45% / .6), hsl(120 75% 45% / .65)); }
 .hr-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; margin-bottom: 14px; }
 .hr-kpis > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r-ctl); background: var(--vidrio-2); border: 1px solid var(--vidrio-borde); }
 .hr-kpis b { font-size: 18px; }
