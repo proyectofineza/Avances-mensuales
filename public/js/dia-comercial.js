@@ -271,6 +271,41 @@ export function validarHoras(horas) {
   return true;
 }
 
+// Resumen por hora y día comercial a partir del detalle guardado (franjas de 30 minutos).
+// incluir(sucursal) → boolean filtra sucursales (todas si no se pasa).
+// Devuelve { fechas, horas: [0..27], celda(h, fecha), porHora: [], porDia: {}, total, pico: { hora, monto } }.
+// La hora 24 es 00:00–00:59 del día siguiente (madrugada del día comercial), 25 = 01:00, etc.
+export function resumenPorHora(horas, incluir = () => true) {
+  const fechas = Object.keys(horas || {}).sort();
+  const celdas = new Map(), porHora = new Map(), porDia = {};
+  let total = 0;
+  for (const f of fechas) {
+    porDia[f] = 0;
+    for (const [s, fr] of Object.entries(horas[f] || {})) {
+      if (!incluir(s)) continue;
+      for (const [k, v] of Object.entries(fr)) {
+        const h = Math.floor(+k * FRANJA_MIN / 60);
+        const key = `${h}|${f}`;
+        celdas.set(key, (celdas.get(key) || 0) + v);
+        porHora.set(h, (porHora.get(h) || 0) + v);
+        porDia[f] += v;
+        total += v;
+      }
+    }
+  }
+  // Horas con venta en algún día (las que no tienen venta en ningún día no se muestran).
+  const lista = [...porHora.keys()].filter((h) => porHora.get(h) > 0).sort((a, b) => a - b);
+  const pico = lista.reduce((p, h) => ((porHora.get(h) || 0) > p.monto ? { hora: h, monto: porHora.get(h) } : p), { hora: null, monto: 0 });
+  return {
+    fechas, horas: lista, total, pico, porDia,
+    porHora: lista.map((h) => porHora.get(h) || 0),
+    celda: (h, f) => celdas.get(`${h}|${f}`) || 0,
+  };
+}
+
+// Etiqueta de una hora del día comercial: 16 → '16:00', 24 → '00:00 (+1)'.
+export const etiquetaHora = (h) => `${pad(h % 24)}:00${h >= 24 ? ' (+1)' : ''}`;
+
 // Etiqueta de una franja: 33 → '16:30', 49 → '00:30 (+1)'.
 export function etiquetaFranja(k) {
   const m = k * FRANJA_MIN;

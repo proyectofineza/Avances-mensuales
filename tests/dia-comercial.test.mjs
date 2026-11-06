@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {
   fechaComercial, horarioDe, normalizarHorario, leerPlanillaHoras, tieneHora, fusionarMes, validarHoras, etiquetaFranja, minutos,
+  resumenPorHora, etiquetaHora,
 } from '../public/js/dia-comercial.js';
 
 const H = normalizarHorario(null);
@@ -117,5 +118,22 @@ assert.equal(validarHoras(null), null);
 assert.equal(validarHoras({ '2026-11-01': { A: { 49: 10 } } }), true);
 assert.equal(validarHoras({ '2026-11-01': { A: { x: 10 } } }), false);
 assert.equal(validarHoras({ 'mal': {} }), false);
+
+// Resumen por hora
+const rh = resumenPorHora(r.horas);
+assert.equal(rh.total, r.total);
+assert.deepEqual(rh.fechas, ['2026-10-31', '2026-11-01', '2026-11-02', '2026-11-03']);
+assert.deepEqual(rh.horas, [0, 10, 17, 18, 22, 24, 27]); // solo horas con venta
+assert.equal(rh.horas.at(-1), 27); // 03:59 del domingo = hora 27 del sábado
+assert.equal(rh.celda(24, '2026-11-02'), 7000); // martes 00:29 → lunes, hora 00 (+1)
+assert.equal(rh.celda(17, '2026-11-02'), 40000);
+assert.equal(rh.porDia['2026-11-02'], 52000);
+assert.equal(rh.porHora.reduce((a, b) => a + b, 0), r.total);
+assert.deepEqual(rh.pico, { hora: 24, monto: 58000 + 7000 }); // el martes 00:30 (8000) es la hora 0 del martes
+assert.equal(rh.celda(0, '2026-11-03'), 8000);
+const soloIta = resumenPorHora(r.horas, (s) => s === 'ITA 1');
+assert.deepEqual([soloIta.total, soloIta.horas, soloIta.fechas.length], [9000, [18], 4]);
+assert.equal(etiquetaHora(24), '00:00 (+1)');
+assert.equal(etiquetaHora(9), '09:00');
 
 console.log('dia-comercial: todas las pruebas pasaron');

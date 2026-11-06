@@ -15,7 +15,7 @@ import {
   leerPlanilla, resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, ultimoDiaCompleto, ultimasSemanas, NO_MINORISTA,
   leerMaestro, leerObjetivos, parseFecha, avanceSucursales, resumenZonas, controlMaestro, zonaSugerida, normalizarSucursal,
 } from './sucursales.js';
-import { leerPlanillaHoras, tieneHora, minutos, NOMBRES_DIA } from './dia-comercial.js';
+import { leerPlanillaHoras, tieneHora, minutos, NOMBRES_DIA, resumenPorHora, etiquetaHora } from './dia-comercial.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -797,6 +797,8 @@ const suc = {
   config: { maestro: null, objetivos: null }, info: new Map(), cerradas: new Map(), cfgObj: null, avance: new Map(), zona: '', encargado: '',
   // Análisis del mes abierto: respuesta de /api/informe, último error y texto que se está editando.
   informe: { mes: null, datos: null, error: null, borrador: null },
+  // Venta por hora (días cargados con hora): detalle del mes y filtro ('' | 'z:ZONA' | 's:SUCURSAL').
+  horas: { mes: null, datos: null, error: null, filtro: '' },
 };
 const fechaDeMes = (mes) => `${mes}-01`;
 const esFinde = (wd) => wd === 5 || wd === 6 || wd === 0;
@@ -847,6 +849,7 @@ function setupSucursales() {
     if (id === 'cmp-a') suc.cmp.a = e.target.value || suc.cmp.a;
     else if (id === 'cmp-b') suc.cmp.b = e.target.value || suc.cmp.b;
     else if (id === 'cmp-wd') suc.cmp.wd = Number(e.target.value);
+    else if (id === 'hr-filtro') { suc.horas.filtro = e.target.value; $('suc-contenido').innerHTML = horasHtml(); return; }
     else if (id === 'suc-zona' || id === 'suc-encargado') {
       suc[id === 'suc-zona' ? 'zona' : 'encargado'] = e.target.value;
       renderRankingTabla();
@@ -1344,6 +1347,20 @@ function datosExportar(que) {
     return { titulo: `Ventas por zona ${mesNombre}`, archivo: `zonas-${mes}`, tabla, texto };
   }
   if (que === 'comparar') return datosExportarComparacion();
+  if (que === 'horas') {
+    if (!suc.horas.datos) return null;
+    const r = resumenPorHora(suc.horas.datos, filtroHoras());
+    const f = suc.horas.filtro;
+    const quien = f ? ` · ${f.slice(2)}` : '';
+    const tabla = [['Hora', ...r.fechas.map((x) => `${DIA_CORTO[wdDe(x)]} ${fmtFecha(x)}`), 'Total', '% del total'],
+      ...r.horas.map((x, i) => [etiquetaHora(x), ...r.fechas.map((d) => r.celda(x, d)), r.porHora[i], fmtPct(r.porHora[i] / (r.total || 1))]),
+      ['Total', ...r.fechas.map((d) => r.porDia[d]), r.total, '100%']];
+    const top = r.horas.map((x, i) => [x, r.porHora[i]]).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const texto = [`Venta por hora · Baratote Minorista · ${mesNombre}${quien}`,
+      `Total: ${fmtMillones(r.total)} en ${r.fechas.length} días comerciales (del ${fmtFecha(r.fechas[0])} al ${fmtFecha(r.fechas.at(-1))}).`,
+      '', 'Horas que más venden:', ...top.map(([x, v], i) => `${i + 1}. ${etiquetaHora(x)} — ${fmtMillones(v)} (${fmtPct(v / (r.total || 1))})`)].join('\n');
+    return { titulo: `Venta por hora ${mesNombre}${quien}`, archivo: `venta-por-hora-${mes}${f ? '-' + f.slice(2).replace(/\W+/g, '-').toLowerCase() : ''}`, tabla, texto };
+  }
   if (que === 'informe') {
     const info = suc.informe.datos?.informe;
     if (!info) return null;
@@ -1516,6 +1533,7 @@ async function guardarPlanilla() {
     $('suc-control').hidden = true;
     const mes = res.resumen.at(-1).mes;
     suc.informe.mes = null; // que el análisis se vuelva a pedir (puede haber quedado desactualizado)
+    suc.horas.mes = null; // y la venta por hora
     await loadSucursales(mes);
     msgEl.textContent += ' Para actualizar el análisis del mes, andá a la pestaña Informe IA.';
   } catch (err) {
@@ -1586,7 +1604,7 @@ function renderSucursales() {
   $('suc-alertas-n').textContent = nAlertas;
   $('suc-alertas-n').hidden = nAlertas === 0;
   $('suc-subtabs').hidden = false;
-  if (!['resumen', 'informe', 'ranking', 'zonas', 'calor', 'comparar', 'alertas'].includes(suc.sub)) suc.sub = 'resumen';
+  if (!['resumen', 'informe', 'ranking', 'zonas', 'calor', 'horas', 'comparar', 'alertas'].includes(suc.sub)) suc.sub = 'resumen';
   suc.cache[d.mes] = d.filas;
   document.querySelectorAll('#suc-subtabs [data-sub]').forEach((b) => {
     const activa = b.dataset.sub === suc.sub;
@@ -1597,6 +1615,7 @@ function renderSucursales() {
   if (suc.sub === 'ranking') { el.innerHTML = rankingHtml(); renderRankingTabla(); }
   else if (suc.sub === 'zonas') el.innerHTML = zonasHtml();
   else if (suc.sub === 'calor') el.innerHTML = calorHtml();
+  else if (suc.sub === 'horas') { el.innerHTML = horasHtml(); if (suc.horas.mes !== d.mes) cargarHoras(d.mes); }
   else if (suc.sub === 'comparar') { el.innerHTML = compararHtml(); renderComparacion(); }
   else if (suc.sub === 'informe') { el.innerHTML = informeHtml(); if (suc.informe.mes !== d.mes) cargarInforme(d.mes); }
   else if (suc.sub === 'alertas') el.innerHTML = alertasHtml();
@@ -1989,6 +2008,77 @@ function mostrarCeldaCalor(i) {
   $('calor-info').innerHTML = `<b>${esc(i.dataset.s)}</b> · ${DIA_CORTO[wdDe(f)]} ${fmtFecha(f)}: ${v ? `<b>${fmtM1Gs(v)}</b>${comp}` : 'sin venta'}`;
   document.querySelectorAll('.calor i.sel').forEach((x) => x.classList.remove('sel'));
   i.classList.add('sel');
+}
+
+// ---- Venta por hora (días cargados con hora, por día comercial) ----
+
+async function cargarHoras(mes) {
+  suc.horas = { ...suc.horas, mes, datos: null, error: null };
+  try {
+    suc.horas.datos = (await API.getHorasSucursales(mes)).horas || {};
+  } catch (err) {
+    suc.horas.error = err.message;
+  }
+  if (suc.sub === 'horas' && suc.datos?.mes === mes) $('suc-contenido').innerHTML = horasHtml();
+}
+
+function filtroHoras() {
+  const f = suc.horas.filtro;
+  if (f.startsWith('s:')) return (s) => s === f.slice(2);
+  if (f.startsWith('z:')) return (s) => zonaDe(s) === f.slice(2);
+  return () => true;
+}
+
+function horasHtml() {
+  const h = suc.horas;
+  const cab = (cuerpo) => `<div class="card"><div class="card-head" style="margin-bottom:10px"><div><h2>Venta por hora</h2>
+    <p class="muted small">Cuánto se vendió en cada hora de cada día comercial. Las filas <b>(+1)</b> son la madrugada del día siguiente, que cuenta para el día que abrió la noche anterior.</p></div></div>${cuerpo}</div>`;
+  if (h.error) return cab(`<div class="alert alert-error">${esc(h.error)}</div>`);
+  if (!h.datos) return cab('<p class="muted">Cargando…</p>');
+  const nombres = [...new Set(Object.values(h.datos).flatMap((d) => Object.keys(d)))].sort();
+  if (!nombres.length) {
+    return cab(`<div class="empty">Este mes no tiene ventas cargadas con hora.${isAdmin() ? ' Cargá la planilla con la columna <b>HORA</b> (por ejemplo <code>SUCURSAL, HORA, Día, Suma de MONTO</code>) en <b>Cargar planilla</b>.' : ''}</div>`);
+  }
+  if (h.filtro.startsWith('s:') && !nombres.includes(h.filtro.slice(2))) h.filtro = '';
+  const r = resumenPorHora(h.datos, filtroHoras());
+  const zonas = [...new Set(nombres.map(zonaDe))].sort();
+  const opciones = `<option value="">Todas las sucursales (${nombres.length})</option>
+    <optgroup label="Zona">${zonas.map((z) => `<option value="z:${esc(z)}"${h.filtro === `z:${z}` ? ' selected' : ''}>${esc(z)}</option>`).join('')}</optgroup>
+    <optgroup label="Sucursal">${nombres.map((s) => `<option value="s:${esc(s)}"${h.filtro === `s:${s}` ? ' selected' : ''}>${esc(s)}</option>`).join('')}</optgroup>`;
+  const filtro = `<div class="hr-filtros"><label for="hr-filtro">Ver</label><select id="hr-filtro">${opciones}</select>
+    ${exportarHtml('horas')}</div>`;
+  if (!r.total) return cab(`${filtro}<p class="muted">Sin ventas con hora para este filtro.</p>`);
+
+  const pct = (v) => fmtPct(v / (r.total || 1));
+  const suma = (cond) => r.horas.reduce((s, x, i) => s + (cond(x) ? r.porHora[i] : 0), 0);
+  const madrugada = suma((x) => x >= 24), tarde = suma((x) => x >= 16 && x < 24), antes = suma((x) => x < 16);
+  const kpis = `<div class="hr-kpis">
+    <div><span class="muted small">Total con hora</span><b>${fmtMillones(r.total)}</b><span class="muted small">${r.fechas.length} día${r.fechas.length === 1 ? '' : 's'}</span></div>
+    <div><span class="muted small">Hora pico</span><b>${etiquetaHora(r.pico.hora).replace(' (+1)', '')}${r.pico.hora >= 24 ? ' <small>(madrugada)</small>' : ''}</b><span class="muted small">${pct(r.pico.monto)} de la venta</span></div>
+    <div><span class="muted small">Antes de las 16:00</span><b>${pct(antes)}</b><span class="muted small">${fmtMillones(antes)}</span></div>
+    <div><span class="muted small">16:00 a medianoche</span><b>${pct(tarde)}</b><span class="muted small">${fmtMillones(tarde)}</span></div>
+    <div><span class="muted small">Madrugada (+1)</span><b>${pct(madrugada)}</b><span class="muted small">${fmtMillones(madrugada)}</span></div>
+  </div>`;
+
+  const maxCelda = Math.max(...r.horas.flatMap((x) => r.fechas.map((f) => r.celda(x, f))), 1);
+  const maxHora = Math.max(...r.porHora, 1);
+  const cabDias = r.fechas.map((f) => `<th class="${esFinde(wdDe(f)) ? 'finde' : ''}">${DIA_CORTO[wdDe(f)]}<br>${fmtDiaMes(f)}</th>`).join('');
+  const filas = r.horas.map((x, i) => `<tr class="${x >= 24 ? 'hr-madrugada' : ''}">
+      <th scope="row">${etiquetaHora(x)}</th>
+      ${r.fechas.map((f) => {
+        const v = r.celda(x, f);
+        return `<td style="background:${colorCalor(v, maxCelda, 'monto')}" title="${DIA_CORTO[wdDe(f)]} ${fmtFecha(f)} · ${etiquetaHora(x)}: ${v ? `Gs. ${fmtMiles(v)}` : 'sin venta'}">${!v ? '' : v < 50000 ? '<0,1' : fmtM1(v)}</td>`;
+      }).join('')}
+      <td class="hr-total"><span class="hr-barra" style="width:${(r.porHora[i] / maxHora * 100).toFixed(0)}%"></span><b>${fmtM1(r.porHora[i])}</b></td>
+      <td class="hr-pct">${pct(r.porHora[i])}</td>
+    </tr>`).join('');
+  const pie = `<tr class="hr-pie"><th scope="row">Total</th>${r.fechas.map((f) => `<td>${fmtM1(r.porDia[f])}</td>`).join('')}<td class="hr-total"><b>${fmtM1(r.total)}</b></td><td class="hr-pct">100%</td></tr>`;
+  return cab(`${filtro}${kpis}
+    <p class="muted small" style="margin:0 0 8px">Montos en millones de guaraníes. Cuanto más naranja, más venta en esa hora.</p>
+    <div class="hr-wrap"><table class="hr-tabla">
+      <thead><tr><th>Hora</th>${cabDias}<th>Total</th><th>%</th></tr></thead>
+      <tbody>${filas}${pie}</tbody>
+    </table></div>`);
 }
 
 // ---- Informe IA ----
