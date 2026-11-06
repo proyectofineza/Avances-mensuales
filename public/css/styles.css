@@ -50,6 +50,10 @@
   --risk-bg: rgba(248, 113, 113, .16); --risk-fg: #FCA5A5;
   --pos: #4ADE80;
   --neg: #F87171;
+  /* Semáforo de venta por hora (pastillas) */
+  --sem-bien-bg: rgba(34, 197, 94, .40);  --sem-bien-fg: #BBF7D0;  --sem-bien-borde: #22C55E;
+  --sem-reg-bg: rgba(250, 204, 21, .36);  --sem-reg-fg: #FEF9C3;   --sem-reg-borde: #FACC15;
+  --sem-poco-bg: rgba(239, 68, 68, .40);  --sem-poco-fg: #FECACA;  --sem-poco-borde: #EF4444;
   --hero: linear-gradient(135deg, rgba(59, 130, 246, .20), rgba(45, 212, 191, .08) 55%, rgba(255, 255, 255, .03));
   --r-card: 20px;
   --r-ctl: 12px;
@@ -98,6 +102,9 @@ html[data-tema="claro"] {
   --risk-bg: #FBE4E8; --risk-fg: #9F1239;
   --pos: #15803D;
   --neg: #B91C1C;
+  --sem-bien-bg: #CFF7DC;  --sem-bien-fg: #166534;  --sem-bien-borde: #22C55E;
+  --sem-reg-bg: #FEF08A;   --sem-reg-fg: #854D0E;   --sem-reg-borde: #EAB308;
+  --sem-poco-bg: #FECACA;  --sem-poco-fg: #991B1B;  --sem-poco-borde: #EF4444;
   --hero: linear-gradient(135deg, rgba(29, 78, 216, .10), rgba(13, 148, 136, .06) 55%, rgba(255, 255, 255, .6));
 }
 
@@ -1061,7 +1068,17 @@ body.panel-abierto { overflow: hidden; }
 .hr-filtros .exportar { margin-left: auto; }
 .hr-semaforo { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; font-size: 12px; color: var(--text-2); }
 .hr-semaforo .seg-btns { margin-left: auto; }
-.calor-escala i.hr-escala { background: linear-gradient(90deg, hsl(0 75% 45% / .5), hsl(60 75% 45% / .6), hsl(120 75% 45% / .65)); }
+.hr-leyenda { display: inline-flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.hr-leyenda span { display: inline-flex; align-items: center; gap: 5px; }
+.hr-leyenda i { width: 12px; height: 12px; border-radius: 4px; border: 1.5px solid; display: inline-block; }
+.hr-pill {
+  display: inline-block; min-width: 46px; padding: 3px 9px; border-radius: 999px; border: 1.5px solid;
+  font-weight: 700; font-size: 12px; text-align: center; line-height: 1.35;
+}
+.hr-pill.bien, .hr-leyenda i.bien { background: var(--sem-bien-bg); color: var(--sem-bien-fg); border-color: var(--sem-bien-borde); }
+.hr-pill.regular, .hr-leyenda i.regular { background: var(--sem-reg-bg); color: var(--sem-reg-fg); border-color: var(--sem-reg-borde); }
+.hr-pill.poco, .hr-leyenda i.poco { background: var(--sem-poco-bg); color: var(--sem-poco-fg); border-color: var(--sem-poco-borde); }
+.hr-tabla td.hr-celda { text-align: center; padding: 2px 3px; }
 .hr-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; margin-bottom: 14px; }
 .hr-kpis > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r-ctl); background: var(--vidrio-2); border: 1px solid var(--vidrio-borde); }
 .hr-kpis b { font-size: 18px; }
