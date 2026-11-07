@@ -212,8 +212,16 @@ export function fusionarMes(actual, nuevas, { anteriores = [], ultimaFecha = nul
   for (const fecha of fechas) {
     // El archivo trae el día siguiente: la madrugada ya viene adentro y la guardada se descarta.
     const traeSiguiente = horas && ultimaFecha && fecha < ultimaFecha;
-    if (traeSiguiente) delete madrugada[fecha];
-    else for (const [s, v] of Object.entries(madrugada[fecha] || {})) {
+    if (traeSiguiente) {
+      // Se anota cuánto de la madrugada quedó adentro, para que una carga posterior del día siguiente
+      // solo (que la trae como "anterior") la reemplace en vez de sumarla otra vez.
+      const incluida = {};
+      for (const [s, fr] of Object.entries(horas[fecha] || {})) {
+        const v = Object.entries(fr).reduce((a, [k, m]) => a + (+k >= 48 ? m : 0), 0);
+        if (v > 0) incluida[s] = v;
+      }
+      if (Object.keys(incluida).length) madrugada[fecha] = incluida; else delete madrugada[fecha];
+    } else for (const [s, v] of Object.entries(madrugada[fecha] || {})) {
       const k = `${s}|${fecha}`;
       mapa.set(k, { sucursal: s, fecha, monto: (mapa.get(k)?.monto || 0) + v });
     }
