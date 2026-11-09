@@ -517,6 +517,22 @@ tfoot td { border-top: 1px solid var(--vidrio-borde-2); border-bottom: 0; font-w
 .ritmo td:first-child { white-space: nowrap; }
 .ritmo th, .ritmo td { padding-left: 6px; padding-right: 6px; }
 
+/* Día a día: cuánto vender cada día que queda */
+.plan-card { margin-top: 16px; }
+.plan-units { flex-wrap: wrap; margin-bottom: 14px; }
+.plan-resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.plan-resumen > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r-ctl); background: var(--vidrio-2); border: 1px solid var(--vidrio-borde); }
+.plan-resumen span, .plan-resumen small { font-size: 12px; color: var(--text-2); }
+.plan-resumen b { font-size: 18px; }
+.plan-resumen b small { font-size: 12px; font-weight: 500; }
+.plan-tabla { font-variant-numeric: tabular-nums; }
+.plan-tabla th, .plan-tabla td { padding-left: 8px; padding-right: 8px; white-space: nowrap; }
+.plan-tabla tr.finde td:first-child { color: var(--c-min); font-weight: 700; }
+.plan-tabla tr.sin td { color: var(--text-2); }
+.plan-tabla .plan-monto { position: relative; min-width: 110px; }
+.plan-tabla .plan-barra { position: absolute; left: 6px; top: 50%; height: 8px; transform: translateY(-50%); border-radius: 4px; background: color-mix(in srgb, var(--fineza) 35%, transparent); max-width: calc(100% - 56px); }
+.plan-tabla .plan-monto b { position: relative; }
+
 /* Proyección al cierre (sección destacada) */
 .proy-hero {
   background: var(--hero), var(--vidrio);

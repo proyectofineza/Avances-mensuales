@@ -162,7 +162,57 @@ export function calcUnidad(real, objetivo, dias) {
     diasRestantes,
     necesarioDia: diasRestantes > 0 ? faltante / diasRestantes : 0,
     promedioDia: operados > 0 ? real / operados : 0,
+    promedioIdeal: mes > 0 ? objetivo / mes : 0, // lo que había que vender por día para llegar justo
   };
+}
+
+// Plan de lo que queda del mes: cuánto vender cada día para llegar al objetivo.
+// El faltante se reparte entre los días que quedan según su peso: Minorista con los pesos
+// de cada día de la semana; el resto, en partes iguales entre sus días operativos
+// (Fineglass solo lunes a viernes). Baratote y Total suman sus unidades día por día.
+// Devuelve null en modo manual (los días cargados a mano no tienen fecha).
+// { fechas: [...], unidades: { id: { faltante, real, objetivo, dias: [{ fecha, wd, monto, acumulado }] } },
+//   baratote, total }
+export function planRestante(data) {
+  const c = parseCorte(data.corte);
+  if (!c || data.dias?.modo === 'manual') return null;
+  const ultimo = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
+  const pesos = data.pesos || PESOS_MINORISTA;
+  const pesoWd = Object.fromEntries(DIAS_SEMANA.map((d) => [d.wd, Number(pesos[d.k]) || 0]));
+  const fechas = [];
+  for (let d = c.d + 1; d <= ultimo; d++) {
+    fechas.push({ fecha: `${c.y}-${String(c.m).padStart(2, '0')}-${String(d).padStart(2, '0')}`, d, wd: new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay() });
+  }
+  const armar = (real, objetivo, montoDe) => {
+    let acumulado = real;
+    const dias = fechas.map((f) => {
+      const monto = montoDe(f);
+      acumulado += monto;
+      return { fecha: f.fecha, wd: f.wd, monto, acumulado };
+    });
+    return { real, objetivo, faltante: Math.max(objetivo - real, 0), dias };
+  };
+  const unidades = {};
+  for (const u of UNIDADES) {
+    const real = Number(data.real?.[u.id]) || 0;
+    const objetivo = Number(data.obj?.[u.id]) || 0;
+    const faltante = Math.max(objetivo - real, 0);
+    const peso = (f) => (!esOperativo(c.y, c.m, f.d, u.calendario) ? 0 : u.ponderado ? pesoWd[f.wd] : 1);
+    let suma = fechas.reduce((s, f) => s + peso(f), 0);
+    // Si los pesos de los días que quedan dan 0, se reparte en partes iguales entre los operativos.
+    const pesoFinal = suma > 0 ? peso : (f) => (esOperativo(c.y, c.m, f.d, u.calendario) ? 1 : 0);
+    if (suma <= 0) suma = fechas.reduce((s, f) => s + pesoFinal(f), 0);
+    unidades[u.id] = armar(real, objetivo, (f) => (suma > 0 ? faltante * pesoFinal(f) / suma : 0));
+  }
+  const sumar = (ids) => {
+    const partes = ids.map((id) => unidades[id]);
+    const real = partes.reduce((s, p) => s + p.real, 0);
+    const objetivo = partes.reduce((s, p) => s + p.objetivo, 0);
+    const plan = armar(real, objetivo, (f) => partes.reduce((s, p) => s + p.dias.find((x) => x.fecha === f.fecha).monto, 0));
+    plan.faltante = partes.reduce((s, p) => s + p.faltante, 0); // lo que falta en cada unidad (una pasada no tapa a otra)
+    return plan;
+  };
+  return { fechas: fechas.map((f) => f.fecha), unidades, baratote: sumar(['may', 'min']), total: sumar(IDS) };
 }
 
 // Suma de unidades: la proyección es la suma de proyecciones de cada una.
@@ -197,6 +247,7 @@ function agregado(partes, corte, manual) {
     diasRestantes,
     necesarioDia: diasRestantes > 0 ? faltante / diasRestantes : 0,
     promedioDia: operados > 0 ? real / operados : 0,
+    promedioIdeal: mes > 0 ? objetivo / mes : 0,
   };
 }
 

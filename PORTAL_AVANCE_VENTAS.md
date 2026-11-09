@@ -483,6 +483,10 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Zona horaria: la hora del archivo es la del reloj de la sucursal (America/Asuncion, UTC−3 fijo); no se convierte.
 - Límites: los meses anteriores cargados sin hora (y las planillas mensuales de historial) siguen por día calendario; el total del mes solo cambia por la noche del último día. El dashboard por unidad se carga a mano.
 
+### 12.30 Ritmo y plan día a día (dashboard)
+- **Ritmo necesario para llegar**: columnas Actual/día (venta ÷ días vendidos), Ideal/día (objetivo ÷ días del mes, `promedioIdeal` en `calcUnidad`/`agregado`) y Necesario/día (faltante ÷ días que quedan).
+- **Cuánto vender cada día que queda** (`#s-plan`, salto "Día a día"): `planRestante(data)` en `calc.js` reparte el faltante de cada unidad entre los días posteriores al corte. Minorista según los pesos de cada día de la semana (si los días que quedan pesan 0, en partes iguales); Fineglass solo lunes a viernes; Mayorista y Fineboats en partes iguales. Baratote y Total suman sus unidades día por día; su faltante es la suma de lo que falta en cada unidad (lo que sobra en una no tapa a otra). Tabla: día, peso, vender, acumulado y % del objetivo; selector de unidad guardado en `localStorage` (`plan-u`). En modo manual de días no hay plan por fecha. Pruebas: `tests/plan.test.mjs`.
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

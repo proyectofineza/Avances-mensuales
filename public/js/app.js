@@ -1,7 +1,7 @@
 import * as API from './api.js';
 import {
   UNIDADES, IDS, DIAS_SEMANA, PESOS_MINORISTA, AJUSTE_LLUVIA, parseCorte, fraccionPonderada,
-  calcularReporte, estado, diasOperativos, diasUnidad, normalizarReporte, validarReporte, proyeccionLluvia,
+  calcularReporte, planRestante, estado, diasOperativos, diasUnidad, normalizarReporte, validarReporte, proyeccionLluvia,
   mesAnterior, mismoMesAnioAnterior, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, fmtDiaMes,
   fmtFechaHora, nombreMes, fmtCI, hoyAsuncion, ultimoDiaDelMes, esUltimoDiaDelMes,
 } from './calc.js';
@@ -87,6 +87,11 @@ async function init() {
       guardarPref('dash-detalle', det.hidden ? 'no' : 'si');
       t.textContent = det.hidden ? 'Ver el detalle completo' : 'Ocultar el detalle';
       if (!det.hidden) contarNumeros(det);
+    }
+    const pu = e.target.closest('[data-plan-u]');
+    if (pu && state.published) {
+      guardarPref('plan-u', pu.dataset.planU);
+      $('s-plan').innerHTML = planHtml(calcularReporte(state.published), state.published);
     }
   });
 
@@ -3899,6 +3904,54 @@ function rapidoHtml(r, p) {
     </div>`;
 }
 
+// ---- Día a día: cuánto vender cada día que queda para llegar al objetivo ----
+const PLAN_UNIDADES = [
+  { k: 'total', nombre: 'Total' }, { k: 'bar', nombre: 'Baratote' }, { k: 'may', nombre: 'Mayorista' },
+  { k: 'min', nombre: 'Minorista' }, { k: 'fgl', nombre: 'Fineglass' }, { k: 'fbt', nombre: 'Fineboats' },
+];
+
+function planHtml(r, p) {
+  let sel = leerPref('plan-u', 'total');
+  if (!PLAN_UNIDADES.some((x) => x.k === sel)) sel = 'total';
+  const cab = `<div class="card-head" style="margin-bottom:10px"><div><h2>Cuánto vender cada día que queda</h2>
+    <p class="muted small">Lo que falta para el objetivo, repartido en los días que quedan del mes. Montos en millones de guaraníes.</p></div></div>
+    <div class="seg-btns plan-units" role="group" aria-label="Unidad de negocio">${PLAN_UNIDADES.map((x) => `<button type="button" data-plan-u="${x.k}" class="${x.k === sel ? 'active' : ''}">${x.nombre}</button>`).join('')}</div>`;
+  const plan = planRestante(p);
+  if (!plan) return `${cab}<p class="muted" style="margin-top:12px">Con los días cargados a mano no se puede armar el plan por fecha.</p>`;
+  const c = sel === 'total' ? r.total : sel === 'bar' ? r.baratote : r.unidades[sel];
+  const x = sel === 'total' ? plan.total : sel === 'bar' ? plan.baratote : plan.unidades[sel];
+  if (!plan.fechas.length) return `${cab}<p class="muted" style="margin-top:12px">El corte es el último día del mes: no quedan días por vender.</p>`;
+  const resumen = `<div class="plan-resumen">
+      <div><span>Llevás</span><b>${fmtMillones(x.real)}</b><small>${fmtPct(c.avance)} del objetivo de ${fmtMillones(x.objetivo)}</small></div>
+      <div><span>Faltan</span><b>${x.faltante > 0 ? fmtMillones(x.faltante) : '¡Objetivo cumplido!'}</b><small>en ${plan.fechas.length} día${plan.fechas.length === 1 ? '' : 's'}</small></div>
+      <div><span>Promedio por día</span><b>${fmtM1(c.promedioDia)} <small>hoy</small></b><small>ideal ${fmtM1(c.promedioIdeal)} · necesario ${fmtM1(c.necesarioDia)}</small></div>
+    </div>`;
+  if (x.faltante <= 0) return `${cab}${resumen}`;
+  const maxMonto = Math.max(...x.dias.map((d) => d.monto), 1);
+  const filas = x.dias.map((d) => {
+    const pct = x.objetivo > 0 ? d.acumulado / x.objetivo : 0;
+    return `<tr class="${esFinde(d.wd) ? 'finde' : ''}${d.monto ? '' : ' sin'}">
+      <td>${DIA_CORTO[d.wd]} ${Number(d.fecha.slice(8))}</td>
+      <td class="r muted">${fmtPct(d.monto / x.faltante)}</td>
+      <td class="r plan-monto"><span class="plan-barra" style="width:${(d.monto / maxMonto * 100).toFixed(0)}%"></span><b>${d.monto ? fmtM1(d.monto) : '—'}</b></td>
+      <td class="r">${fmtM1(d.acumulado)}</td>
+      <td class="r">${fmtPct(pct)}</td>
+    </tr>`;
+  }).join('');
+  const reparto = sel === 'min' ? 'Minorista se reparte según el peso de cada día de la semana (el fin de semana pesa más).'
+    : sel === 'fgl' ? 'Fineglass se reparte en partes iguales entre los días hábiles (lunes a viernes).'
+    : sel === 'may' || sel === 'fbt' ? 'Se reparte en partes iguales entre los días que quedan.'
+    : 'Es la suma de cada unidad: Minorista según el peso de cada día de la semana, Fineglass solo de lunes a viernes y el resto en partes iguales.';
+  const sobra = x.dias.at(-1).acumulado > x.objetivo + 1
+    ? ` Al cierre suma más que el objetivo porque cada unidad tiene que llegar al suyo: lo que una vende de más no se descuenta a las otras.` : '';
+  return `${cab}${resumen}
+    <div class="table-wrap"><table class="plan-tabla">
+      <thead><tr><th>Día</th><th class="r" title="Parte de lo que falta que corresponde a ese día">Peso</th><th class="r">Vender</th><th class="r">Acumulado</th><th class="r">% del obj.</th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table></div>
+    <p class="nota">${reparto}${sobra} Si un día se vende menos de lo indicado, lo que falta se reparte entre los días siguientes en la próxima publicación.</p>`;
+}
+
 function renderDashboard() {
   const el = $('dash');
   const p = state.published;
@@ -3926,7 +3979,8 @@ function renderDashboard() {
         <td>${esc(nombre)}</td>
         <td class="r">${fmtMiles(c.faltante / 1e6)}</td>
         <td class="r opc">${c.diasRestantes}</td>
-        <td class="r">${fmtM1(c.promedioDia)}</td>
+        <td class="r ${c.promedioDia >= c.promedioIdeal ? 'necesario-ok' : ''}">${fmtM1(c.promedioDia)}</td>
+        <td class="r muted">${fmtM1(c.promedioIdeal)}</td>
         <td class="r ${alto ? 'necesario-alto' : 'necesario-ok'}">${fmtM1(c.necesarioDia)}</td>
       </tr>`;
   }).join('');
@@ -3949,6 +4003,7 @@ function renderDashboard() {
       <button type="button" data-salto="s-graficos">Gráficos</button>
       <button type="button" data-salto="s-comparativa">Comparativa</button>
       <button type="button" data-salto="s-ritmo">Ritmo</button>
+      <button type="button" data-salto="s-plan">Día a día</button>
     </nav>
 
     <div id="s-proy" class="ancla">${proyeccionHtml(r, p.corte)}</div>
@@ -3997,14 +4052,16 @@ function renderDashboard() {
         <div class="table-wrap">
           <table class="ritmo">
             <thead>
-              <tr><th>Unidad</th><th class="r">Faltante</th><th class="r opc">Días</th><th class="r">Prom./día</th><th class="r">Necesario/día</th></tr>
+              <tr><th>Unidad</th><th class="r">Faltante</th><th class="r opc">Días</th><th class="r" title="Venta del mes dividida por los días ya vendidos">Actual/día</th><th class="r" title="Objetivo dividido por los días del mes">Ideal/día</th><th class="r">Necesario/día</th></tr>
             </thead>
             <tbody>${ritmoRows}</tbody>
           </table>
         </div>
-        <p class="nota">Necesario/día en <span class="necesario-alto">naranja</span>: hay que vender por día más que el promedio actual para llegar al objetivo. En <span class="necesario-ok">azul</span>: con el ritmo actual alcanza.</p>
+        <p class="nota"><b>Actual/día</b>: promedio vendido por día hasta hoy (en <span class="necesario-ok">azul</span> si alcanza al ideal). <b>Ideal/día</b>: el objetivo repartido en los días del mes. <b>Necesario/día</b>: lo que hay que vender por día desde mañana; en <span class="necesario-alto">naranja</span> si es más que el promedio actual.</p>
       </div>
     </div>
+
+    <div id="s-plan" class="card ancla plan-card">${planHtml(r, p)}</div>
     </div>`;
   contarNumeros(el);
 }
