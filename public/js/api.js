@@ -33,7 +33,6 @@ export const getAnual = () => api('GET', 'anual');
 export const getCierre = (mes) => api('GET', `cierre${mes ? `?mes=${encodeURIComponent(mes)}` : ''}`);
 export const getClima = (mes) => api('GET', `clima${mes ? `?mes=${encodeURIComponent(mes)}` : ''}`);
 export const getSucursales = (mes) => api('GET', `sucursales${mes ? `?mes=${encodeURIComponent(mes)}` : ''}`);
-export const getHorasSucursales = (mes) => api('GET', `sucursales?mes=${encodeURIComponent(mes)}&horas=1`);
 export const saveSucursales = (filas, avisarTeams = false, comercial = null) => api('POST', 'sucursales', { filas, avisarTeams, ...(comercial || {}) });
 export const getInforme = (mes) => api('GET', `informe?mes=${encodeURIComponent(mes)}`);
 export const publicarInforme = (mes, texto) => api('POST', 'informe', { mes, texto });
