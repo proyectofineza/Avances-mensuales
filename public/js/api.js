@@ -47,6 +47,8 @@ export const getAccesosSucursal = () => api('GET', 'suc-admin');
 export const accionAccesoSucursal = (datos) => api('POST', 'suc-admin', datos);
 export const getTeams =() => api('GET', 'teams');
 export const testTeams = () => api('POST', 'teams');
+export const testAvisoDiario = () => api('POST', 'teams', { tipo: 'plan' });
+export const setAvisoDiario = (activo) => api('PUT', 'teams', { avisoDiario: activo });
 export const getUsers = () => api('GET', 'users');
 export const createUser = (user) => api('POST', 'users', user);
 export const updateUser = (ci, changes) => api('PATCH', `users/${encodeURIComponent(ci)}`, changes);

@@ -172,6 +172,18 @@
             </div>
             <div class="pesos-grid" id="pesos-grid"></div>
             <p class="muted small" id="pesos-total" style="margin:10px 0 0"></p>
+            <div class="pesos-sugeridos" id="pesos-sugeridos" hidden></div>
+          </div>
+
+          <div class="pesos-box">
+            <div class="card-head" style="margin-bottom:10px">
+              <div>
+                <h3>Fechas especiales</h3>
+                <p class="muted small">Feriados, cobro de aguinaldo, fiestas: cuánto se espera vender ese día comparado con un día normal igual. <b>1,8</b> = 80% más; <b>0,3</b> = casi nada; <b>0</b> = cerrado. Cambian la proyección y el plan día a día de todas las unidades (Minorista también en las sucursales).</p>
+              </div>
+              <button class="btn btn-sm" type="button" id="btn-esp-agregar">Agregar fecha</button>
+            </div>
+            <div id="esp-lista"></div>
           </div>
         </div>
 
@@ -225,6 +237,12 @@
             <h2>Aviso a Teams</h2>
             <p class="small" id="teams-estado" style="margin:10px 0 14px">Verificando…</p>
             <button class="btn" type="button" id="btn-teams-test">Enviar aviso de prueba</button>
+            <div class="aviso-diario">
+              <label class="check"><input type="checkbox" id="aviso-diario"> Aviso diario a las 08:00</label>
+              <p class="muted small" style="margin:4px 0 10px">Cada mañana manda a Teams cuánto hay que vender ese día en cada unidad para llegar al objetivo, con lo último publicado.</p>
+              <p class="muted small" id="aviso-diario-estado" style="margin:0 0 10px"></p>
+              <button class="btn btn-sm" type="button" id="btn-aviso-diario-test">Probar el aviso diario</button>
+            </div>
             <div class="alert form-msg" id="teams-msg" hidden></div>
           </div>
           <div class="card">

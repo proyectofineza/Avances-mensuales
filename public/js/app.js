@@ -1,7 +1,7 @@
 import * as API from './api.js';
 import {
   UNIDADES, IDS, DIAS_SEMANA, PESOS_MINORISTA, AJUSTE_LLUVIA, parseCorte, fraccionPonderada,
-  calcularReporte, planRestante, estado, diasOperativos, diasUnidad, normalizarReporte, validarReporte, proyeccionLluvia,
+  calcularReporte, planRestante, cumplimientoPlan, normalizarEspeciales, estado, diasOperativos, diasUnidad, normalizarReporte, validarReporte, proyeccionLluvia,
   mesAnterior, mismoMesAnioAnterior, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, fmtDiaMes,
   fmtFechaHora, nombreMes, fmtCI, hoyAsuncion, ultimoDiaDelMes, esUltimoDiaDelMes,
 } from './calc.js';
@@ -88,9 +88,10 @@ async function init() {
       t.textContent = det.hidden ? 'Ver el detalle completo' : 'Ocultar el detalle';
       if (!det.hidden) contarNumeros(det);
     }
-    const pu = e.target.closest('[data-plan-u]');
+    const pu = e.target.closest('[data-plan-u], [data-plan-meta]');
     if (pu && state.published) {
-      guardarPref('plan-u', pu.dataset.planU);
+      if (pu.dataset.planU) guardarPref('plan-u', pu.dataset.planU);
+      else guardarPref('plan-meta', pu.dataset.planMeta);
       $('s-plan').innerHTML = planHtml(calcularReporte(state.published), state.published);
     }
   });
@@ -288,6 +289,44 @@ function setupVentas() {
     onDraftChange();
   });
 
+  $('pesos-sugeridos').addEventListener('click', (e) => {
+    if (!e.target.closest('[data-usar-sugeridos]') || !state.pesosSugeridos) return;
+    state.draft.pesos = { ...state.pesosSugeridos.pesos };
+    fillPesos();
+    onDraftChange();
+  });
+
+  // Fechas especiales
+  $('btn-esp-agregar').addEventListener('click', () => {
+    const d = state.draft;
+    const usadas = new Set(d.especiales.map((x) => x.fecha));
+    let f = sumarDias(d.corte || hoyAsuncion(), 1);
+    while (usadas.has(f)) f = sumarDias(f, 1);
+    d.especiales.push({ fecha: f, factor: 1, nota: '' });
+    d.especiales.sort((a, b) => a.fecha.localeCompare(b.fecha));
+    fillEspeciales();
+    onDraftChange();
+  });
+  $('esp-lista').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-esp-borrar]');
+    if (!b) return;
+    state.draft.especiales.splice(Number(b.dataset.espBorrar), 1);
+    fillEspeciales();
+    onDraftChange();
+  });
+  $('esp-lista').addEventListener('change', (e) => {
+    const el = e.target;
+    if (el.dataset.esp === undefined) return;
+    const x = state.draft.especiales[Number(el.dataset.i)];
+    if (!x) return;
+    if (el.dataset.esp === 'fecha') x.fecha = el.value;
+    else if (el.dataset.esp === 'factor') x.factor = Number(el.value.replace(',', '.'));
+    else x.nota = el.value;
+    state.draft.especiales = normalizarEspeciales(state.draft.especiales);
+    fillEspeciales();
+    onDraftChange();
+  });
+
   $('view-ventas').addEventListener('input', (e) => {
     const el = e.target;
     const id = el.dataset.id;
@@ -314,6 +353,7 @@ function setupVentas() {
     state.draft.corte = $('corte').value;
     $('corte-aviso').hidden = true;
     fillDias();
+    fillEspeciales();
     onDraftChange();
   });
 
@@ -355,6 +395,41 @@ function setupVentas() {
       btn.disabled = false;
     }
   });
+
+  $('btn-aviso-diario-test').addEventListener('click', async () => {
+    const btn = $('btn-aviso-diario-test');
+    btn.disabled = true;
+    try {
+      const res = await API.testAvisoDiario();
+      showMsg($('teams-msg'), `Aviso diario de prueba enviado (plan del ${fmtFecha(res.fecha)})${res.canal ? ' al canal ' + res.canal : ''}. Revisá Teams.`, true);
+    } catch (err) {
+      handleError(err, $('teams-msg'));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('aviso-diario').addEventListener('change', async (e) => {
+    const chk = e.target;
+    chk.disabled = true;
+    try {
+      const res = await API.setAvisoDiario(chk.checked);
+      pintarAvisoDiario(res.avisoDiario);
+      showMsg($('teams-msg'), res.avisoDiario.activo ? 'Aviso diario activado: sale todos los días a las 08:00.' : 'Aviso diario desactivado.', true);
+    } catch (err) {
+      chk.checked = !chk.checked;
+      handleError(err, $('teams-msg'));
+    } finally {
+      chk.disabled = false;
+    }
+  });
+}
+
+function pintarAvisoDiario(a = {}) {
+  $('aviso-diario').checked = Boolean(a.activo);
+  $('aviso-diario-estado').textContent = a.activo
+    ? `Activado${a.por ? ` por ${a.por}` : ''}.${a.ultimo ? ` Último envío: ${fmtFecha(a.ultimo)}.` : ''}`
+    : 'Desactivado.';
 }
 
 async function loadTeamsEstado() {
@@ -365,6 +440,9 @@ async function loadTeamsEstado() {
       ? `<span class="chip ok">Configurado</span> ${t.canal ? 'Canal: ' + esc(t.canal) : ''}`
       : '<span class="chip warn">Sin configurar</span> Falta cargar TEAMS_WEBHOOK_URL en Netlify.';
     $('btn-teams-test').disabled = !t.configurado;
+    $('btn-aviso-diario-test').disabled = !t.configurado;
+    $('aviso-diario').disabled = !t.configurado;
+    pintarAvisoDiario(t.avisoDiario);
   } catch {
     el.textContent = 'No se pudo verificar la configuración.';
   }
@@ -394,6 +472,7 @@ async function loadVentas() {
     fillVentasForm();
     renderUltimaPub();
     loadTeamsEstado();
+    cargarPesosSugeridos();
   } catch (err) {
     handleError(err, $('ventas-error'));
   }
@@ -437,7 +516,62 @@ function fillVentasForm() {
   });
   fillDias();
   fillPesos();
+  fillEspeciales();
   updateVentasCalc();
+}
+
+function fillEspeciales() {
+  const lista = state.draft.especiales || [];
+  const mes = (state.draft.corte || '').slice(0, 7);
+  $('esp-lista').innerHTML = lista.length ? `
+    <div class="table-wrap"><table class="esp-tabla">
+      <thead><tr><th>Fecha</th><th class="r">Factor</th><th>Nota</th><th></th></tr></thead>
+      <tbody>${lista.map((x, i) => `
+        <tr class="${x.fecha.startsWith(mes) ? '' : 'otro-mes'}">
+          <td><input type="date" data-esp="fecha" data-i="${i}" value="${esc(x.fecha)}" aria-label="Fecha especial"> <span class="muted small">${DIA_CORTO[wdDe(x.fecha)]}</span></td>
+          <td class="r"><input class="num esp-factor" inputmode="decimal" maxlength="4" data-esp="factor" data-i="${i}" value="${String(x.factor).replace('.', ',')}" aria-label="Factor del ${fmtFecha(x.fecha)}"></td>
+          <td><input data-esp="nota" data-i="${i}" maxlength="40" value="${esc(x.nota)}" placeholder="Ej.: Nochebuena" aria-label="Nota del ${fmtFecha(x.fecha)}"></td>
+          <td class="r"><button class="btn btn-sm" type="button" data-esp-borrar="${i}" aria-label="Quitar ${fmtFecha(x.fecha)}">Quitar</button></td>
+        </tr>`).join('')}</tbody>
+    </table></div>
+    <p class="muted small" style="margin:8px 0 0">Las fechas de otros meses quedan guardadas y se aplican cuando llegue su mes.</p>`
+    : '<p class="muted small" style="margin:0">No hay fechas especiales cargadas.</p>';
+}
+
+// Pesos de Minorista sugeridos con la venta por sucursal de las últimas 8 semanas (días completos,
+// sin fechas especiales). Necesita al menos 3 días de cada día de la semana.
+async function cargarPesosSugeridos() {
+  const el = $('pesos-sugeridos');
+  state.pesosSugeridos = null;
+  el.hidden = true;
+  try {
+    const corte = state.draft.corte || hoyAsuncion();
+    const mes = corte.slice(0, 7);
+    const ant = sumarDias(`${mes}-01`, -1).slice(0, 7);
+    const [a, b] = await Promise.all([API.getSucursales(ant).catch(() => null), API.getSucursales(mes).catch(() => null)]);
+    const filas = [...(a?.mes === ant ? a.filas : []), ...(b?.mes === mes ? b.filas : [])];
+    if (!filas.length) return;
+    const dias = resumirMes(filas).dias;
+    const hasta = ultimoDiaCompleto(dias).fecha;
+    if (!hasta) return;
+    const desde = sumarDias(hasta, -55);
+    const esp = new Set((state.draft.especiales || []).map((x) => x.fecha));
+    const usados = dias.filter((d) => d.fecha >= desde && d.fecha <= hasta && !esp.has(d.fecha));
+    const { peso, cuenta } = pesoSemana(usados);
+    if (cuenta.some((n) => n < 3)) return;
+    const pesos = Object.fromEntries(DIAS_SEMANA.map((d) => [d.k, Math.round(peso[d.wd] * 1000) / 10]));
+    state.pesosSugeridos = { pesos, desde: usados[0].fecha, hasta };
+    const actual = state.draft.pesos;
+    const cambia = DIAS_SEMANA.some((d) => Math.abs((Number(actual[d.k]) || 0) - pesos[d.k]) >= 0.5);
+    el.innerHTML = `
+      <div><b>Sugeridos con la venta real</b> <span class="muted small">(sucursales del ${fmtFecha(state.pesosSugeridos.desde)} al ${fmtFecha(hasta)}, sin fechas especiales)</span></div>
+      <div class="sug-grid">${DIAS_SEMANA.map((d) => {
+        const dif = pesos[d.k] - (Number(actual[d.k]) || 0);
+        return `<span><small>${d.nombre.slice(0, 3)}</small><b>${fmtPeso(pesos[d.k])}%</b>${Math.abs(dif) >= 0.5 ? `<i class="${dif > 0 ? 'var-pos' : 'var-neg'}">${dif > 0 ? '+' : '−'}${fmtPeso(Math.abs(dif))}</i>` : ''}</span>`;
+      }).join('')}</div>
+      ${cambia ? '<button class="btn btn-sm" type="button" data-usar-sugeridos>Usar los sugeridos</button>' : '<p class="muted small" style="margin:6px 0 0">Los pesos cargados ya coinciden con la venta real.</p>'}`;
+    el.hidden = false;
+  } catch { /* sin sugerencia */ }
 }
 
 const fmtPeso = (v) => String(Math.round((Number(v) || 0) * 10) / 10).replace('.', ',');
@@ -811,6 +945,8 @@ const wdDe = (fecha) => new Date(`${fecha}T12:00:00Z`).getUTCDay();
 const pluralDia = (nombre) => (nombre.endsWith('s') ? nombre : `${nombre}s`);
 // Pesos por día de la semana de Minorista: los publicados si el reporte es de ese mes.
 const pesosDelMes = (mes) => (suc.published?.corte?.startsWith(mes) && suc.published.pesos) || PESOS_MINORISTA;
+// Las fechas especiales valen para cualquier mes (cada una tiene su fecha).
+const especialesDelMes = () => suc.published?.especiales || [];
 // Zona de una sucursal: la del listado maestro o, si no hay listado, la sugerida por el nombre.
 const zonaDe = (nombre) => suc.info.get(nombre)?.zona || (suc.info.size ? 'SIN ZONA' : zonaSugerida(nombre));
 
@@ -1582,7 +1718,7 @@ function renderSucursales() {
   suc.res = resumirMes(d.filas);
   suc.alertas = alertasSucursales(suc.res, { cerradas: suc.cerradas.keys() });
   const objetivos = (suc.config?.objetivos?.filas || []).filter((o) => !suc.cerradas.has(o.sucursal));
-  suc.avance = avanceSucursales(suc.res, objetivos, ultimoDiaCompleto(suc.res.dias).fecha, pesosDelMes(d.mes));
+  suc.avance = avanceSucursales(suc.res, objetivos, ultimoDiaCompleto(suc.res.dias).fecha, pesosDelMes(d.mes), especialesDelMes());
   const com = d.comerciales || [];
   const criterio = !com.length ? '' : ` · por día comercial ${com.length === 1 ? `el ${fmtDiaMes(com[0])}` : `del ${fmtDiaMes(com[0])} al ${fmtDiaMes(com.at(-1))}`}`;
   $('suc-sub').textContent = `${nombreMes(fechaDeMes(d.mes))} · actualizado ${fmtFechaHora(d.actualizado)}${d.por ? ' por ' + d.por : ''}${criterio}`;
@@ -1702,7 +1838,7 @@ function avanceAcumuladoHtml() {
   const pesos = pesosDelMes(mes);
   const objetivo = pub ? Number(pub.obj?.min) || 0 : 0;
   const fecha = (d) => `${mes}-${String(d).padStart(2, '0')}`;
-  const frac = (d) => fraccionPonderada(fecha(d), pesos) || 0;
+  const frac = (d) => fraccionPonderada(fecha(d), pesos, especialesDelMes()) || 0;
 
   const porDia = new Map(res.dias.map((x) => [x.fecha, x.monto]));
   const { fecha: hasta } = ultimoDiaCompleto(res.dias);
@@ -3365,7 +3501,7 @@ function cierreSucursales() {
   const abiertas = res.sucursales.filter((s) => !cerradas.has(s.sucursal));
   const hasta = res.dias.at(-1).fecha;
   const objetivos = (cfg.objetivos?.filas || []).filter((o) => !cerradas.has(o.sucursal));
-  const avance = avanceSucursales(res, objetivos, hasta, cierre.datos.reporte?.pesos || PESOS_MINORISTA);
+  const avance = avanceSucursales(res, objetivos, hasta, cierre.datos.reporte?.pesos || PESOS_MINORISTA, cierre.datos.reporte?.especiales || []);
   const zonas = cfg.maestro?.filas?.length ? resumenZonas(res, cfg.maestro.filas) : [];
   return { res, abiertas, cerradas, avance, zonas, hasta };
 }
@@ -3799,8 +3935,11 @@ function climaHtml(r, p) {
   const porFecha = new Map((clima.dias || []).map((d) => [d.fecha, d]));
   const pesos = p.pesos || PESOS_MINORISTA;
   const pesoWd = Object.fromEntries(DIAS_SEMANA.map((d) => [d.wd, Number(pesos[d.k]) || 0]));
+  const espMes = new Map((p.especiales || []).map((e) => [e.fecha, e.factor]));
+  const fechaDe = (d) => `${c.y}-${String(c.m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const pesoDia = (d) => pesoWd[new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay()] * (espMes.get(fechaDe(d)) ?? 1);
   let pesoMes = 0;
-  for (let d = 1; d <= ultimo; d++) pesoMes += pesoWd[new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay()];
+  for (let d = 1; d <= ultimo; d++) pesoMes += pesoDia(d);
 
   const tiles = [];
   for (let d = c.d + 1; d <= ultimo; d++) {
@@ -3809,7 +3948,7 @@ function climaHtml(r, p) {
     const x = porFecha.get(fecha);
     const fuerte = wd === 5 || wd === 6 || wd === 0;
     const llueve = x && x.lluvia >= AJUSTE_LLUVIA.umbralMm;
-    const peso = pesoMes > 0 ? pesoWd[wd] / pesoMes : 0;
+    const peso = pesoMes > 0 ? pesoDia(d) / pesoMes : 0;
     tiles.push(`
       <div class="clima-dia${fuerte ? ' fuerte' : ''}${llueve ? ' llueve' : ''}">
         <span class="cd-fecha">${DIA_CORTO[wd]} ${d}</span>
@@ -3910,28 +4049,42 @@ const PLAN_UNIDADES = [
   { k: 'min', nombre: 'Minorista' }, { k: 'fgl', nombre: 'Fineglass' }, { k: 'fbt', nombre: 'Fineboats' },
 ];
 
+const PLAN_METAS = [0.95, 1, 1.05];
+
 function planHtml(r, p) {
   let sel = leerPref('plan-u', 'total');
   if (!PLAN_UNIDADES.some((x) => x.k === sel)) sel = 'total';
+  let meta = Number(leerPref('plan-meta', '1'));
+  if (!PLAN_METAS.includes(meta)) meta = 1;
   const cab = `<div class="card-head" style="margin-bottom:10px"><div><h2>Cuánto vender cada día que queda</h2>
-    <p class="muted small">Lo que falta para el objetivo, repartido en los días que quedan del mes. Montos en millones de guaraníes.</p></div></div>
-    <div class="seg-btns plan-units" role="group" aria-label="Unidad de negocio">${PLAN_UNIDADES.map((x) => `<button type="button" data-plan-u="${x.k}" class="${x.k === sel ? 'active' : ''}">${x.nombre}</button>`).join('')}</div>`;
-  const plan = planRestante(p);
+    <p class="muted small">Lo que falta para la meta, repartido en los días que quedan del mes. Montos en millones de guaraníes.</p></div></div>
+    <div class="plan-controles">
+      <div class="seg-btns plan-units" role="group" aria-label="Unidad de negocio">${PLAN_UNIDADES.map((x) => `<button type="button" data-plan-u="${x.k}" class="${x.k === sel ? 'active' : ''}">${x.nombre}</button>`).join('')}</div>
+      <div class="seg-btns plan-metas" role="group" aria-label="Meta">${PLAN_METAS.map((m) => `<button type="button" data-plan-meta="${m}" class="${m === meta ? 'active' : ''}" title="${m === 1 ? 'El objetivo del mes' : `${fmtPctEntero(m)} del objetivo`}">${m === 1 ? 'Objetivo' : fmtPctEntero(m)}</button>`).join('')}</div>
+    </div>`;
+  const clima = state.clima?.dias || [];
+  const plan = planRestante(p, { meta, pronostico: clima });
   if (!plan) return `${cab}<p class="muted" style="margin-top:12px">Con los días cargados a mano no se puede armar el plan por fecha.</p>`;
   const c = sel === 'total' ? r.total : sel === 'bar' ? r.baratote : r.unidades[sel];
   const x = sel === 'total' ? plan.total : sel === 'bar' ? plan.baratote : plan.unidades[sel];
-  if (!plan.fechas.length) return `${cab}<p class="muted" style="margin-top:12px">El corte es el último día del mes: no quedan días por vender.</p>`;
+  const cumplimiento = cumplimientoHtml(sel);
+  if (!plan.fechas.length) return `${cab}<p class="muted" style="margin-top:12px">El corte es el último día del mes: no quedan días por vender.</p>${cumplimiento}`;
+  const diasQuedan = plan.fechas.length;
+  const necesario = x.faltante / diasQuedan;
   const resumen = `<div class="plan-resumen">
-      <div><span>Llevás</span><b>${fmtMillones(x.real)}</b><small>${fmtPct(c.avance)} del objetivo de ${fmtMillones(x.objetivo)}</small></div>
-      <div><span>Faltan</span><b>${x.faltante > 0 ? fmtMillones(x.faltante) : '¡Objetivo cumplido!'}</b><small>en ${plan.fechas.length} día${plan.fechas.length === 1 ? '' : 's'}</small></div>
-      <div><span>Promedio por día</span><b>${fmtM1(c.promedioDia)} <small>hoy</small></b><small>ideal ${fmtM1(c.promedioIdeal)} · necesario ${fmtM1(c.necesarioDia)}</small></div>
+      <div><span>Llevás</span><b>${fmtMillones(x.real)}</b><small>${fmtPct(x.objetivo > 0 ? x.real / x.objetivo : 0)} de la meta de ${fmtMillones(x.objetivo)}</small></div>
+      <div><span>Faltan</span><b>${x.faltante > 0 ? fmtMillones(x.faltante) : '¡Meta cumplida!'}</b><small>en ${diasQuedan} día${diasQuedan === 1 ? '' : 's'}</small></div>
+      <div><span>Promedio por día</span><b>${fmtM1(c.promedioDia)} <small>hoy</small></b><small>ideal ${fmtM1(c.promedioIdeal * meta)} · necesario ${fmtM1(necesario)}</small></div>
     </div>`;
-  if (x.faltante <= 0) return `${cab}${resumen}`;
+  if (x.faltante <= 0) return `${cab}${resumen}${cumplimiento}`;
+  const esp = new Map((p.especiales || []).map((e) => [e.fecha, e]));
   const maxMonto = Math.max(...x.dias.map((d) => d.monto), 1);
   const filas = x.dias.map((d) => {
     const pct = x.objetivo > 0 ? d.acumulado / x.objetivo : 0;
+    const e = esp.get(d.fecha);
+    const marcas = `${d.lluvia ? '<span class="plan-marca lluvia" title="Pronóstico de lluvia: a Minorista se le pide menos">lluvia</span>' : ''}${e ? `<span class="plan-marca esp" title="Fecha especial: ×${String(e.factor).replace('.', ',')}${e.nota ? ` · ${esc(e.nota)}` : ''}">${e.nota ? esc(e.nota) : `×${String(e.factor).replace('.', ',')}`}</span>` : ''}`;
     return `<tr class="${esFinde(d.wd) ? 'finde' : ''}${d.monto ? '' : ' sin'}">
-      <td>${DIA_CORTO[d.wd]} ${Number(d.fecha.slice(8))}</td>
+      <td>${DIA_CORTO[d.wd]} ${Number(d.fecha.slice(8))}${marcas}</td>
       <td class="r muted">${fmtPct(d.monto / x.faltante)}</td>
       <td class="r plan-monto"><span class="plan-barra" style="width:${(d.monto / maxMonto * 100).toFixed(0)}%"></span><b>${d.monto ? fmtM1(d.monto) : '—'}</b></td>
       <td class="r">${fmtM1(d.acumulado)}</td>
@@ -3942,14 +4095,54 @@ function planHtml(r, p) {
     : sel === 'fgl' ? 'Fineglass se reparte en partes iguales entre los días hábiles (lunes a viernes).'
     : sel === 'may' || sel === 'fbt' ? 'Se reparte en partes iguales entre los días que quedan.'
     : 'Es la suma de cada unidad: Minorista según el peso de cada día de la semana, Fineglass solo de lunes a viernes y el resto en partes iguales.';
+  const conClima = ['min', 'bar', 'total'].includes(sel) && x.dias.some((d) => d.lluvia !== undefined);
+  const notaClima = conClima ? ` Con pronóstico, a Minorista se le pide ${fmtPct(1 - AJUSTE_LLUVIA.factorLluvia)} menos los días de lluvia y ${fmtPct(AJUSTE_LLUVIA.factorSeco - 1)} más los secos.` : '';
+  const notaEsp = x.dias.some((d) => esp.has(d.fecha)) ? ' Las fechas especiales multiplican lo que se espera vender ese día.' : '';
   const sobra = x.dias.at(-1).acumulado > x.objetivo + 1
-    ? ` Al cierre suma más que el objetivo porque cada unidad tiene que llegar al suyo: lo que una vende de más no se descuenta a las otras.` : '';
+    ? ' Al cierre suma más que la meta porque cada unidad tiene que llegar a la suya: lo que una vende de más no se descuenta a las otras.' : '';
   return `${cab}${resumen}
     <div class="table-wrap"><table class="plan-tabla">
-      <thead><tr><th>Día</th><th class="r" title="Parte de lo que falta que corresponde a ese día">Peso</th><th class="r">Vender</th><th class="r">Acumulado</th><th class="r">% del obj.</th></tr></thead>
+      <thead><tr><th>Día</th><th class="r" title="Parte de lo que falta que corresponde a ese día">Peso</th><th class="r">Vender</th><th class="r">Acumulado</th><th class="r">% de la meta</th></tr></thead>
       <tbody>${filas}</tbody>
     </table></div>
-    <p class="nota">${reparto}${sobra} Si un día se vende menos de lo indicado, lo que falta se reparte entre los días siguientes en la próxima publicación.</p>`;
+    <p class="nota">${reparto}${notaClima}${notaEsp}${sobra} Si un día se vende menos de lo indicado, lo que falta se reparte entre los días siguientes en la próxima publicación.</p>
+    ${cumplimiento}`;
+}
+
+const fmtPctEntero = (v) => `${Math.round(v * 100)}%`;
+
+// Plan contra lo vendido: cada tramo entre dos publicaciones del mes (plan al 100%, sin clima).
+function cumplimientoHtml(sel) {
+  const tramos = cumplimientoPlan(state.history || []);
+  if (!tramos.length) return '';
+  const de = (t) => (sel === 'total' ? t.total : sel === 'bar' ? t.baratote : t.unidades[sel]);
+  const ultimos = tramos.slice(-7);
+  const sumaPlan = ultimos.reduce((s, t) => s + de(t).plan, 0);
+  const sumaVend = ultimos.reduce((s, t) => s + de(t).vendido, 0);
+  const dif = sumaVend - sumaPlan;
+  const filas = [...ultimos].reverse().map((t) => {
+    const { plan, vendido } = de(t);
+    const d = vendido - plan;
+    const rango = t.desde === t.hasta ? `${DIA_CORTO[wdDe(t.hasta)]} ${Number(t.hasta.slice(8))}` : `${Number(t.desde.slice(8))} al ${Number(t.hasta.slice(8))} <small class="muted">(${t.dias} días)</small>`;
+    return `<tr>
+      <td>${rango}</td>
+      <td class="r">${fmtM1(plan)}</td>
+      <td class="r">${fmtM1(vendido)}</td>
+      <td class="r ${d >= 0 ? 'var-pos' : 'var-neg'}">${d >= 0 ? '+' : '−'}${fmtM1(Math.abs(d))}</td>
+      <td class="r ${d >= 0 ? 'var-pos' : 'var-neg'}">${plan > 0 ? fmtPct(vendido / plan) : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="plan-cumpl">
+      <h3>Plan contra lo vendido</h3>
+      <p class="muted small" style="margin:2px 0 10px">Entre cada publicación: lo que pedía el plan y lo que se vendió.
+        ${ultimos.length > 1 ? `En los últimos ${ultimos.length} tramos: <b class="${dif >= 0 ? 'var-pos' : 'var-neg'}">${dif >= 0 ? `${fmtM1(dif)} por encima` : `${fmtM1(-dif)} por debajo`}</b> del plan.` : ''}</p>
+      <div class="table-wrap"><table class="plan-tabla">
+        <thead><tr><th>Días</th><th class="r">Plan</th><th class="r">Vendido</th><th class="r">Diferencia</th><th class="r">Cumplido</th></tr></thead>
+        <tbody>${filas}</tbody>
+      </table></div>
+      <p class="nota">El plan de cada tramo es el de la publicación anterior, con la meta al 100% y sin ajuste por clima.</p>
+    </div>`;
 }
 
 function renderDashboard() {

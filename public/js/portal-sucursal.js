@@ -2,6 +2,7 @@
 // que ve la sucursal (solo sus datos y su puesto). Módulo ES sin dependencias del navegador.
 
 import { normalizarSucursal, parseMonto, resumirMes, ultimoDiaCompleto, avanceSucursales } from './sucursales.js';
+import { PESOS_MINORISTA, repartirMinorista } from './calc.js';
 
 export const RADIO_DEFECTO = 300;      // metros alrededor del local
 export const PRECISION_MAXIMA = 1000;  // una ubicación menos precisa que esto no sirve para validar
@@ -124,7 +125,8 @@ const variacion = (a, b) => (a !== null && a !== undefined && b > 0 ? a / b - 1 
 //   objetivos:  [{ sucursal, objetivo }] del mes
 //   mensual:    { 'AAAA-MM': monto } de esta sucursal (historial + portal)
 //   cerradas:   nombres de sucursales cerradas (no cuentan en el ranking)
-export function vistaSucursal({ sucursal, mes, filasMes = [], objetivos = [], mensual = {}, cerradas = [] }) {
+//   pesos, especiales: del reporte publicado del mes (peso de cada día y fechas especiales)
+export function vistaSucursal({ sucursal, mes, filasMes = [], objetivos = [], mensual = {}, cerradas = [], pesos = PESOS_MINORISTA, especiales = [] }) {
   const res = resumirMes(filasMes);
   const fuera = new Set(cerradas);
   const propia = res.sucursales.find((s) => s.sucursal === sucursal) || null;
@@ -135,9 +137,9 @@ export function vistaSucursal({ sucursal, mes, filasMes = [], objetivos = [], me
   const completo = diaUltimo >= total;
 
   // Avance contra el objetivo del mes.
-  const av = avanceSucursales(res, objetivos, hasta);
+  const av = avanceSucursales(res, objetivos, hasta, pesos, especiales);
   // Sin objetivo propio, la proyección se calcula igual (con un objetivo cualquiera).
-  const mio = av.get(sucursal) || (propia ? avanceSucursales(res, [{ sucursal, objetivo: 1 }], hasta).get(sucursal) : null);
+  const mio = av.get(sucursal) || (propia ? avanceSucursales(res, [{ sucursal, objetivo: 1 }], hasta, pesos, especiales).get(sucursal) : null);
   const vendido = propia?.total || 0;
   const objetivo = objetivos.find((o) => o.sucursal === sucursal)?.objetivo || null;
   const diasRestantes = Math.max(total - diaUltimo, 0);
@@ -150,6 +152,8 @@ export function vistaSucursal({ sucursal, mes, filasMes = [], objetivos = [], me
     falta,
     necesarioDia: falta !== null && diasRestantes > 0 ? falta / diasRestantes : null,
     promedioDia: diaUltimo ? vendido / diaUltimo : 0,
+    // Cuánto vender cada día que queda, según el peso de cada día (el fin de semana pide más).
+    plan: falta && !completo ? repartirMinorista(ultimaFecha, falta, pesos, especiales) : [],
   };
 
   // Puesto entre las sucursales abiertas: por venta del mes y por cumplimiento proyectado.

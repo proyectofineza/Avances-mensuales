@@ -57,19 +57,54 @@ export const DIAS_SEMANA = [
 ];
 export const PESOS_MINORISTA = { lun: 1.4, mar: 9.3, mie: 9.8, jue: 8.8, vie: 18.8, sab: 27.7, dom: 24.2 };
 
-// Parte del mes ya transcurrida según los pesos (0–1), o null si no hay corte.
-export function fraccionPonderada(corte, pesos = PESOS_MINORISTA) {
+const fechaIso = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+// Fechas especiales (feriados, aguinaldo, fiestas): [{ fecha, factor, nota }]. El factor multiplica
+// lo que se espera vender ese día (1,8 = 80% más que un día normal igual; 0,3 = casi nada).
+export const MAX_FACTOR = 5;
+export function mapaEspeciales(especiales) {
+  const out = new Map();
+  for (const e of especiales || []) {
+    const f = Number(e?.factor);
+    if (parseCorte(e?.fecha) && Number.isFinite(f) && f >= 0) out.set(e.fecha, f);
+  }
+  return out;
+}
+// ¿El mes del corte tiene alguna fecha especial?
+export function hayEspeciales(corte, especiales) {
+  const mes = (corte || '').slice(0, 7);
+  return Boolean(mes) && [...mapaEspeciales(especiales).keys()].some((f) => f.startsWith(mes));
+}
+
+// Peso de cada día del mes para una unidad: 0 si no opera; Minorista (ponderada) según el día de la
+// semana y el resto 1; todo multiplicado por el factor de la fecha especial, si la hay.
+function pesador(u, pesos = PESOS_MINORISTA, especiales = []) {
+  const porWd = Object.fromEntries(DIAS_SEMANA.map((d) => [d.wd, Number(pesos?.[d.k]) || 0]));
+  const esp = mapaEspeciales(especiales);
+  return (y, m, d) => {
+    if (!esOperativo(y, m, d, u.calendario)) return 0;
+    const base = u.ponderado ? porWd[new Date(Date.UTC(y, m - 1, d)).getUTCDay()] : 1;
+    return base * (esp.get(fechaIso(y, m, d)) ?? 1);
+  };
+}
+
+// Parte del mes que ya pasó (0–1) según el peso de cada día, o null si no hay corte o todo pesa 0.
+function fraccionCon(corte, peso) {
   const c = parseCorte(corte);
   if (!c) return null;
-  const porWd = Object.fromEntries(DIAS_SEMANA.map((d) => [d.wd, Number(pesos[d.k]) || 0]));
   const ultimo = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
   let hecho = 0, total = 0;
   for (let d = 1; d <= ultimo; d++) {
-    const w = porWd[new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay()];
+    const w = peso(c.y, c.m, d);
     total += w;
     if (d <= c.d) hecho += w;
   }
   return total > 0 ? hecho / total : null;
+}
+
+// Parte del mes ya transcurrida según los pesos de Minorista (0–1), o null si no hay corte.
+export function fraccionPonderada(corte, pesos = PESOS_MINORISTA, especiales = []) {
+  return fraccionCon(corte, pesador({ calendario: 'lun-dom', ponderado: true }, pesos, especiales));
 }
 
 // Ajuste por lluvia de Minorista (referencial). Del análisis de octubre 2026 (sucursales
@@ -87,7 +122,8 @@ export function proyeccionLluvia(data, pronostico = [], ajuste = AJUSTE_LLUVIA) 
   const porWd = Object.fromEntries(DIAS_SEMANA.map((d) => [d.wd, Number(pesos[d.k]) || 0]));
   const porFecha = new Map(pronostico.map((p) => [p.fecha, p]));
   const ultimo = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
-  const peso = (d) => porWd[new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay()];
+  const esp = mapaEspeciales(data.especiales);
+  const peso = (d) => porWd[new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay()] * (esp.get(fechaIso(c.y, c.m, d)) ?? 1);
 
   let hecho = 0;
   for (let d = 1; d <= c.d; d++) hecho += peso(d);
@@ -133,7 +169,10 @@ export function diasUnidad(data, u) {
     if (mes > 0) return { operados: Math.min(Math.max(Number(m.curso) || 0, 0), mes), mes };
   }
   const dias = diasOperativos(data.corte, u.calendario);
-  if (u.ponderado) dias.fraccion = fraccionPonderada(data.corte, data.pesos || PESOS_MINORISTA);
+  // Minorista siempre se pondera; las demás, solo si el mes tiene fechas especiales.
+  if (u.ponderado || hayEspeciales(data.corte, data.especiales)) {
+    dias.fraccion = fraccionCon(data.corte, pesador(u, data.pesos || PESOS_MINORISTA, data.especiales));
+  }
   return dias;
 }
 
@@ -167,58 +206,120 @@ export function calcUnidad(real, objetivo, dias) {
 }
 
 // Plan de lo que queda del mes: cuánto vender cada día para llegar al objetivo.
-// El faltante se reparte entre los días que quedan según su peso: Minorista con los pesos
-// de cada día de la semana; el resto, en partes iguales entre sus días operativos
-// (Fineglass solo lunes a viernes). Baratote y Total suman sus unidades día por día.
-// Devuelve null en modo manual (los días cargados a mano no tienen fecha).
-// { fechas: [...], unidades: { id: { faltante, real, objetivo, dias: [{ fecha, wd, monto, acumulado }] } },
+// El faltante de cada unidad se reparte entre los días que quedan según su peso (ver `pesador`):
+// Minorista con el peso de cada día de la semana; el resto en partes iguales entre sus días
+// operativos (Fineglass solo lunes a viernes); las fechas especiales multiplican el peso del día.
+// Opciones:
+//   meta:       1 = el objetivo; 0,95 o 1,05 para una meta más baja o más alta.
+//   pronostico: [{ fecha, lluvia }] para Minorista: los días con lluvia pesan AJUSTE_LLUVIA.factorLluvia
+//               y los secos factorSeco (los días sin pronóstico, como siempre).
+// Baratote y Total suman sus unidades día por día. Devuelve null en modo manual (sin fechas).
+// { fechas, meta, unidades: { id: { real, objetivo, faltante, dias: [{ fecha, wd, monto, acumulado, lluvia? }] } },
 //   baratote, total }
-export function planRestante(data) {
+export function planRestante(data, { meta = 1, pronostico = null, ajuste = AJUSTE_LLUVIA } = {}) {
   const c = parseCorte(data.corte);
   if (!c || data.dias?.modo === 'manual') return null;
   const ultimo = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
-  const pesos = data.pesos || PESOS_MINORISTA;
-  const pesoWd = Object.fromEntries(DIAS_SEMANA.map((d) => [d.wd, Number(pesos[d.k]) || 0]));
+  const clima = new Map((pronostico || []).map((p) => [p.fecha, p]));
   const fechas = [];
   for (let d = c.d + 1; d <= ultimo; d++) {
-    fechas.push({ fecha: `${c.y}-${String(c.m).padStart(2, '0')}-${String(d).padStart(2, '0')}`, d, wd: new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay() });
+    fechas.push({ fecha: fechaIso(c.y, c.m, d), d, wd: new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay() });
   }
-  const armar = (real, objetivo, montoDe) => {
+  const armar = (real, objetivo, montoDe, extra = () => ({})) => {
     let acumulado = real;
     const dias = fechas.map((f) => {
       const monto = montoDe(f);
       acumulado += monto;
-      return { fecha: f.fecha, wd: f.wd, monto, acumulado };
+      return { fecha: f.fecha, wd: f.wd, monto, acumulado, ...extra(f) };
     });
     return { real, objetivo, faltante: Math.max(objetivo - real, 0), dias };
+  };
+  const llueve = (f) => {
+    const p = clima.get(f.fecha);
+    return p ? p.lluvia >= ajuste.umbralMm : null;
   };
   const unidades = {};
   for (const u of UNIDADES) {
     const real = Number(data.real?.[u.id]) || 0;
-    const objetivo = Number(data.obj?.[u.id]) || 0;
+    const objetivo = (Number(data.obj?.[u.id]) || 0) * meta;
     const faltante = Math.max(objetivo - real, 0);
-    const peso = (f) => (!esOperativo(c.y, c.m, f.d, u.calendario) ? 0 : u.ponderado ? pesoWd[f.wd] : 1);
+    const base = pesador(u, data.pesos || PESOS_MINORISTA, data.especiales);
+    const conClima = u.ponderado && clima.size;
+    const peso = (f) => {
+      const w = base(c.y, c.m, f.d);
+      const l = conClima ? llueve(f) : null;
+      return l === null ? w : w * (l ? ajuste.factorLluvia : ajuste.factorSeco);
+    };
     let suma = fechas.reduce((s, f) => s + peso(f), 0);
-    // Si los pesos de los días que quedan dan 0, se reparte en partes iguales entre los operativos.
+    // Si los días que quedan pesan 0, se reparte en partes iguales entre los operativos.
     const pesoFinal = suma > 0 ? peso : (f) => (esOperativo(c.y, c.m, f.d, u.calendario) ? 1 : 0);
     if (suma <= 0) suma = fechas.reduce((s, f) => s + pesoFinal(f), 0);
-    unidades[u.id] = armar(real, objetivo, (f) => (suma > 0 ? faltante * pesoFinal(f) / suma : 0));
+    unidades[u.id] = armar(real, objetivo, (f) => (suma > 0 ? faltante * pesoFinal(f) / suma : 0),
+      (f) => (conClima && llueve(f) !== null ? { lluvia: llueve(f) } : {}));
   }
   const sumar = (ids) => {
     const partes = ids.map((id) => unidades[id]);
     const real = partes.reduce((s, p) => s + p.real, 0);
     const objetivo = partes.reduce((s, p) => s + p.objetivo, 0);
-    const plan = armar(real, objetivo, (f) => partes.reduce((s, p) => s + p.dias.find((x) => x.fecha === f.fecha).monto, 0));
-    plan.faltante = partes.reduce((s, p) => s + p.faltante, 0); // lo que falta en cada unidad (una pasada no tapa a otra)
+    const i = new Map(fechas.map((f, k) => [f.fecha, k]));
+    const plan = armar(real, objetivo, (f) => partes.reduce((s, p) => s + p.dias[i.get(f.fecha)].monto, 0),
+      (f) => { const l = partes.map((p) => p.dias[i.get(f.fecha)].lluvia).find((x) => x !== undefined); return l === undefined ? {} : { lluvia: l }; });
+    plan.faltante = partes.reduce((s, p) => s + p.faltante, 0); // lo que falta en cada unidad (lo que sobra en una no tapa a otra)
     return plan;
   };
-  return { fechas: fechas.map((f) => f.fecha), unidades, baratote: sumar(['may', 'min']), total: sumar(IDS) };
+  return { fechas: fechas.map((f) => f.fecha), meta, unidades, baratote: sumar(['may', 'min']), total: sumar(IDS) };
+}
+
+// Reparte lo que le falta a una sucursal de Minorista entre los días del mes posteriores a
+// `ultimaFecha`, con el peso de cada día de la semana y las fechas especiales.
+// [{ fecha, wd, monto }] (vacío si no quedan días o no falta nada).
+export function repartirMinorista(ultimaFecha, faltante, pesos = PESOS_MINORISTA, especiales = []) {
+  const c = parseCorte(ultimaFecha);
+  if (!c || !(faltante > 0)) return [];
+  const ultimo = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
+  const peso = pesador({ calendario: 'lun-dom', ponderado: true }, pesos, especiales);
+  const dias = [];
+  for (let d = c.d + 1; d <= ultimo; d++) dias.push({ fecha: fechaIso(c.y, c.m, d), wd: new Date(Date.UTC(c.y, c.m - 1, d)).getUTCDay(), w: peso(c.y, c.m, d) });
+  let suma = dias.reduce((s, x) => s + x.w, 0);
+  if (suma <= 0) { dias.forEach((x) => { x.w = 1; }); suma = dias.length; }
+  return dias.map(({ fecha, wd, w }) => ({ fecha, wd, monto: suma > 0 ? faltante * w / suma : 0 }));
+}
+
+// Plan contra lo vendido, publicación por publicación del mes (history ordenado por corte).
+// Para cada par de publicaciones seguidas: lo que pedía el plan de la anterior para los días
+// hasta el corte nuevo, y lo que se vendió (diferencia de acumulados). El plan es sin clima y
+// con meta 100%, para que no cambie según cuándo se mire.
+// [{ desde, hasta, dias, unidades: { id: { plan, vendido } }, baratote, total }], del más viejo al más nuevo.
+export function cumplimientoPlan(history = []) {
+  const out = [];
+  const lista = [...history].filter((h) => parseCorte(h.corte)).sort((a, b) => a.corte.localeCompare(b.corte));
+  for (let k = 1; k < lista.length; k++) {
+    const prev = lista[k - 1], cur = lista[k];
+    if (prev.corte.slice(0, 7) !== cur.corte.slice(0, 7) || prev.dias?.modo === 'manual') continue;
+    const plan = planRestante(prev);
+    if (!plan) continue;
+    const enRango = (d) => d.fecha <= cur.corte;
+    const unidades = {};
+    for (const id of IDS) {
+      unidades[id] = {
+        plan: plan.unidades[id].dias.filter(enRango).reduce((s, d) => s + d.monto, 0),
+        vendido: (Number(cur.real?.[id]) || 0) - (Number(prev.real?.[id]) || 0),
+      };
+    }
+    const sumar = (ids) => ({ plan: ids.reduce((s, id) => s + unidades[id].plan, 0), vendido: ids.reduce((s, id) => s + unidades[id].vendido, 0) });
+    out.push({
+      desde: plan.fechas[0], hasta: cur.corte, dias: plan.fechas.filter((f) => f <= cur.corte).length,
+      unidades, baratote: sumar(['may', 'min']), total: sumar(IDS),
+    });
+  }
+  return out;
 }
 
 // Suma de unidades: la proyección es la suma de proyecciones de cada una.
 // Automático: ritmo ideal y días con calendario lunes a domingo.
 // Manual: días de la unidad con mayor objetivo y ritmo ideal ponderado por objetivo.
-function agregado(partes, corte, manual) {
+// Con fechas especiales en el mes, el ritmo ideal es el de cada unidad ponderado por su objetivo.
+function agregado(partes, corte, manual, especiales = false) {
   const real = partes.reduce((s, p) => s + p.real, 0);
   const objetivo = partes.reduce((s, p) => s + p.objetivo, 0);
   const proyeccion = partes.reduce((s, p) => s + p.proyeccion, 0);
@@ -231,6 +332,7 @@ function agregado(partes, corte, manual) {
   } else {
     ({ operados, mes } = diasOperativos(corte, 'lun-dom'));
     ritmoIdeal = mes > 0 ? operados / mes : 0;
+    if (especiales && objetivo > 0) ritmoIdeal = partes.reduce((s, p) => s + p.objetivo * p.ritmoIdeal, 0) / objetivo;
   }
   const faltante = Math.max(objetivo - real, 0);
   const diasRestantes = mes - operados;
@@ -272,11 +374,12 @@ export function calcularReporte(data) {
     comparar(unidades[u.id], Number(ant[u.id]) || 0, Number(aa[u.id]) || 0);
   }
   const suma = (src, ids) => ids.reduce((s, id) => s + (Number(src[id]) || 0), 0);
-  const baratote = agregado([unidades.may, unidades.min], corte, manual);
+  const esp = hayEspeciales(corte, data.especiales);
+  const baratote = agregado([unidades.may, unidades.min], corte, manual, esp);
   comparar(baratote, suma(ant, ['may', 'min']), suma(aa, ['may', 'min']));
-  const total = agregado(Object.values(unidades), corte, manual);
+  const total = agregado(Object.values(unidades), corte, manual, esp);
   comparar(total, suma(ant, IDS), suma(aa, IDS));
-  return { corte, manual, unidades, baratote, total };
+  return { corte, manual, especiales: esp, unidades, baratote, total };
 }
 
 // Deja un reporte con la forma esperada (montos enteros ≥ 0, días 0–31).
@@ -294,8 +397,25 @@ export function normalizarReporte(src = {}) {
     real: montos(src.real),
     dias,
     pesos: normalizarPesos(src.pesos),
+    especiales: normalizarEspeciales(src.especiales),
     comp: { ant: montos(src.comp?.ant), aa: montos(src.comp?.aa) },
   };
+}
+
+// Fechas especiales válidas: una por fecha, factor 0–5 con dos decimales, nota de hasta 40 letras.
+export const MAX_ESPECIALES = 60;
+export function normalizarEspeciales(src) {
+  const porFecha = new Map();
+  for (const e of Array.isArray(src) ? src : []) {
+    const f = Number(String(e?.factor ?? '').replace(',', '.'));
+    if (!parseCorte(e?.fecha) || !Number.isFinite(f) || f < 0) continue;
+    porFecha.set(e.fecha, {
+      fecha: e.fecha,
+      factor: Math.round(Math.min(f, MAX_FACTOR) * 100) / 100,
+      nota: String(e.nota ?? '').replace(/\s+/g, ' ').trim().slice(0, 40),
+    });
+  }
+  return [...porFecha.values()].sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(-MAX_ESPECIALES);
 }
 
 // Pesos 0–100 con un decimal; si no hay ninguno cargado, los valores iniciales.

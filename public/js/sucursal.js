@@ -168,8 +168,32 @@ function vistaHtml(v) {
         r.cumplimiento ? `en cumplimiento del objetivo${r.venta ? ` · ${r.venta.puesto}.º en venta` : ''}` : 'en venta del mes')}
     </div>
 
+    ${planHtml(v)}
     ${diasHtml(v)}
     ${historialHtml(v)}`;
+}
+
+const DIA_CORTO = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+// Cuánto vender cada día que queda para llegar al objetivo (el fin de semana pide más).
+function planHtml(v) {
+  const plan = v.avance.plan || [];
+  if (!plan.length) return '';
+  const max = Math.max(...plan.map((d) => d.monto), 1);
+  const visibles = plan.slice(0, 7);
+  const filas = visibles.map((d, i) => `
+    <li class="ps-plan-dia${d.wd === 0 || d.wd === 5 || d.wd === 6 ? ' finde' : ''}${i === 0 ? ' prox' : ''}">
+      <span class="ps-plan-fecha">${i === 0 ? '<b>Próximo día</b> · ' : ''}${DIA_CORTO[d.wd]} ${Number(d.fecha.slice(8))}</span>
+      <span class="ps-plan-barra"><i style="width:${(d.monto / max * 100).toFixed(0)}%"></i></span>
+      <b class="ps-plan-monto">${gs(Math.round(d.monto))}</b>
+    </li>`).join('');
+  const resto = plan.length - visibles.length;
+  return `
+    <div class="card ps-card">
+      <div class="card-head"><h2>Cuánto vender cada día</h2><span class="muted small">para llegar al objetivo</span></div>
+      <ul class="ps-plan">${filas}</ul>
+      <p class="muted small" style="margin:10px 0 0">Lo que falta (${gs(Math.round(v.avance.falta))}) repartido en los ${plan.length} días que quedan según lo que suele venderse cada día: viernes a domingo piden más.${resto > 0 ? ` Se muestran los próximos 7 días; quedan ${resto} más.` : ''} Si un día se vende menos, lo que falta se reparte entre los siguientes.</p>
+    </div>`;
 }
 
 // Barras de la venta de cada día del mes.

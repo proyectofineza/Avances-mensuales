@@ -12,6 +12,7 @@ import {
   registrarIntento, mensualDe,
 } from '../lib/sucursal-acceso.mjs';
 import { leerPosicion, revisarUbicacion, distanciaMetros, vistaSucursal, PRECISION_GPS } from '../../public/js/portal-sucursal.js';
+import { normalizarPesos, normalizarEspeciales } from '../../public/js/calc.js';
 
 const MES_RE = /^\d{4}-\d{2}$/;
 const MAX_INTENTOS = 5;
@@ -126,15 +127,18 @@ export default handler(async (req, context) => {
     const pedido = new URL(req.url).searchParams.get('mes');
     const mes = pedido && MES_RE.test(pedido) && index.includes(pedido) ? pedido : index.at(-1);
     if (!mes) return json({ sucursal, mes: null, meses: [], vista: null });
-    const [datos, objetivos, cerradas, mensual] = await Promise.all([
+    const [datos, objetivos, cerradas, mensual, published] = await Promise.all([
       getJSON(`sucursales/${mes}`, { filas: [] }),
       getJSON(`sucursales-objetivos/${mes}`, { filas: [] }),
       getJSON('sucursales-cerradas', { filas: [] }),
       mensualDe(sucursal),
+      getJSON('published'),
     ]);
+    // Peso de cada día y fechas especiales: los del reporte publicado (las fechas sirven para cualquier mes).
     const vista = vistaSucursal({
       sucursal, mes, filasMes: datos.filas, objetivos: objetivos?.filas || [], mensual,
       cerradas: cerradas.filas.map((c) => c.sucursal),
+      pesos: normalizarPesos(published?.pesos), especiales: normalizarEspeciales(published?.especiales),
     });
     return json({ sucursal, mes, meses: index, actualizado: datos.actualizado || null, vista });
   }

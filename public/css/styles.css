@@ -517,9 +517,29 @@ tfoot td { border-top: 1px solid var(--vidrio-borde-2); border-bottom: 0; font-w
 .ritmo td:first-child { white-space: nowrap; }
 .ritmo th, .ritmo td { padding-left: 6px; padding-right: 6px; }
 
+.pesos-sugeridos { margin-top: 14px; padding: 12px 14px; border-radius: var(--r-ctl); background: var(--vidrio-2); border: 1px solid var(--vidrio-borde); font-size: 13px; }
+.sug-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin: 10px 0; }
+.sug-grid span { display: flex; flex-direction: column; align-items: center; gap: 1px; font-variant-numeric: tabular-nums; }
+.sug-grid small { color: var(--text-2); font-size: 11px; }
+.sug-grid i { font-style: normal; font-size: 11px; font-weight: 600; }
+@media (max-width: 600px) { .sug-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.esp-tabla td, .esp-tabla th { padding: 4px 6px; vertical-align: middle; }
+.esp-tabla input[type="date"] { width: auto; min-width: 140px; }
+.esp-tabla .esp-factor { width: 70px; min-width: 0; text-align: right; }
+.esp-tabla tr.otro-mes td { opacity: .6; }
+.aviso-diario { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+
 /* Día a día: cuánto vender cada día que queda */
 .plan-card { margin-top: 16px; }
-.plan-units { flex-wrap: wrap; margin-bottom: 14px; }
+.plan-controles { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.plan-units { flex-wrap: wrap; }
+.plan-metas { margin-left: auto; }
+.plan-marca { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: 1px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.plan-marca.lluvia { background: color-mix(in srgb, #3B82F6 22%, transparent); color: var(--text); }
+.plan-marca.esp { background: color-mix(in srgb, #F59E0B 25%, transparent); color: var(--text); }
+.plan-cumpl { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.plan-cumpl h3 { margin: 0; }
+@media (max-width: 600px) { .plan-metas { margin-left: 0; } }
 .plan-resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-bottom: 14px; }
 .plan-resumen > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r-ctl); background: var(--vidrio-2); border: 1px solid var(--vidrio-borde); }
 .plan-resumen span, .plan-resumen small { font-size: 12px; color: var(--text-2); }
@@ -1291,6 +1311,15 @@ body.panel-abierto { overflow: hidden; }
 .ps-body .pos { color: var(--pos); }
 .ps-body .neg { color: var(--neg); }
 .ps-card .card-head { margin-bottom: 10px; }
+.ps-plan { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ps-plan-dia { display: grid; grid-template-columns: minmax(96px, auto) 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--r-ctl); background: var(--vidrio-2); border: 1px solid var(--vidrio-borde); font-variant-numeric: tabular-nums; }
+.ps-plan-dia.prox { border-color: var(--primary); }
+.ps-plan-dia.finde .ps-plan-fecha { color: var(--c-min); font-weight: 700; }
+.ps-plan-fecha { font-size: 13px; white-space: nowrap; }
+.ps-plan-barra { height: 8px; border-radius: 4px; background: var(--track, rgba(127,127,127,.15)); overflow: hidden; }
+.ps-plan-barra i { display: block; height: 100%; border-radius: 4px; background: color-mix(in srgb, var(--fineza) 60%, transparent); }
+.ps-plan-monto { font-size: 14px; white-space: nowrap; }
+@media (max-width: 480px) { .ps-plan-dia { grid-template-columns: 1fr auto; } .ps-plan-barra { grid-column: 1 / -1; order: 3; } }
 .ps-svg { width: 100%; height: auto; display: block; overflow: visible; }
 .ps-eje { fill: var(--text-2); font-size: 11px; font-family: var(--fuente); }
 .ps-dia { fill: var(--primary); opacity: .85; transform-box: fill-box; transform-origin: bottom; animation: crecer-y .6s cubic-bezier(.2, .9, .3, 1.2) both; }

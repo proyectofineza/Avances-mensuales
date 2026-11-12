@@ -395,10 +395,10 @@ export function leerObjetivos(texto) {
 // Avance de cada sucursal contra su objetivo, con la proyección ponderada del mes
 // (la misma curva de días de la semana que Minorista). hasta = último día completo.
 // Devuelve Map sucursal → { objetivo, avance, proyeccion, proyeccionPct }.
-export function avanceSucursales(res, objetivos, hasta, pesos = PESOS_MINORISTA) {
+export function avanceSucursales(res, objetivos, hasta, pesos = PESOS_MINORISTA, especiales = []) {
   const out = new Map();
   if (!objetivos?.length || !hasta) return out;
-  const frac = fraccionPonderada(hasta, pesos) || 0;
+  const frac = fraccionPonderada(hasta, pesos, especiales) || 0;
   const porNombre = new Map(res.sucursales.map((s) => [s.sucursal, s]));
   for (const o of objetivos) {
     const s = porNombre.get(o.sucursal);

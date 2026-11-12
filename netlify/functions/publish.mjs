@@ -42,7 +42,7 @@ export default handler(async (req) => {
   const key = `history/${mes}`;
   const history = (await getJSON(key, [])).filter((h) => h.corte !== published.corte);
   history.push({
-    corte: published.corte, real: published.real, obj: published.obj, dias: published.dias, pesos: published.pesos,
+    corte: published.corte, real: published.real, obj: published.obj, dias: published.dias, pesos: published.pesos, especiales: published.especiales,
     publicadoEn: published.publicadoEn, por: published.por,
   });
   history.sort((a, b) => a.corte.localeCompare(b.corte));
