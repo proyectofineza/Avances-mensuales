@@ -460,7 +460,7 @@ export function fmtVar(v) {
 }
 
 export function estado(proyeccionPct) {
-  if (proyeccionPct >= 1) return { texto: 'En camino', clase: 'ok', bg: '#E3EBFC', fg: '#1E3A8A' };
+  if (proyeccionPct >= 1) return { texto: 'En camino', clase: 'ok', bg: '#DCFCE7', fg: '#166534' };
   if (proyeccionPct >= 0.9) return { texto: 'Ajustado', clase: 'warn', bg: '#FDF0DC', fg: '#92400E' };
   return { texto: 'En riesgo', clase: 'risk', bg: '#FBE4E8', fg: '#9F1239' };
 }

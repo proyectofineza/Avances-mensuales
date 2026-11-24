@@ -72,7 +72,7 @@ promedioDia   = real / diasOperados
 
 | Condición      | Texto       | Fondo     | Texto color |
 |----------------|-------------|-----------|-------------|
-| ≥ 100%         | En camino   | `#E3EBFC` | `#1E3A8A`   |
+| ≥ 100%         | En camino   | `#DCFCE7` | `#166534`   |
 | ≥ 90% y < 100% | Ajustado    | `#FDF0DC` | `#92400E`   |
 | < 90%          | En riesgo   | `#FBE4E8` | `#9F1239`   |
 

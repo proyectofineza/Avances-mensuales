@@ -46,6 +46,7 @@
   --an-y1: #F59E0B;
   --an-y2: #C084FC;
   --ok-bg: rgba(96, 165, 250, .16);   --ok-fg: #93C5FD;
+  --logro-bg: rgba(74, 222, 128, .16); --logro-fg: #86EFAC; --logro: #4ADE80;
   --warn-bg: rgba(251, 191, 36, .16); --warn-fg: #FCD34D;
   --risk-bg: rgba(248, 113, 113, .16); --risk-fg: #FCA5A5;
   --pos: #4ADE80;
@@ -94,6 +95,7 @@ html[data-tema="claro"] {
   --an-y1: #D97706;
   --an-y2: #7C3AED;
   --ok-bg: #E3EBFC;   --ok-fg: #1E3A8A;
+  --logro-bg: #DCFCE7; --logro-fg: #166534; --logro: #16A34A;
   --warn-bg: #FDF0DC; --warn-fg: #92400E;
   --risk-bg: #FBE4E8; --risk-fg: #9F1239;
   --pos: #15803D;
@@ -231,7 +233,7 @@ input[type="date"], input[type="month"] { color-scheme: inherit; }
   font-weight: 700;
   white-space: nowrap;
 }
-.chip.ok { background: var(--ok-bg); color: var(--ok-fg); }
+.chip.ok { background: var(--logro-bg); color: var(--logro-fg); } /* verde: llegó / va a llegar */
 .chip.warn { background: var(--warn-bg); color: var(--warn-fg); }
 .chip.risk { background: var(--risk-bg); color: var(--risk-fg); }
 .chip.off { background: var(--track); color: var(--text-2); }
@@ -575,7 +577,7 @@ tfoot td { border-top: 1px solid var(--vidrio-borde-2); border-bottom: 0; font-w
 .hl-risk { color: var(--neg); }
 
 .gauge { position: relative; width: 240px; height: 132px; margin: 0 auto; overflow: hidden; --g-color: var(--ok-fg); }
-.gauge-ok { --g-color: #60A5FA; } .gauge-warn { --g-color: #FBBF24; } .gauge-risk { --g-color: #F87171; }
+.gauge-ok { --g-color: var(--logro); } .gauge-warn { --g-color: #FBBF24; } .gauge-risk { --g-color: #F87171; }
 .gauge-arc {
   position: absolute; left: 0; top: 0; width: 240px; height: 240px; border-radius: 50%;
   --ang-anim: var(--ang);
@@ -613,8 +615,7 @@ tfoot td { border-top: 1px solid var(--vidrio-borde-2); border-bottom: 0; font-w
 .pu-bar div { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; }
 .pu-bar i { position: absolute; top: 0; bottom: 0; left: 83.333%; width: 2px; background: var(--objetivo); }
 .pu-pct { font-size: 12px; color: var(--text-2); }
-.pu-ok { color: #60A5FA; } .pu-warn { color: #FBBF24; } .pu-risk { color: #F87171; }
-html[data-tema="claro"] .pu-ok { color: #1D4ED8; }
+.pu-ok { color: var(--logro); } .pu-warn { color: #FBBF24; } .pu-risk { color: #F87171; }
 html[data-tema="claro"] .pu-warn { color: #B45309; }
 html[data-tema="claro"] .pu-risk { color: #B91C1C; }
 .proy-nota { margin: 14px 0 0; font-size: 12px; color: var(--text-2); }
