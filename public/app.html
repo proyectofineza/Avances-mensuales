@@ -464,6 +464,22 @@
             <p class="muted small">Columnas: <b>sucursal</b> y <b>objetivo</b> del mes en guaraníes. <span id="cfg-obj-estado"></span></p>
             <label for="cfg-obj-mes">Mes</label>
             <input type="month" id="cfg-obj-mes">
+            <div class="cfg-repartir">
+              <h4>Repartir un objetivo general</h4>
+              <p class="muted small">Cargá el objetivo total del mes y se reparte entre las sucursales con el mismo <b>peso %</b> que tenían en los objetivos de otro mes. Las sucursales cerradas quedan afuera y su parte se reparte entre las demás. Se redondea al millón.</p>
+              <div class="cfg-repartir-campos">
+                <div>
+                  <label for="cfg-rep-total">Objetivo total (Gs.)</label>
+                  <input type="text" id="cfg-rep-total" inputmode="numeric" placeholder="23.500.000.000" autocomplete="off">
+                </div>
+                <div>
+                  <label for="cfg-rep-base">Según el peso de</label>
+                  <input type="month" id="cfg-rep-base">
+                </div>
+              </div>
+              <button class="btn btn-sm" type="button" id="cfg-rep-btn" style="margin-top:10px">Repartir</button>
+              <p class="muted small" id="cfg-rep-info" hidden></p>
+            </div>
             <button class="btn btn-sm" type="button" data-cfg-base="objetivos" style="margin-top:10px">Descargar planilla base</button>
             <label for="cfg-obj-archivo" style="margin-top:12px">Archivo CSV</label>
             <input type="file" id="cfg-obj-archivo" accept=".csv,.txt,text/csv,text/plain">

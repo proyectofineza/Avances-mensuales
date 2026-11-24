@@ -170,6 +170,26 @@ const o = leerObjetivos('Sucursal;Objetivo\nLUQUE 1;95.000.000\nABASTO;\nCOLON;a
 assert.deepEqual(o.filas, [{ sucursal: 'LUQUE 1', objetivo: 95e6 }, { sucursal: 'KM 5', objetivo: 40e6 }]); // vacío se ignora
 assert.equal(o.errores.length, 1); assert.match(o.errores[0].motivo, /Objetivo inválido/);
 
+// La planilla tal cual sale de Excel: columna con el nombre del mes, % al lado y fila TOTAL.
+const ox = leerObjetivos('Sucursal\tNoviembre\t% \nLAS RESIDENTAS\t432000000\t1,84%\nLIMPIO\t369.000.000\t1,57%\nTOTAL\t801000000\t100%');
+assert.deepEqual(ox.filas, [{ sucursal: 'LAS RESIDENTAS', objetivo: 432e6 }, { sucursal: 'LIMPIO', objetivo: 369e6 }]);
+assert.equal(ox.errores.length, 0);
+
+// Repartir un objetivo general con el peso de otro mes.
+const { repartirObjetivo } = await import('../public/js/sucursales.js');
+const baseNov = [{ sucursal: 'A', objetivo: 300e6 }, { sucursal: 'B', objetivo: 100e6 }, { sucursal: 'C', objetivo: 100e6 }];
+const rep = repartirObjetivo(baseNov, 1000e6);
+assert.deepEqual(rep.map((f) => [f.sucursal, f.objetivo]), [['A', 600e6], ['B', 200e6], ['C', 200e6]]);
+assert.equal(rep[0].peso, 0.6);
+// Una cerrada queda afuera y su parte se reparte entre las demás.
+assert.deepEqual(repartirObjetivo(baseNov, 1000e6, { excluir: ['C'] }).map((f) => f.objetivo), [750e6, 250e6]);
+// Redondeo al millón, y la suma da el total.
+assert.deepEqual(repartirObjetivo(baseNov, 1001e6).map((f) => f.objetivo), [601e6, 200e6, 200e6]);
+const tres = repartirObjetivo([{ sucursal: 'A', objetivo: 1 }, { sucursal: 'B', objetivo: 1 }, { sucursal: 'C', objetivo: 1 }], 100e6);
+assert.equal(tres.reduce((s, f) => s + f.objetivo, 0), 100e6); // 34 + 33 + 33
+assert.deepEqual(repartirObjetivo([], 1000e6), []);
+assert.deepEqual(repartirObjetivo(baseNov, 0), []);
+
 const resO = resumirMes([
   { sucursal: 'LUQUE 1', fecha: '2026-10-01', monto: 30e6 },
   { sucursal: 'LUQUE 1', fecha: '2026-10-10', monto: 20e6 },

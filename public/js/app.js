@@ -14,6 +14,7 @@ import {
 import {
   leerPlanilla, resumirMes, alertasSucursales, pesoSemana, compararDias, mismoDiaSemana, ultimoDiaCompleto, ultimasSemanas, NO_MINORISTA,
   leerMaestro, leerObjetivos, parseFecha, avanceSucursales, resumenZonas, controlMaestro, zonaSugerida, normalizarSucursal,
+  repartirObjetivo, parseMonto,
 } from './sucursales.js';
 import { leerPlanillaHoras, tieneHora, minutos, NOMBRES_DIA } from './dia-comercial.js';
 
@@ -1248,7 +1249,12 @@ async function guardarHistorialSucursales() {
 
 function setupConfigSucursales() {
   $('cfg-obj-mes').value = hoyAsuncion().slice(0, 7);
-  $('cfg-obj-mes').addEventListener('change', cargarObjetivosConfig);
+  $('cfg-rep-base').value = mesPrevio($('cfg-obj-mes').value);
+  $('cfg-obj-mes').addEventListener('change', () => {
+    if ($('cfg-obj-mes').value) $('cfg-rep-base').value = mesPrevio($('cfg-obj-mes').value);
+    cargarObjetivosConfig();
+  });
+  $('cfg-rep-btn').addEventListener('click', repartirObjetivoGeneral);
   for (const pre of ['cfg-maestro', 'cfg-obj']) {
     $(`${pre}-archivo`).addEventListener('change', async () => {
       const f = $(`${pre}-archivo`).files[0];
@@ -1350,6 +1356,36 @@ async function cargarObjetivosConfig() {
   if (!mes) return;
   try { suc.cfgObj = (await API.getSucursalesConfig(mes)).objetivos; } catch { suc.cfgObj = null; }
   pintarEstadoConfig();
+}
+
+function mesPrevio(mes) {
+  const [y, m] = mes.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
+// Reparte el objetivo general según el peso % de los objetivos de otro mes y deja la planilla
+// en el cuadro de pegado, para revisarla y guardarla con "Revisar y guardar".
+async function repartirObjetivoGeneral() {
+  const msgEl = $('cfg-obj-msg');
+  const info = $('cfg-rep-info');
+  const mes = $('cfg-obj-mes').value, base = $('cfg-rep-base').value;
+  const total = parseMonto($('cfg-rep-total').value);
+  info.hidden = true;
+  if (!mes) { showMsg(msgEl, 'Elegí el mes de los objetivos.', false); return; }
+  if (!total) { showMsg(msgEl, 'Cargá el objetivo total en guaraníes (por ejemplo 23.500.000.000).', false); return; }
+  if (!base || base === mes) { showMsg(msgEl, 'Elegí otro mes para tomar el peso de cada sucursal.', false); return; }
+  let filasBase;
+  try { filasBase = (await API.getSucursalesConfig(base)).objetivos?.filas || []; } catch (err) { handleError(err, msgEl); return; }
+  if (!filasBase.length) { showMsg(msgEl, `${nombreMes(fechaDeMes(base))} no tiene objetivos por sucursal: cargalos primero o elegí otro mes.`, false); return; }
+  // Afuera las que cerraron antes de que empiece el mes.
+  const cerradas = [...suc.cerradas.entries()].filter(([, f]) => !f || f <= `${mes}-01`).map(([s]) => s);
+  const filas = repartirObjetivo(filasBase, total, { excluir: cerradas });
+  const suma = filas.reduce((s, f) => s + f.objetivo, 0);
+  const fuera = filasBase.length - filas.length;
+  $('cfg-obj-texto').value = ['Sucursal\tObjetivo\t%', ...filas.map((f) => `${f.sucursal}\t${f.objetivo}\t${(f.peso * 100).toFixed(2).replace('.', ',')}%`)].join('\n');
+  info.innerHTML = `${filas.length} sucursales con el peso de ${esc(nombreMes(fechaDeMes(base)))}${fuera ? ` (${fuera} cerrada${fuera === 1 ? '' : 's'} afuera)` : ''}. Suma ${fmtMillones(suma)}${suma !== total ? ` (${fmtMillones(suma - total)} por el redondeo)` : ''}. Revisá el cuadro y tocá <b>Revisar y guardar</b>.`;
+  info.hidden = false;
+  msgEl.hidden = true;
 }
 
 // Sucursales conocidas: las del mes abierto más las del listado.

@@ -367,6 +367,7 @@ function leerTabla(texto, columnas) {
     const linea = k + (tieneCabecera ? 2 : 1);
     const sucursal = normalizarSucursal(r[idx.sucursal]);
     if (!sucursal) return errores.push({ linea, motivo: 'Falta el nombre de la sucursal.' });
+    if (/^TOTAL( GENERAL)?$/.test(sucursal)) return; // fila de totales de Excel
     const fila = { sucursal };
     for (const c of columnas) {
       const v = idx[c.clave] >= 0 ? r[idx[c.clave]] : '';
@@ -388,8 +389,32 @@ export function leerMaestro(texto) {
   return r;
 }
 
+// El título de la columna puede ser "Objetivo" o el nombre del mes ("Noviembre"); otras columnas (como el %) se ignoran.
+const RE_OBJETIVO = /objetivo|meta|presupuesto|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre/;
 export function leerObjetivos(texto) {
-  return leerTabla(texto, [{ clave: 'objetivo', re: /objetivo|meta|presupuesto/, numero: true, obligatoria: true }]);
+  return leerTabla(texto, [{ clave: 'objetivo', re: RE_OBJETIVO, numero: true, obligatoria: true }]);
+}
+
+// Reparte un objetivo general entre las sucursales según el peso de cada una en `base`
+// ([{ sucursal, objetivo }], por ejemplo los objetivos del mes anterior). Las de `excluir`
+// (cerradas) no reciben y su peso se reparte entre las demás. Redondea a `redondeo` Gs. y
+// la suma da el total (redondeado): las unidades que sobran van a los restos más grandes.
+// → [{ sucursal, objetivo, peso }] ordenado de mayor a menor.
+export function repartirObjetivo(base, total, { excluir = [], redondeo = 1e6 } = {}) {
+  const fuera = new Set(excluir);
+  const filas = (base || []).filter((f) => f.objetivo > 0 && !fuera.has(f.sucursal));
+  const suma = filas.reduce((s, f) => s + f.objetivo, 0);
+  if (!(total > 0) || !suma) return [];
+  const unidades = Math.round(total / redondeo);
+  const out = filas.map((f) => {
+    const peso = f.objetivo / suma, exacto = unidades * peso;
+    return { sucursal: f.sucursal, peso, u: Math.floor(exacto), resto: exacto - Math.floor(exacto) };
+  });
+  let faltan = unidades - out.reduce((s, f) => s + f.u, 0);
+  for (const f of [...out].sort((a, b) => b.resto - a.resto)) { if (faltan <= 0) break; f.u++; faltan--; }
+  return out
+    .map((f) => ({ sucursal: f.sucursal, peso: f.peso, objetivo: Math.max(1, f.u) * redondeo }))
+    .sort((a, b) => b.objetivo - a.objetivo || a.sucursal.localeCompare(b.sucursal));
 }
 
 // Avance de cada sucursal contra su objetivo, con la proyección ponderada del mes
