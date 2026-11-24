@@ -443,17 +443,17 @@
       <details class="card solo-admin suc-carga" id="suc-config">
         <summary>
           <span class="suc-carga-titulo">Configurar sucursales</span>
-          <span class="muted small">zona, encargado, objetivo y horario comercial</span>
+          <span class="muted small">ciudad, encargado, objetivo y horario comercial</span>
         </summary>
         <div class="cfg-grid">
           <div class="cfg-bloque">
             <h3>Listado de sucursales</h3>
-            <p class="muted small">Columnas: <b>sucursal</b>, <b>zona</b> y <b>encargado</b>. Se carga una vez y se actualiza cuando abre o cierra una sucursal. <span id="cfg-maestro-estado"></span></p>
+            <p class="muted small">Columnas: <b>sucursal</b>, <b>ciudad</b> y <b>encargado</b>. Se carga una vez y se actualiza cuando abre o cierra una sucursal. <span id="cfg-maestro-estado"></span></p>
             <button class="btn btn-sm" type="button" data-cfg-base="maestro">Descargar planilla base</button>
             <label for="cfg-maestro-archivo" style="margin-top:12px">Archivo CSV</label>
             <input type="file" id="cfg-maestro-archivo" accept=".csv,.txt,text/csv,text/plain">
             <label for="cfg-maestro-texto" style="margin-top:10px">O pegá desde Excel</label>
-            <textarea id="cfg-maestro-texto" rows="4" placeholder="Sucursal&#9;Zona&#9;Encargado&#10;LUQUE 1&#9;LUQUE&#9;María González"></textarea>
+            <textarea id="cfg-maestro-texto" rows="4" placeholder="Sucursal&#9;Ciudad&#9;Encargado&#10;ROJAS CAÑADA 1&#9;CAPIATÁ&#9;María González"></textarea>
             <div class="actions">
               <button class="btn btn-primary" type="button" data-cfg-guardar="maestro">Revisar y guardar</button>
             </div>
@@ -551,7 +551,7 @@
         <button type="button" role="tab" data-sub="resumen">Resumen</button>
         <button type="button" role="tab" data-sub="informe">Informe IA</button>
         <button type="button" role="tab" data-sub="ranking">Ranking</button>
-        <button type="button" role="tab" data-sub="zonas">Zonas</button>
+        <button type="button" role="tab" data-sub="zonas">Ciudades</button>
         <button type="button" role="tab" data-sub="calor">Mapa de calor</button>
         <button type="button" role="tab" data-sub="comparar">Comparar días</button>
         <button type="button" role="tab" data-sub="alertas">Alertas<span class="tab-badge" id="suc-alertas-n" hidden></span></button>

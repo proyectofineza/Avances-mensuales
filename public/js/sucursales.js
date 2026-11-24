@@ -384,7 +384,8 @@ function leerTabla(texto, columnas) {
 }
 
 export function leerMaestro(texto) {
-  const r = leerTabla(texto, [{ clave: 'zona', re: /zona|regi[oó]n/ }, { clave: 'encargado', re: /encargad|responsable|gerente|supervisor/ }]);
+  // La ciudad se guarda en `zona` (mismo dato de siempre); el título puede ser Ciudad, Localidad o Zona.
+  const r = leerTabla(texto, [{ clave: 'zona', re: /ciudad|localidad|zona|regi[oó]n/ }, { clave: 'encargado', re: /encargad|responsable|gerente|supervisor/ }]);
   r.filas.forEach((f) => { f.zona = f.zona.toUpperCase(); });
   return r;
 }
@@ -435,18 +436,18 @@ export function avanceSucursales(res, objetivos, hasta, pesos = PESOS_MINORISTA,
   return out;
 }
 
-// Totales por zona según el listado maestro. Las que no figuran van a "SIN ZONA".
+// Totales por zona según el listado maestro. Las que no figuran van a "SIN CIUDAD".
 export function resumenZonas(res, maestro = []) {
   const info = new Map(maestro.map((m) => [m.sucursal, m]));
   const zonas = new Map();
   for (const s of res.sucursales) {
-    const zona = info.get(s.sucursal)?.zona || 'SIN ZONA';
+    const zona = info.get(s.sucursal)?.zona || 'SIN CIUDAD';
     const z = zonas.get(zona) || { zona, total: 0, sucursales: [] };
     z.total += s.total;
     z.sucursales.push(s);
     zonas.set(zona, z);
   }
-  return [...zonas.values()].sort((a, b) => (a.zona === 'SIN ZONA') - (b.zona === 'SIN ZONA') || b.total - a.total);
+  return [...zonas.values()].sort((a, b) => (a.zona === 'SIN CIUDAD') - (b.zona === 'SIN CIUDAD') || b.total - a.total);
 }
 
 // Diferencias entre el listado maestro y lo que trae una planilla de ventas.

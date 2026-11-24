@@ -208,7 +208,8 @@ assert.equal(av.has('ABASTO'), false);
 assert.equal(avanceSucursales(resO, [], '2026-10-10').size, 0);
 
 const zonas = resumenZonas(resO, [{ sucursal: 'LUQUE 1', zona: 'LUQUE' }]);
-assert.deepEqual(zonas.map((z) => [z.zona, z.total, z.sucursales.length]), [['LUQUE', 51e6, 1], ['SIN ZONA', 10e6, 1]]);
+assert.deepEqual(zonas.map((z) => [z.zona, z.total, z.sucursales.length]), [['LUQUE', 51e6, 1], ['SIN CIUDAD', 10e6, 1]]);
+assert.deepEqual(leerMaestro('Sucursal;Ciudad;Encargado\nRojas Cañada 1;Capiatá;Ana').filas, [{ sucursal: 'ROJAS CAÑADA 1', zona: 'CAPIATÁ', encargado: 'Ana' }]);
 
 const ctl = controlMaestro([{ sucursal: 'A' }, { sucursal: 'B' }, { sucursal: 'CENTRAL' }], ['A', 'C', 'CENTRAL']);
 assert.deepEqual(ctl, { faltan: ['B'], nuevas: ['C'] });

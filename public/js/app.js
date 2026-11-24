@@ -949,7 +949,7 @@ const pesosDelMes = (mes) => (suc.published?.corte?.startsWith(mes) && suc.publi
 // Las fechas especiales valen para cualquier mes (cada una tiene su fecha).
 const especialesDelMes = () => suc.published?.especiales || [];
 // Zona de una sucursal: la del listado maestro o, si no hay listado, la sugerida por el nombre.
-const zonaDe = (nombre) => suc.info.get(nombre)?.zona || (suc.info.size ? 'SIN ZONA' : zonaSugerida(nombre));
+const zonaDe = (nombre) => suc.info.get(nombre)?.zona || (suc.info.size ? 'SIN CIUDAD' : zonaSugerida(nombre));
 
 const chipCerrada = (nombre) => (suc.cerradas.has(nombre)
   ? ` <span class="chip" title="Cerrada desde el ${fmtFecha(suc.cerradas.get(nombre))}: no genera alertas ni se mide contra objetivo">Cerrada</span>`
@@ -1398,9 +1398,9 @@ function descargarBase(tipo) {
   const msgEl = $(tipo === 'maestro' ? 'cfg-maestro-msg' : 'cfg-obj-msg');
   if (!nombres.length) { showMsg(msgEl, 'Primero cargá una planilla de ventas para conocer las sucursales.', false); return; }
   if (tipo === 'maestro') {
-    descargarCsv('sucursales-zonas.csv', [['Sucursal', 'Zona', 'Encargado'],
+    descargarCsv('sucursales-ciudades.csv', [['Sucursal', 'Ciudad', 'Encargado'],
       ...nombres.map((n) => [n, suc.info.get(n)?.zona || zonaSugerida(n), suc.info.get(n)?.encargado || ''])]);
-    showMsg(msgEl, 'La zona viene sugerida por el nombre: corregila y completá el encargado.', true);
+    showMsg(msgEl, 'La ciudad viene sugerida por el nombre de la sucursal: corregila (por ejemplo ROJAS CAÑADA → CAPIATÁ) y completá el encargado.', true);
   } else {
     const mes = $('cfg-obj-mes').value;
     const obj = new Map((suc.cfgObj?.filas || []).map((f) => [f.sucursal, f.objetivo]));
@@ -1422,7 +1422,7 @@ async function guardarConfig(tipo) {
   const conocidas = new Set(nombresConocidos());
   const raras = conocidas.size ? r.filas.map((f) => f.sucursal).filter((n) => !conocidas.has(n)) : [];
   const detalle = tipo === 'maestro'
-    ? `${r.filas.length} sucursales en ${new Set(r.filas.map((f) => f.zona).filter(Boolean)).size} zonas`
+    ? `${r.filas.length} sucursales en ${new Set(r.filas.map((f) => f.zona).filter(Boolean)).size} ciudades`
     : `${r.filas.length} sucursales, total ${fmtMillones(r.filas.reduce((s, f) => s + f.objetivo, 0))} para ${nombreMes(fechaDeMes(mes))}`;
   const avisos = [
     r.errores.length ? `${r.errores.length} línea${r.errores.length === 1 ? '' : 's'} con problemas no se van a guardar (línea ${r.errores[0].linea}: ${r.errores[0].motivo})` : '',
@@ -1499,8 +1499,8 @@ function datosExportar(que) {
   if (que === 'ranking') {
     let lista = rankingFiltrado();
     if (suc.rank === 'riesgo') lista = lista.filter((s) => suc.avance.has(s.sucursal)).sort((a, b) => suc.avance.get(a.sucursal).proyeccionPct - suc.avance.get(b.sucursal).proyeccionPct);
-    const filtro = [suc.zona && `zona ${suc.zona}`, suc.encargado && `encargado ${suc.encargado}`, suc.filtro.trim() && `"${suc.filtro.trim()}"`].filter(Boolean).join(', ');
-    const tabla = [['Puesto', 'Sucursal', 'Zona', 'Encargado', 'Venta del mes', '% del total', 'Promedio por día', 'Días con venta', 'Objetivo', 'Avance', 'Proyección al cierre', 'Estado'],
+    const filtro = [suc.zona && `ciudad ${suc.zona}`, suc.encargado && `encargado ${suc.encargado}`, suc.filtro.trim() && `"${suc.filtro.trim()}"`].filter(Boolean).join(', ');
+    const tabla = [['Puesto', 'Sucursal', 'Ciudad','Encargado', 'Venta del mes', '% del total', 'Promedio por día', 'Días con venta', 'Objetivo', 'Avance', 'Proyección al cierre', 'Estado'],
       ...lista.map((s) => {
         const a = suc.avance.get(s.sucursal);
         return [s.puesto, s.sucursal, zonaDe(s.sucursal), suc.info.get(s.sucursal)?.encargado || '', s.total, fmtPct(s.total / (res.total || 1)),
@@ -1515,11 +1515,11 @@ function datosExportar(que) {
   }
   if (que === 'zonas') {
     const zonas = zonasDelMes();
-    const tabla = [['Zona', 'Sucursales', 'Venta del mes', '% del total', 'Objetivo', 'Proyección al cierre', 'Proyección / objetivo'],
+    const tabla = [['Ciudad', 'Sucursales', 'Venta del mes', '% del total', 'Objetivo', 'Proyección al cierre', 'Proyección / objetivo'],
       ...zonas.map((z) => [z.zona, z.sucursales.length, z.total, fmtPct(z.total / (res.total || 1)), z.objetivo || '', z.objetivo ? Math.round(z.proyeccion) : '', z.objetivo ? fmtPct(z.proyeccion / z.objetivo) : ''])];
-    const texto = [`Venta por zona · Baratote Minorista · ${mesNombre}`, '',
+    const texto = [`Venta por ciudad · Baratote Minorista · ${mesNombre}`, '',
       ...zonas.map((z) => `- ${z.zona}: ${fmtMillones(z.total)} (${fmtPct(z.total / (res.total || 1))}, ${z.sucursales.length} suc.)${z.objetivo ? ` · proyecta ${fmtPct(z.proyeccion / z.objetivo)} del objetivo` : ''}`)].join('\n');
-    return { titulo: `Ventas por zona ${mesNombre}`, archivo: `zonas-${mes}`, tabla, texto };
+    return { titulo: `Ventas por ciudad ${mesNombre}`, archivo: `ciudades-${mes}`, tabla, texto };
   }
   if (que === 'comparar') return datosExportarComparacion();
   if (que === 'informe') {
@@ -1963,7 +1963,7 @@ function rankingHtml() {
       </div>
       <div class="rank-filtros">
         <input id="suc-buscar" class="suc-buscar" type="search" placeholder="Buscar sucursal" value="${esc(suc.filtro)}" aria-label="Buscar sucursal">
-        ${zonas.length ? `<select id="suc-zona" aria-label="Zona">${opciones(zonas, suc.zona, 'Todas las zonas')}</select>` : ''}
+        ${zonas.length ? `<select id="suc-zona" aria-label="Ciudad">${opciones(zonas, suc.zona, 'Todas las ciudades')}</select>` : ''}
         ${encargados.length ? `<select id="suc-encargado" aria-label="Encargado">${opciones(encargados, suc.encargado, 'Todos los encargados')}</select>` : ''}
       </div>
       <div class="table-wrap" id="suc-ranking"></div>
@@ -2016,7 +2016,7 @@ function renderRankingTabla() {
   const columnas = 6 + hayZona + (hayObj ? 2 : 0);
   $('suc-ranking').innerHTML = `
     <table class="suc-tabla">
-      <thead><tr><th>#</th><th>Sucursal</th>${hayZona ? '<th class="opc">Zona</th>' : ''}<th class="r">Venta del mes</th>${hayObj ? '<th class="r" title="Objetivo del mes en guaraníes">Objetivo</th><th class="r" title="Venta hasta el último día completo sobre el objetivo del mes">Avance</th><th class="r" title="Proyección al cierre sobre el objetivo">Proyección</th>' : ''}<th class="r opc">% del total</th><th class="r opc">Prom./día</th>${hayObj ? '' : '<th class="r opc">Días</th>'}<th class="col-barra"></th></tr></thead>
+      <thead><tr><th>#</th><th>Sucursal</th>${hayZona ? '<th class="opc">Ciudad</th>' : ''}<th class="r">Venta del mes</th>${hayObj ? '<th class="r" title="Objetivo del mes en guaraníes">Objetivo</th><th class="r" title="Venta hasta el último día completo sobre el objetivo del mes">Avance</th><th class="r" title="Proyección al cierre sobre el objetivo">Proyección</th>' : ''}<th class="r opc">% del total</th><th class="r opc">Prom./día</th>${hayObj ? '' : '<th class="r opc">Días</th>'}<th class="col-barra"></th></tr></thead>
       <tbody>${filas || `<tr><td colspan="${columnas + 1}" class="muted">No hay sucursales con ese filtro.</td></tr>`}</tbody>
     </table>`;
   $('suc-ranking-pie').innerHTML = filtrando
@@ -2052,7 +2052,7 @@ function zonasHtml() {
         <span class="zona-nombre">${esc(z.zona)}<small class="muted">${z.sucursales.length} sucursal${z.sucursales.length === 1 ? '' : 'es'}${z.encargados.length ? ' · ' + esc(z.encargados.join(', ')) : ''}</small></span>
         <span class="zona-bar"><span style="width:${((z.total / max) * 100).toFixed(1)}%"></span></span>
         <span class="zona-cifras"><b>${fmtMillones(z.total)}</b><small class="muted">${z.objetivo ? `objetivo ${fmtMillones(z.objetivo)} · ` : ''}${fmtPct(z.total / (res.total || 1))} del total</small></span>
-        ${e ? `<span class="chip ${e.clase}" title="Proyección al cierre sobre el objetivo de la zona">${fmtPct(z.proyeccion / z.objetivo)}</span>` : ''}
+        ${e ? `<span class="chip ${e.clase}" title="Proyección al cierre sobre el objetivo de la ciudad">${fmtPct(z.proyeccion / z.objetivo)}</span>` : ''}
       </summary>
       <ul class="zona-lista">${z.sucursales.map((s) => `
         <li data-suc="${esc(s.sucursal)}" role="button" tabindex="0">
@@ -2062,10 +2062,10 @@ function zonasHtml() {
   }).join('');
   const aviso = suc.info.size
     ? ''
-    : `<p class="nota" style="margin:0 0 14px">Zonas sugeridas por el nombre de cada sucursal. ${isAdmin() ? 'Para definir las zonas reales y los encargados, cargá el listado en <b>Configurar sucursales</b>.' : 'El administrador puede cargar las zonas reales.'}</p>`;
+    : `<p class="nota" style="margin:0 0 14px">Ciudades sugeridas por el nombre de cada sucursal. ${isAdmin() ? 'Para cargar la ciudad real y el encargado de cada una, cargá el listado en <b>Configurar sucursales</b>.' : 'El administrador puede cargar la ciudad real de cada sucursal.'}</p>`;
   return `
     <div class="card-head" style="margin-bottom:12px">
-      <p class="muted small" style="margin:0">Tocá una zona para ver sus sucursales.${suc.avance.size ? ' El porcentaje de color es la proyección al cierre contra el objetivo.' : ''}</p>
+      <p class="muted small" style="margin:0">Tocá una ciudad para ver sus sucursales.${suc.avance.size ? ' El porcentaje de color es la proyección al cierre contra el objetivo.' : ''}</p>
       ${exportarHtml('zonas')}
     </div>
     ${aviso}
@@ -2658,7 +2658,7 @@ function abrirPanel(nombre) {
 
   $('suc-panel-titulo').textContent = nombre;
   $('suc-panel-body').innerHTML = `
-    <p class="muted small" style="margin:0 0 12px">${nombreMes(fechaDeMes(suc.datos.mes))} · puesto ${i + 1} de ${res.sucursales.length}${info?.zona ? ` · zona ${esc(info.zona)}` : ''}${info?.encargado ? ` · encargado: ${esc(info.encargado)}` : ''}</p>
+    <p class="muted small" style="margin:0 0 12px">${nombreMes(fechaDeMes(suc.datos.mes))} · puesto ${i + 1} de ${res.sucursales.length}${info?.zona ? ` · ${esc(info.zona)}` : ''}${info?.encargado ? ` · encargado: ${esc(info.encargado)}` : ''}</p>
     ${marcas.length ? `<div class="panel-marcas">${marcas.join('')}</div>` : ''}
     ${objetivoHtml}
     <div class="panel-kpis">
@@ -3570,7 +3570,7 @@ function cierreSucursalesHtml() {
         <div><h3>Las 5 que más vendieron</h3><ol class="cierre-lista">${lista(abiertas.slice(0, 5))}</ol></div>
         <div><h3>Las 5 que menos vendieron</h3><ol class="cierre-lista">${lista(abiertas.slice(-5).reverse())}</ol></div>
         ${lejos.length ? `<div><h3>Más lejos de su objetivo</h3><ol class="cierre-lista">${lejos.map(([n, a]) => `<li><span>${esc(n)}</span><b class="${a.avance >= 1 ? 'hl-ok' : 'hl-risk'}">${fmtPct(a.avance)}</b></li>`).join('')}</ol></div>` : ''}
-        ${zonas.length ? `<div><h3>Por zona</h3><ol class="cierre-lista">${zonas.map((z) => `<li><span>${esc(z.zona)}</span><b>${fmtMillones(z.total)}</b></li>`).join('')}</ol></div>` : ''}
+        ${zonas.length ? `<div><h3>Por ciudad</h3><ol class="cierre-lista">${zonas.map((z) => `<li><span>${esc(z.zona)}</span><b>${fmtMillones(z.total)}</b></li>`).join('')}</ol></div>` : ''}
       </div>
     </div>`;
 }
