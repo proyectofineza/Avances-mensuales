@@ -2006,17 +2006,17 @@ function renderRankingTabla() {
       <td><b>${esc(s.sucursal)}</b>${chipCerrada(s.sucursal)}</td>
       ${hayZona ? `<td class="opc muted">${esc(zonaDe(s.sucursal))}</td>` : ''}
       <td class="r">${fmtMillones(s.total)}</td>
-      ${hayObj ? `<td class="r">${a ? fmtPct(a.avance) : '—'}</td><td class="r">${a ? avanceChip(s.sucursal) : '<span class="muted small">sin objetivo</span>'}</td>` : ''}
+      ${hayObj ? `<td class="r">${a ? fmtMillones(a.objetivo) : '—'}</td><td class="r">${a ? fmtPct(a.avance) : '—'}</td><td class="r">${a ? avanceChip(s.sucursal) : '<span class="muted small">sin objetivo</span>'}</td>` : ''}
       <td class="r opc">${fmtPct(s.total / (res.total || 1))}</td>
       <td class="r opc">${fmtMillones(s.total / Math.max(s.diasConVenta, 1))}</td>
       ${hayObj ? '' : `<td class="r opc">${s.diasConVenta}</td>`}
       <td class="col-barra"><div class="rank-bar"><div style="width:${((s.total / top) * 100).toFixed(1)}%"></div></div></td>
     </tr>`;
   }).join('');
-  const columnas = 6 + hayZona + (hayObj ? 1 : 0);
+  const columnas = 6 + hayZona + (hayObj ? 2 : 0);
   $('suc-ranking').innerHTML = `
     <table class="suc-tabla">
-      <thead><tr><th>#</th><th>Sucursal</th>${hayZona ? '<th class="opc">Zona</th>' : ''}<th class="r">Venta del mes</th>${hayObj ? '<th class="r" title="Venta hasta el último día completo sobre el objetivo del mes">Avance</th><th class="r" title="Proyección al cierre sobre el objetivo">Proyección</th>' : ''}<th class="r opc">% del total</th><th class="r opc">Prom./día</th>${hayObj ? '' : '<th class="r opc">Días</th>'}<th class="col-barra"></th></tr></thead>
+      <thead><tr><th>#</th><th>Sucursal</th>${hayZona ? '<th class="opc">Zona</th>' : ''}<th class="r">Venta del mes</th>${hayObj ? '<th class="r" title="Objetivo del mes en guaraníes">Objetivo</th><th class="r" title="Venta hasta el último día completo sobre el objetivo del mes">Avance</th><th class="r" title="Proyección al cierre sobre el objetivo">Proyección</th>' : ''}<th class="r opc">% del total</th><th class="r opc">Prom./día</th>${hayObj ? '' : '<th class="r opc">Días</th>'}<th class="col-barra"></th></tr></thead>
       <tbody>${filas || `<tr><td colspan="${columnas + 1}" class="muted">No hay sucursales con ese filtro.</td></tr>`}</tbody>
     </table>`;
   $('suc-ranking-pie').innerHTML = filtrando
@@ -2051,12 +2051,12 @@ function zonasHtml() {
       <summary>
         <span class="zona-nombre">${esc(z.zona)}<small class="muted">${z.sucursales.length} sucursal${z.sucursales.length === 1 ? '' : 'es'}${z.encargados.length ? ' · ' + esc(z.encargados.join(', ')) : ''}</small></span>
         <span class="zona-bar"><span style="width:${((z.total / max) * 100).toFixed(1)}%"></span></span>
-        <span class="zona-cifras"><b>${fmtMillones(z.total)}</b><small class="muted">${fmtPct(z.total / (res.total || 1))} del total</small></span>
+        <span class="zona-cifras"><b>${fmtMillones(z.total)}</b><small class="muted">${z.objetivo ? `objetivo ${fmtMillones(z.objetivo)} · ` : ''}${fmtPct(z.total / (res.total || 1))} del total</small></span>
         ${e ? `<span class="chip ${e.clase}" title="Proyección al cierre sobre el objetivo de la zona">${fmtPct(z.proyeccion / z.objetivo)}</span>` : ''}
       </summary>
       <ul class="zona-lista">${z.sucursales.map((s) => `
         <li data-suc="${esc(s.sucursal)}" role="button" tabindex="0">
-          <span>${esc(s.sucursal)}${chipCerrada(s.sucursal)}</span>${avanceChip(s.sucursal)}<b>${fmtMillones(s.total)}</b>
+          <span>${esc(s.sucursal)}${chipCerrada(s.sucursal)}</span>${avanceChip(s.sucursal)}<b>${fmtMillones(s.total)}${suc.avance.get(s.sucursal) ? `<small class="muted zona-obj"> de ${fmtMillones(suc.avance.get(s.sucursal).objetivo)}</small>` : ''}</b>
         </li>`).join('')}</ul>
     </details>`;
   }).join('');
