@@ -88,7 +88,8 @@
     const btn = document.getElementById('login-btn');
 
     // Si llegó desde un link a una sección (por ejemplo el aviso de Teams), vuelve a esa sección.
-    const pedida = ['dashboard', 'sucursales', 'anual', 'cierre', 'ventas', 'objetivos', 'usuarios'].find((v) => location.hash === `#${v}`);
+    // Acepta también la pestaña interna (#sucursales/matriz); la app descarta lo que no reconozca.
+    const pedida = /^#[a-z]+(\/[a-z]+)?$/.test(location.hash) ? location.hash.slice(1) : null;
     const destino = (rol) => (pedida ? `app.html#${pedida}` : rol === 'admin' ? 'app.html#ventas' : 'app.html#dashboard');
 
     me().then((u) => location.replace(destino(u.rol))).catch(() => {});

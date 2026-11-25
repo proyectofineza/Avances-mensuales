@@ -179,7 +179,8 @@ portal-avance-ventas/
 │   ├── css/styles.css
 │   ├── js/api.js           # fetch a /api/*
 │   ├── js/calc.js          # reglas de la sección 5 (reutilizable)
-│   ├── js/app.js
+│   ├── js/app.js           # entrada: sesión, menú y ruteo por hash (ver 12.32)
+│   ├── js/vistas/          # un módulo por vista + comun.js (ver 12.32)
 │   └── img/                # logos
 └── netlify/functions/
     ├── login.mjs
@@ -507,6 +508,10 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - **Modo pantalla** (`/tv.html`, botón en Sucursales): pantallas grandes que rotan cada 15 s y se actualizan cada 10 min: avance del mes (lo publicado), semáforo de sucursales, las 10 que mejor van, las que más mejoraron, supervisores (de a 12), ciudades y las 10 más lejos del objetivo. Flechas, barra espaciadora (pausa) y F (pantalla completa). Usa la sesión del portal.
 - **Resumen semanal por Teams** (Cargar ventas → Aviso a Teams): casilla para activarlo y botón de prueba. Tarea `resumen-semanal` los lunes 11:00 UTC (08:00 Asunción), una vez por día (`teams-resumen-semanal`). Semana = los 7 días que terminan en el último día completo cargado hasta ayer, dentro del mes; plan de la semana = objetivo × peso de esos días. Trae venta de la semana contra el plan, avance y proyección del mes, semáforo, 5 mejores y 5 peores, las que pasaron de verde a amarillo/rojo y las que subieron a verde (contra una semana antes), las 3 que más mejoraron y una línea por supervisor. No manda si lo cargado tiene más de 3 días de atraso (la prueba sí).
 - Color: la barra de avance del portal de la sucursal también va en verde cuando proyecta llegar.
+
+### 12.32 Estructura del front y enlaces directos
+- `public/js/app.js` quedó solo como entrada (sesión, tema, menú, `route()`); cada vista vive en `public/js/vistas/`: `ventas`, `usuarios`, `dashboard`, `sucursales` (resumen, ranking, matriz, supervisores, zonas, alertas, panel), `suc-admin` (carga de planilla, listado y objetivos, horario comercial, portal de sucursales), `suc-analisis` (mapa de calor, informe IA, comparar días), `cierre`, `objetivos`, `anual`. Lo compartido (estado de la sesión `state`, `$`, `esc`, avisos y errores, preferencias, exportar CSV/PDF/compartir, barras, medidor, formatos) está en `vistas/comun.js`, que no importa de ninguna vista (así ningún módulo usa algo antes de que esté cargado). Sigue sin build: módulos ES nativos.
+- **Enlaces directos**: el hash es `#vista` o `#vista/pestaña`. En Sucursales cada pestaña queda en la barra de direcciones (`#sucursales/matriz`, `#sucursales/ranking`, …): se puede compartir el enlace, al recargar se abre la misma pestaña y "atrás" vuelve a la pestaña anterior sin volver a pedir los datos (`elegirSubSucursal`). Una pestaña que no existe se ignora. Si el enlace llega sin sesión, el login conserva el hash y después de ingresar abre esa pestaña.
 
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
