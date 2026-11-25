@@ -497,11 +497,6 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - **Mi sucursal**: `vistaSucursal(..., pesos, especiales)` agrega `avance.plan` (`repartirMinorista`): lo que falta repartido en los días que quedan; se muestran los próximos 7. La Function toma pesos y fechas del reporte publicado.
 - **Aviso diario por Teams**: `plan-diario.mjs` (programada `0 11 * * *` = 08:00 Asunción) manda `tarjetaPlanDiario` (plan del día por unidad con clima, unidades atrasadas y el último tramo contra el plan) si está activado en el blob `teams-aviso-diario` `{ activo, ultimo }` y una vez por día. Se activa en Cargar ventas → Aviso a Teams (`PUT /api/teams { avisoDiario }`); "Probar el aviso diario" = `POST /api/teams { tipo: 'plan' }` (si hoy no está en el plan, usa el primer día que queda).
 
-## 13. Fuera de alcance (por ahora)
-- Integración automática con el sistema de ventas (la carga es manual).
-- Objetivos por comercial individual.
-- Historial de meses anteriores en el dashboard (se guarda, pero no se muestra).
-
 ### 12.31 Reportería de sucursales (matriz, supervisores, mejoras, modo pantalla, resumen semanal)
 - Cálculos en `public/js/reportes.js` (puros; los usan el portal, `tv.html` y el servidor). Pruebas en `tests/reportes.test.mjs`.
 - **Supervisor**: columna nueva del listado maestro (`supervisor`, título "Supervisor"; "Encargado" sigue aparte). Se carga con la planilla (Descargar planilla base trae Sucursal, Ciudad, Encargado, Supervisor) o de a una desde el detalle de la sucursal (admin: campo Supervisor + Guardar → `POST /api/sucursales-config { tipo: 'supervisor', sucursal, supervisor }`, agrega la sucursal al listado si no estaba). Si el listado no tiene ninguna ciudad, se siguen usando las ciudades sugeridas (`hayCiudades()`).
@@ -512,3 +507,8 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - **Modo pantalla** (`/tv.html`, botón en Sucursales): pantallas grandes que rotan cada 15 s y se actualizan cada 10 min: avance del mes (lo publicado), semáforo de sucursales, las 10 que mejor van, las que más mejoraron, supervisores (de a 12), ciudades y las 10 más lejos del objetivo. Flechas, barra espaciadora (pausa) y F (pantalla completa). Usa la sesión del portal.
 - **Resumen semanal por Teams** (Cargar ventas → Aviso a Teams): casilla para activarlo y botón de prueba. Tarea `resumen-semanal` los lunes 11:00 UTC (08:00 Asunción), una vez por día (`teams-resumen-semanal`). Semana = los 7 días que terminan en el último día completo cargado hasta ayer, dentro del mes; plan de la semana = objetivo × peso de esos días. Trae venta de la semana contra el plan, avance y proyección del mes, semáforo, 5 mejores y 5 peores, las que pasaron de verde a amarillo/rojo y las que subieron a verde (contra una semana antes), las 3 que más mejoraron y una línea por supervisor. No manda si lo cargado tiene más de 3 días de atraso (la prueba sí).
 - Color: la barra de avance del portal de la sucursal también va en verde cuando proyecta llegar.
+
+## 13. Fuera de alcance (por ahora)
+- Integración automática con el sistema de ventas (la carga es manual).
+- Objetivos por comercial individual.
+- Historial de meses anteriores en el dashboard (se guarda, pero no se muestra).
