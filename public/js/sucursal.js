@@ -30,7 +30,12 @@ const soloDigitos = (el) => el.addEventListener('input', () => {
   el.value = el.value.replace(/\D/g, '').slice(0, Number(el.dataset.digitos) || undefined);
 });
 
+// ?ver=SUCURSAL: vista interna (usuario del portal) de cualquier sucursal, sin PIN ni equipo.
+const VER = new URLSearchParams(location.search).get('ver') || '';
+let verSuc = VER;
+
 async function iniciar() {
+  if (VER) return abrirPortal(new URLSearchParams(location.search).get('mes') || undefined);
   let estadoAcceso;
   try { estadoAcceso = await api('GET', 'suc/estado'); } catch { estadoAcceso = { equipo: null, sesion: false }; }
   if (estadoAcceso.sesion) return abrirPortal();
@@ -97,17 +102,34 @@ $('ps-login').addEventListener('submit', async (e) => {
 });
 
 $('ps-salir').addEventListener('click', async () => {
+  if (VER) { location.href = '/app.html'; return; }
   await api('POST', 'suc/salir').catch(() => {});
   await iniciar();
 });
 
 $('ps-mes').addEventListener('change', () => abrirPortal($('ps-mes').value));
+$('ps-ver-suc').addEventListener('change', () => {
+  verSuc = $('ps-ver-suc').value;
+  const u = new URL(location.href);
+  u.searchParams.set('ver', verSuc);
+  history.replaceState(null, '', u);
+  abrirPortal($('ps-mes').value);
+});
 
 async function abrirPortal(mes) {
   let d;
+  const q = new URLSearchParams();
+  if (VER) q.set('ver', verSuc);
+  if (mes) q.set('mes', mes);
   try {
-    d = await api('GET', `suc/datos${mes ? `?mes=${encodeURIComponent(mes)}` : ''}`);
+    d = await api('GET', `suc/datos${q.size ? `?${q}` : ''}`);
   } catch (err) {
+    if (err.status === 401 && VER) {
+      $('ps-ingreso').hidden = true;
+      $('ps-portal').hidden = false;
+      $('ps-contenido').innerHTML = '<div class="card empty">Para ver el portal de una sucursal, primero <a href="/">ingresá al portal de avance</a> con tu cédula y PIN, y volvé a abrir este enlace.</div>';
+      return;
+    }
     if (err.status === 401) return iniciar();
     $('ps-contenido').innerHTML = `<div class="card empty">${esc(err.message)}</div>`;
     return;
@@ -115,6 +137,13 @@ async function abrirPortal(mes) {
   $('ps-ingreso').hidden = true;
   $('ps-portal').hidden = false;
   $('ps-nombre').textContent = d.sucursal;
+  if (d.interna) {
+    document.title = `${d.sucursal} · Vista de sucursal`;
+    $('ps-interna').hidden = false;
+    $('ps-salir').textContent = 'Volver al portal';
+    const lista = d.sucursales.includes(d.sucursal) ? d.sucursales : [d.sucursal, ...d.sucursales];
+    $('ps-ver-suc').innerHTML = lista.map((s) => `<option${s === d.sucursal ? ' selected' : ''}>${esc(s)}</option>`).join('');
+  }
   $('ps-mes').innerHTML = [...d.meses].reverse().map((m) => `<option value="${m}"${m === d.mes ? ' selected' : ''}>${esc(nombreMes(`${m}-01`))}</option>`).join('');
   $('ps-mes').hidden = !d.meses.length;
   $('ps-actualizado').textContent = d.actualizado ? `Datos actualizados el ${fmtFechaHora(d.actualizado)}` : '';

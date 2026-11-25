@@ -1299,6 +1299,9 @@ body.panel-abierto { overflow: hidden; }
 .ps-logo { width: 230px; padding: 6px 0; }
 .ps-head-ctl { display: flex; gap: 8px; align-items: center; }
 .ps-head-ctl select { width: auto; }
+/* Vista interna (?ver=): aviso arriba con selector de sucursal */
+.ps-interna { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 14px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-fg); font-size: 14px; }
+.ps-interna select { width: auto; max-width: 100%; }
 .ps-hero { background: var(--hero); }
 .ps-avance { display: grid; gap: 8px; }
 .ps-avance-num b { font-size: 34px; font-weight: 800; letter-spacing: -.02em; }

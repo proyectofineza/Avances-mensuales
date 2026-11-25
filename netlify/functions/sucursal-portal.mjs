@@ -4,8 +4,9 @@
 // POST /api/suc/ingresar  { pin, pos }            → PIN + equipo autorizado + ubicación en el local
 // POST /api/suc/salir
 // GET  /api/suc/datos?mes=AAAA-MM   → vista de la sucursal (avance, puesto, historial)
+// GET  /api/suc/datos?ver=SUC&mes=  → la misma vista para un usuario del portal interno
 import crypto from 'node:crypto';
-import { handler, json, readBody, HttpError, verifyPin } from '../lib/auth.mjs';
+import { handler, json, readBody, HttpError, verifyPin, requireUser } from '../lib/auth.mjs';
 import { getJSON, setJSON, deleteKey } from '../lib/store.mjs';
 import {
   equipoDe, requireSucursal, getAcceso, setAcceso, nuevoId, cookieEquipo, cookieSesion, borrarSesion,
@@ -122,9 +123,13 @@ export default handler(async (req, context) => {
   }
 
   if (req.method === 'GET' && accion === 'datos') {
-    const { sucursal } = await requireSucursal(req);
+    const params = new URL(req.url).searchParams;
+    // ?ver=SUCURSAL: un usuario del portal interno ve la vista de cualquier sucursal (sin PIN ni equipo).
+    const ver = String(params.get('ver') || '').trim().toUpperCase().slice(0, 80);
+    if (ver) await requireUser(req);
+    const { sucursal } = ver ? { sucursal: ver } : await requireSucursal(req);
     const index = (await getJSON('sucursales/index', [])).sort();
-    const pedido = new URL(req.url).searchParams.get('mes');
+    const pedido = params.get('mes');
     const mes = pedido && MES_RE.test(pedido) && index.includes(pedido) ? pedido : index.at(-1);
     if (!mes) return json({ sucursal, mes: null, meses: [], vista: null });
     const [datos, objetivos, cerradas, mensual, published] = await Promise.all([
@@ -140,7 +145,11 @@ export default handler(async (req, context) => {
       cerradas: cerradas.filas.map((c) => c.sucursal),
       pesos: normalizarPesos(published?.pesos), especiales: normalizarEspeciales(published?.especiales),
     });
-    return json({ sucursal, mes, meses: index, actualizado: datos.actualizado || null, vista });
+    // En la vista interna va además la lista de sucursales del mes, para cambiar de una a otra.
+    const sucursales = ver
+      ? [...new Set([...datos.filas.map((f) => f.sucursal), ...(objetivos?.filas || []).map((f) => f.sucursal)])].sort((a, b) => a.localeCompare(b))
+      : undefined;
+    return json({ sucursal, mes, meses: index, actualizado: datos.actualizado || null, vista, interna: Boolean(ver), sucursales });
   }
 
   throw new HttpError(405, 'Método no permitido.');

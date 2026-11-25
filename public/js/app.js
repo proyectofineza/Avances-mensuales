@@ -2659,6 +2659,7 @@ function abrirPanel(nombre) {
   $('suc-panel-titulo').textContent = nombre;
   $('suc-panel-body').innerHTML = `
     <p class="muted small" style="margin:0 0 12px">${nombreMes(fechaDeMes(suc.datos.mes))} · puesto ${i + 1} de ${res.sucursales.length}${info?.zona ? ` · ${esc(info.zona)}` : ''}${info?.encargado ? ` · encargado: ${esc(info.encargado)}` : ''}</p>
+    <p style="margin:0 0 12px"><a class="btn btn-sm" href="/sucursal.html?ver=${encodeURIComponent(nombre)}&amp;mes=${encodeURIComponent(suc.datos.mes)}" target="_blank" rel="noopener">Ver como la sucursal ↗</a></p>
     ${marcas.length ? `<div class="panel-marcas">${marcas.join('')}</div>` : ''}
     ${objetivoHtml}
     <div class="panel-kpis">
