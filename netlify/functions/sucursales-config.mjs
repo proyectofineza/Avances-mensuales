@@ -1,5 +1,6 @@
 // Datos fijos de las sucursales (Baratote Minorista):
-//   sucursales-maestro          → { filas: [{ sucursal, zona, encargado }], actualizado, por }
+//   sucursales-maestro          → { filas: [{ sucursal, zona, encargado, supervisor }], actualizado, por }
+// POST { tipo: 'supervisor', sucursal, supervisor } (admin) → asigna el supervisor de una sucursal
 //   sucursales-objetivos/AAAA-MM → { mes, filas: [{ sucursal, objetivo }], actualizado, por }
 //   sucursales-cerradas          → { filas: [{ sucursal, fecha, por }] }
 //   horario-comercial            → { general: {0..6: {apertura, cierre}}, sucursales: { SUC: { wd: {...} } }, actualizado, por }
@@ -58,6 +59,21 @@ export default handler(async (req) => {
     return json({ ok: true, cerradas: filas });
   }
 
+  // Asignar el supervisor de una sucursal sin recargar el listado (si no está en el listado, se agrega).
+  if (body.tipo === 'supervisor') {
+    const sucursal = normalizarSucursal(body.sucursal);
+    if (!sucursal) throw new HttpError(400, 'Indicá la sucursal.');
+    const actual = await getJSON('sucursales-maestro', { filas: [] });
+    const filas = [...(actual?.filas || [])];
+    const i = filas.findIndex((f) => f.sucursal === sucursal);
+    if (i >= 0) filas[i] = { ...filas[i], supervisor: texto(body.supervisor) };
+    else filas.push({ sucursal, zona: '', encargado: '', supervisor: texto(body.supervisor) });
+    filas.sort((a, b) => a.sucursal.localeCompare(b.sucursal));
+    const maestro = { ...actual, filas, actualizado: new Date().toISOString(), por: user.nombre };
+    await setJSON('sucursales-maestro', maestro);
+    return json({ ok: true, maestro });
+  }
+
   if (!Array.isArray(body.filas)) throw new HttpError(400, 'No hay filas para guardar.');
   if (body.filas.length > MAX) throw new HttpError(400, `El máximo es ${MAX} sucursales.`);
   const ahora = new Date().toISOString();
@@ -67,7 +83,7 @@ export default handler(async (req) => {
 
   if (body.tipo === 'maestro') {
     const filas = unicas(body.filas
-      .map((f) => ({ sucursal: normalizarSucursal(f.sucursal), zona: texto(f.zona).toUpperCase(), encargado: texto(f.encargado) }))
+      .map((f) => ({ sucursal: normalizarSucursal(f.sucursal), zona: texto(f.zona).toUpperCase(), encargado: texto(f.encargado), supervisor: texto(f.supervisor) }))
       .filter((f) => f.sucursal));
     await setJSON('sucursales-maestro', { filas, actualizado: ahora, por: user.nombre });
     return json({ ok: true, cantidad: filas.length });

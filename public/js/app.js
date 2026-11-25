@@ -17,6 +17,7 @@ import {
   repartirObjetivo, parseMonto,
 } from './sucursales.js';
 import { leerPlanillaHoras, tieneHora, minutos, NOMBRES_DIA } from './dia-comercial.js';
+import { resumenSupervisores, mejorasSucursales, matrizSucursales, coberturaMatriz, SIN_SUPERVISOR, mesAnioAnterior, mesPrevio as mesPrevioRep } from './reportes.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -410,6 +411,34 @@ function setupVentas() {
     }
   });
 
+  $('btn-resumen-semanal-test').addEventListener('click', async () => {
+    const btn = $('btn-resumen-semanal-test');
+    btn.disabled = true;
+    try {
+      const res = await API.testResumenSemanal();
+      showMsg($('teams-msg'), `Resumen semanal de prueba enviado (del ${fmtDiaMes(res.desde)} al ${fmtDiaMes(res.hasta)})${res.canal ? ' al canal ' + res.canal : ''}. Revisá Teams.`, true);
+    } catch (err) {
+      handleError(err, $('teams-msg'));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('resumen-semanal').addEventListener('change', async (e) => {
+    const chk = e.target;
+    chk.disabled = true;
+    try {
+      const res = await API.setResumenSemanal(chk.checked);
+      pintarResumenSemanal(res.resumenSemanal);
+      showMsg($('teams-msg'), res.resumenSemanal.activo ? 'Resumen semanal activado: sale los lunes a las 08:00.' : 'Resumen semanal desactivado.', true);
+    } catch (err) {
+      chk.checked = !chk.checked;
+      handleError(err, $('teams-msg'));
+    } finally {
+      chk.disabled = false;
+    }
+  });
+
   $('aviso-diario').addEventListener('change', async (e) => {
     const chk = e.target;
     chk.disabled = true;
@@ -424,6 +453,13 @@ function setupVentas() {
       chk.disabled = false;
     }
   });
+}
+
+function pintarResumenSemanal(a = {}) {
+  $('resumen-semanal').checked = Boolean(a.activo);
+  $('resumen-semanal-estado').textContent = a.activo
+    ? `Activado${a.por ? ` por ${a.por}` : ''}.${a.ultimo ? ` Último envío: ${fmtFecha(a.ultimo)}.` : ''}`
+    : 'Desactivado.';
 }
 
 function pintarAvisoDiario(a = {}) {
@@ -443,7 +479,10 @@ async function loadTeamsEstado() {
     $('btn-teams-test').disabled = !t.configurado;
     $('btn-aviso-diario-test').disabled = !t.configurado;
     $('aviso-diario').disabled = !t.configurado;
+    $('btn-resumen-semanal-test').disabled = !t.configurado;
+    $('resumen-semanal').disabled = !t.configurado;
     pintarAvisoDiario(t.avisoDiario);
+    pintarResumenSemanal(t.resumenSemanal);
   } catch {
     el.textContent = 'No se pudo verificar la configuración.';
   }
@@ -934,7 +973,9 @@ const suc = {
   // Mapa de calor: escala ('propio' = vs. lo habitual de la sucursal, 'monto') y si muestra todas.
   calor: { modo: 'propio', todas: false },
   // Listado maestro y objetivos del mes (/api/sucursales-config); filtros del ranking.
-  config: { maestro: null, objetivos: null }, info: new Map(), cerradas: new Map(), cfgObj: null, avance: new Map(), zona: '', encargado: '',
+  config: { maestro: null, objetivos: null }, info: new Map(), cerradas: new Map(), cfgObj: null, avance: new Map(), zona: '', encargado: '', supervisor: '',
+  // Matriz cumplimiento vs crecimiento: totales por mes de cada sucursal y base ('anio' | 'mes').
+  mensual: null, matrizBase: null,
   // Análisis del mes abierto: respuesta de /api/informe, último error y texto que se está editando.
   informe: { mes: null, datos: null, error: null, borrador: null },
   // Venta por hora (días cargados con hora): detalle del mes y filtro ('' | 'z:ZONA' | 's:SUCURSAL').
@@ -949,7 +990,9 @@ const pesosDelMes = (mes) => (suc.published?.corte?.startsWith(mes) && suc.publi
 // Las fechas especiales valen para cualquier mes (cada una tiene su fecha).
 const especialesDelMes = () => suc.published?.especiales || [];
 // Zona de una sucursal: la del listado maestro o, si no hay listado, la sugerida por el nombre.
-const zonaDe = (nombre) => suc.info.get(nombre)?.zona || (suc.info.size ? 'SIN CIUDAD' : zonaSugerida(nombre));
+// Hay ciudades cargadas si alguna fila del listado tiene ciudad (el listado puede tener solo supervisores).
+const hayCiudades = () => [...suc.info.values()].some((m) => m.zona);
+const zonaDe = (nombre) => suc.info.get(nombre)?.zona || (hayCiudades() ? 'SIN CIUDAD' : zonaSugerida(nombre));
 
 const chipCerrada = (nombre) => (suc.cerradas.has(nombre)
   ? ` <span class="chip" title="Cerrada desde el ${fmtFecha(suc.cerradas.get(nombre))}: no genera alertas ni se mide contra objetivo">Cerrada</span>`
@@ -990,8 +1033,8 @@ function setupSucursales() {
     if (id === 'cmp-a') suc.cmp.a = e.target.value || suc.cmp.a;
     else if (id === 'cmp-b') suc.cmp.b = e.target.value || suc.cmp.b;
     else if (id === 'cmp-wd') suc.cmp.wd = Number(e.target.value);
-    else if (id === 'suc-zona' || id === 'suc-encargado') {
-      suc[id === 'suc-zona' ? 'zona' : 'encargado'] = e.target.value;
+    else if (id === 'suc-zona' || id === 'suc-encargado' || id === 'suc-supervisor') {
+      suc[id.slice(4)] = e.target.value;
       renderRankingTabla();
       return;
     } else return;
@@ -1032,6 +1075,8 @@ function setupSucursales() {
       renderSucursales();
       return;
     }
+    const mb = e.target.closest('[data-matriz-base]');
+    if (mb) { suc.matrizBase = mb.dataset.matrizBase; $('suc-contenido').innerHTML = matrizHtml(); return; }
     const rank = e.target.closest('[data-rank]');
     if (rank) {
       suc.rank = rank.dataset.rank;
@@ -1052,6 +1097,8 @@ function setupSucursales() {
   $('suc-panel-body').addEventListener('click', (e) => {
     const b = e.target.closest('[data-cerrar]');
     if (b) marcarCerrada(b.dataset.nombre, b.dataset.cerrar || null);
+    const sup = e.target.closest('[data-sup-guardar]');
+    if (sup) guardarSupervisor(sup.dataset.supGuardar, $('panel-sup').value.trim(), sup);
   });
   $('suc-panel-cerrar').addEventListener('click', cerrarPanel);
   $('suc-panel-fondo').addEventListener('click', cerrarPanel);
@@ -1398,9 +1445,9 @@ function descargarBase(tipo) {
   const msgEl = $(tipo === 'maestro' ? 'cfg-maestro-msg' : 'cfg-obj-msg');
   if (!nombres.length) { showMsg(msgEl, 'Primero cargá una planilla de ventas para conocer las sucursales.', false); return; }
   if (tipo === 'maestro') {
-    descargarCsv('sucursales-ciudades.csv', [['Sucursal', 'Ciudad', 'Encargado'],
-      ...nombres.map((n) => [n, suc.info.get(n)?.zona || zonaSugerida(n), suc.info.get(n)?.encargado || ''])]);
-    showMsg(msgEl, 'La ciudad viene sugerida por el nombre de la sucursal: corregila (por ejemplo ROJAS CAÑADA → CAPIATÁ) y completá el encargado.', true);
+    descargarCsv('sucursales-listado.csv', [['Sucursal', 'Ciudad', 'Encargado', 'Supervisor'],
+      ...nombres.map((n) => [n, suc.info.get(n)?.zona || zonaSugerida(n), suc.info.get(n)?.encargado || '', suc.info.get(n)?.supervisor || ''])]);
+    showMsg(msgEl, 'La ciudad viene sugerida por el nombre de la sucursal: corregila (por ejemplo ROJAS CAÑADA → CAPIATÁ) y completá el encargado y el supervisor.', true);
   } else {
     const mes = $('cfg-obj-mes').value;
     const obj = new Map((suc.cfgObj?.filas || []).map((f) => [f.sucursal, f.objetivo]));
@@ -1422,7 +1469,7 @@ async function guardarConfig(tipo) {
   const conocidas = new Set(nombresConocidos());
   const raras = conocidas.size ? r.filas.map((f) => f.sucursal).filter((n) => !conocidas.has(n)) : [];
   const detalle = tipo === 'maestro'
-    ? `${r.filas.length} sucursales en ${new Set(r.filas.map((f) => f.zona).filter(Boolean)).size} ciudades`
+    ? `${r.filas.length} sucursales en ${new Set(r.filas.map((f) => f.zona).filter(Boolean)).size} ciudades, ${new Set(r.filas.map((f) => f.supervisor).filter(Boolean)).size} supervisores`
     : `${r.filas.length} sucursales, total ${fmtMillones(r.filas.reduce((s, f) => s + f.objetivo, 0))} para ${nombreMes(fechaDeMes(mes))}`;
   const avisos = [
     r.errores.length ? `${r.errores.length} línea${r.errores.length === 1 ? '' : 's'} con problemas no se van a guardar (línea ${r.errores[0].linea}: ${r.errores[0].motivo})` : '',
@@ -1496,14 +1543,23 @@ function datosExportar(que) {
   const mes = suc.datos.mes;
   const mesNombre = nombreMes(fechaDeMes(mes));
   const res = suc.res;
+  if (que === 'ranking' && suc.rank === 'mejoran') {
+    const enFiltro = new Set(rankingFiltrado().map((s) => s.sucursal));
+    const lista = mejorasDelMes().filter((m) => enFiltro.has(m.sucursal));
+    const tabla = [['Sucursal', 'Proyección hace 7 días', 'Proyección hoy', 'Cambio (puntos)', 'Venta últimos 7 días'],
+      ...lista.map((m) => [m.sucursal, fmtPct(m.antes), fmtPct(m.ahora), Math.round(m.cambio * 1000) / 10, Math.round(m.ventaPeriodo)])];
+    const texto = [`Las que más mejoraron en los últimos 7 días · ${mesNombre}`, '',
+      ...lista.slice(0, 10).map((m, i) => `${i + 1}. ${m.sucursal}: ${fmtPct(m.antes)} → ${fmtPct(m.ahora)} (${fmtPuntos(m.cambio)})`)].join('\n');
+    return { titulo: `Más mejoraron ${mesNombre}`, archivo: `mejoraron-${mes}`, tabla, texto };
+  }
   if (que === 'ranking') {
     let lista = rankingFiltrado();
     if (suc.rank === 'riesgo') lista = lista.filter((s) => suc.avance.has(s.sucursal)).sort((a, b) => suc.avance.get(a.sucursal).proyeccionPct - suc.avance.get(b.sucursal).proyeccionPct);
-    const filtro = [suc.zona && `ciudad ${suc.zona}`, suc.encargado && `encargado ${suc.encargado}`, suc.filtro.trim() && `"${suc.filtro.trim()}"`].filter(Boolean).join(', ');
-    const tabla = [['Puesto', 'Sucursal', 'Ciudad','Encargado', 'Venta del mes', '% del total', 'Promedio por día', 'Días con venta', 'Objetivo', 'Avance', 'Proyección al cierre', 'Estado'],
+    const filtro = [suc.zona && `ciudad ${suc.zona}`, suc.supervisor && `supervisor ${suc.supervisor}`, suc.encargado && `encargado ${suc.encargado}`, suc.filtro.trim() && `"${suc.filtro.trim()}"`].filter(Boolean).join(', ');
+    const tabla = [['Puesto', 'Sucursal', 'Ciudad', 'Supervisor', 'Encargado', 'Venta del mes', '% del total', 'Promedio por día', 'Días con venta', 'Objetivo', 'Avance', 'Proyección al cierre', 'Estado'],
       ...lista.map((s) => {
         const a = suc.avance.get(s.sucursal);
-        return [s.puesto, s.sucursal, zonaDe(s.sucursal), suc.info.get(s.sucursal)?.encargado || '', s.total, fmtPct(s.total / (res.total || 1)),
+        return [s.puesto, s.sucursal, zonaDe(s.sucursal), suc.info.get(s.sucursal)?.supervisor || '', suc.info.get(s.sucursal)?.encargado || '', s.total, fmtPct(s.total / (res.total || 1)),
           Math.round(s.total / Math.max(s.diasConVenta, 1)), s.diasConVenta, a?.objetivo ?? '', a ? fmtPct(a.avance) : '', a ? fmtPct(a.proyeccionPct) : '', a ? estado(a.proyeccionPct).texto : ''];
       })];
     const partes = [`Ranking de sucursales · Baratote Minorista · ${mesNombre}${filtro ? ` (${filtro})` : ''}`, `Total: ${fmtMillones(lista.reduce((t, s) => t + s.total, 0))} en ${lista.length} sucursales.`];
@@ -1520,6 +1576,14 @@ function datosExportar(que) {
     const texto = [`Venta por ciudad · Baratote Minorista · ${mesNombre}`, '',
       ...zonas.map((z) => `- ${z.zona}: ${fmtMillones(z.total)} (${fmtPct(z.total / (res.total || 1))}, ${z.sucursales.length} suc.)${z.objetivo ? ` · proyecta ${fmtPct(z.proyeccion / z.objetivo)} del objetivo` : ''}`)].join('\n');
     return { titulo: `Ventas por ciudad ${mesNombre}`, archivo: `ciudades-${mes}`, tabla, texto };
+  }
+  if (que === 'supervisores') {
+    const grupos = resumenSupervisores(res, suc.avance, [...suc.info.values()]);
+    const tabla = [['Supervisor', 'Sucursales', 'En verde', 'En amarillo', 'En rojo', 'Sin objetivo', 'Venta del mes', 'Objetivo', 'Proyección al cierre', 'Proyección / objetivo'],
+      ...grupos.map((g) => [g.supervisor, g.sucursales.length, g.verdes, g.amarillas, g.rojas, g.sinObjetivo, g.total, g.objetivo || '', g.objetivo ? Math.round(g.proyeccion) : '', g.pct === null ? '' : fmtPct(g.pct)])];
+    const texto = [`Cumplimiento por supervisor · Baratote Minorista · ${mesNombre}`, '',
+      ...grupos.map((g) => `- ${g.supervisor}: ${g.sucursales.length} suc. · ${g.verdes} en verde, ${g.amarillas} en amarillo, ${g.rojas} en rojo${g.pct === null ? '' : ` · proyecta ${fmtPct(g.pct)} del objetivo`}`)].join('\n');
+    return { titulo: `Supervisores ${mesNombre}`, archivo: `supervisores-${mes}`, tabla, texto };
   }
   if (que === 'comparar') return datosExportarComparacion();
   if (que === 'informe') {
@@ -1729,6 +1793,7 @@ async function loadSucursales(mes) {
       pintarHorario();
     }
     suc.cache = {}; // puede haber cambiado una carga: se vuelven a pedir los otros meses
+    suc.mensual = null; // totales por mes (matriz): se piden de nuevo al abrirla
     cerrarPanel();
     const sel = $('suc-mes');
     sel.innerHTML = suc.datos.meses.length
@@ -1764,7 +1829,7 @@ function renderSucursales() {
   $('suc-alertas-n').textContent = nAlertas;
   $('suc-alertas-n').hidden = nAlertas === 0;
   $('suc-subtabs').hidden = false;
-  if (!['resumen', 'informe', 'ranking', 'zonas', 'calor', 'comparar', 'alertas'].includes(suc.sub)) suc.sub = 'resumen';
+  if (!['resumen', 'informe', 'ranking', 'matriz', 'supervisores', 'zonas', 'calor', 'comparar', 'alertas'].includes(suc.sub)) suc.sub = 'resumen';
   suc.cache[d.mes] = d.filas;
   document.querySelectorAll('#suc-subtabs [data-sub]').forEach((b) => {
     const activa = b.dataset.sub === suc.sub;
@@ -1774,6 +1839,8 @@ function renderSucursales() {
 
   if (suc.sub === 'ranking') { el.innerHTML = rankingHtml(); renderRankingTabla(); }
   else if (suc.sub === 'zonas') el.innerHTML = zonasHtml();
+  else if (suc.sub === 'supervisores') el.innerHTML = supervisoresHtml();
+  else if (suc.sub === 'matriz') { el.innerHTML = matrizHtml(); if (!suc.mensual) cargarMensual(); }
   else if (suc.sub === 'calor') el.innerHTML = calorHtml();
   else if (suc.sub === 'comparar') { el.innerHTML = compararHtml(); renderComparacion(); }
   else if (suc.sub === 'informe') { el.innerHTML = informeHtml(); if (suc.informe.mes !== d.mes) cargarInforme(d.mes); }
@@ -1947,8 +2014,10 @@ const exportarHtml = (que, excel = true) => `
 function rankingHtml() {
   const zonas = [...new Set([...suc.info.values()].map((m) => m.zona).filter(Boolean))].sort();
   const encargados = [...new Set([...suc.info.values()].map((m) => m.encargado).filter(Boolean))].sort();
+  const supervisores = [...new Set([...suc.info.values()].map((m) => m.supervisor).filter(Boolean))].sort();
   if (!zonas.includes(suc.zona)) suc.zona = '';
   if (!encargados.includes(suc.encargado)) suc.encargado = '';
+  if (!supervisores.includes(suc.supervisor)) suc.supervisor = '';
   const opciones = (arr, actual, todas) => `<option value="">${todas}</option>${arr.map((v) => `<option${v === actual ? ' selected' : ''}>${esc(v)}</option>`).join('')}`;
   return `
     <div class="card">
@@ -1956,7 +2025,7 @@ function rankingHtml() {
         <div class="seg-btns" role="group" aria-label="Qué sucursales mostrar">
           <button type="button" data-rank="top">Más venden</button>
           <button type="button" data-rank="bottom">Menos venden</button>
-          ${suc.avance.size ? '<button type="button" data-rank="riesgo">Lejos del objetivo</button>' : ''}
+          ${suc.avance.size ? '<button type="button" data-rank="riesgo">Lejos del objetivo</button><button type="button" data-rank="mejoran">Más mejoraron</button>' : ''}
           <button type="button" data-rank="todas">Todas</button>
         </div>
         ${exportarHtml('ranking')}
@@ -1964,6 +2033,7 @@ function rankingHtml() {
       <div class="rank-filtros">
         <input id="suc-buscar" class="suc-buscar" type="search" placeholder="Buscar sucursal" value="${esc(suc.filtro)}" aria-label="Buscar sucursal">
         ${zonas.length ? `<select id="suc-zona" aria-label="Ciudad">${opciones(zonas, suc.zona, 'Todas las ciudades')}</select>` : ''}
+        ${supervisores.length ? `<select id="suc-supervisor" aria-label="Supervisor">${opciones(supervisores, suc.supervisor, 'Todos los supervisores')}</select>` : ''}
         ${encargados.length ? `<select id="suc-encargado" aria-label="Encargado">${opciones(encargados, suc.encargado, 'Todos los encargados')}</select>` : ''}
       </div>
       <div class="table-wrap" id="suc-ranking"></div>
@@ -1978,16 +2048,18 @@ function rankingFiltrado() {
     .map((s, i) => ({ ...s, puesto: i + 1 }))
     .filter((s) => (!q || s.sucursal.includes(q))
       && (!suc.zona || suc.info.get(s.sucursal)?.zona === suc.zona)
+      && (!suc.supervisor || suc.info.get(s.sucursal)?.supervisor === suc.supervisor)
       && (!suc.encargado || suc.info.get(s.sucursal)?.encargado === suc.encargado));
 }
 
 function renderRankingTabla() {
   const res = suc.res;
   if (!res || !$('suc-ranking')) return;
-  if (suc.rank === 'riesgo' && !suc.avance.size) suc.rank = 'top';
+  if ((suc.rank === 'riesgo' || suc.rank === 'mejoran') && !suc.avance.size) suc.rank = 'top';
   document.querySelectorAll('[data-rank]').forEach((b) => b.classList.toggle('active', b.dataset.rank === suc.rank));
   const base = rankingFiltrado();
-  const filtrando = Boolean(suc.filtro.trim() || suc.zona || suc.encargado);
+  const filtrando = Boolean(suc.filtro.trim() || suc.zona || suc.encargado || suc.supervisor);
+  if (suc.rank === 'mejoran') { renderMejoras(base, filtrando); return; }
   let lista;
   if (suc.rank === 'riesgo') {
     lista = base.filter((s) => suc.avance.has(s.sucursal)).sort((a, b) => suc.avance.get(a.sucursal).proyeccionPct - suc.avance.get(b.sucursal).proyeccionPct);
@@ -1995,7 +2067,7 @@ function renderRankingTabla() {
   } else if (filtrando || suc.rank === 'todas') lista = base;
   else if (suc.rank === 'bottom') lista = base.slice(-10).reverse();
   else lista = base.slice(0, 10);
-  const hayZona = suc.info.size > 0;
+  const hayZona = hayCiudades();
   const hayObj = suc.avance.size > 0;
   const top = res.sucursales[0]?.total || 1;
   const filas = lista.map((s) => {
@@ -2024,11 +2096,191 @@ function renderRankingTabla() {
     : `Mostrando ${lista.length} de ${res.sucursales.length} sucursales. Tocá una para ver su detalle.${suc.rank !== 'todas' ? ' <button class="btn-link" type="button" data-rank="todas">Ver todas</button>' : ''}`;
 }
 
+// Las que más mejoraron: proyección contra el objetivo hoy vs. hace 7 días (en puntos).
+function mejorasDelMes() {
+  const objetivos = (suc.config?.objetivos?.filas || []).filter((o) => !suc.cerradas.has(o.sucursal));
+  return mejorasSucursales(suc.res, objetivos, { dias: 7, pesos: pesosDelMes(suc.datos.mes), especiales: especialesDelMes() });
+}
+const fmtPuntos = (v) => `${v >= 0 ? '+' : '−'}${(Math.abs(v) * 100).toFixed(1).replace('.', ',')} pts`;
+
+function renderMejoras(base, filtrando) {
+  const enFiltro = new Set(base.map((s) => s.sucursal));
+  const puesto = new Map(base.map((s) => [s.sucursal, s.puesto]));
+  const todas = mejorasDelMes();
+  if (!todas.length) {
+    $('suc-ranking').innerHTML = '<p class="muted" style="margin:8px 0">Todavía no hay una semana cargada en este mes para comparar. Aparece a partir del día 8.</p>';
+    $('suc-ranking-pie').textContent = '';
+    return;
+  }
+  let lista = todas.filter((m) => enFiltro.has(m.sucursal));
+  if (!filtrando) lista = lista.slice(0, 10);
+  const filas = lista.map((m, i) => `
+    <tr data-suc="${esc(m.sucursal)}" class="suc-row" tabindex="0">
+      <td class="muted">${i + 1}</td>
+      <td><b>${esc(m.sucursal)}</b><small class="muted opc"> · puesto ${puesto.get(m.sucursal)} en venta</small></td>
+      <td class="r">${fmtPct(m.antes)}</td>
+      <td class="r">${avanceChip(m.sucursal)}</td>
+      <td class="r"><b class="${m.cambio >= 0 ? 'var-pos' : 'var-neg'}">${fmtPuntos(m.cambio)}</b></td>
+      <td class="r opc">${fmtMillones(m.ventaPeriodo)}</td>
+    </tr>`).join('');
+  $('suc-ranking').innerHTML = `
+    <table class="suc-tabla">
+      <thead><tr><th>#</th><th>Sucursal</th><th class="r" title="Proyección contra el objetivo hace 7 días">Hace 7 días</th><th class="r" title="Proyección contra el objetivo hoy">Hoy</th><th class="r" title="Cuánto cambió la proyección contra el objetivo">Cambio</th><th class="r opc" title="Venta de los últimos 7 días">Venta 7 días</th></tr></thead>
+      <tbody>${filas || '<tr><td colspan="6" class="muted">No hay sucursales con ese filtro.</td></tr>'}</tbody>
+    </table>`;
+  $('suc-ranking-pie').innerHTML = `Ordenadas por cuánto subió su proyección contra el objetivo en los últimos 7 días, sin importar cuánto venden: así se ve el esfuerzo de las chicas también.${!filtrando && todas.length > 10 ? ` Mostrando 10 de ${todas.length}.` : ''}`;
+}
+
+// ---- Matriz cumplimiento vs crecimiento ----
+
+async function cargarMensual() {
+  try {
+    suc.mensual = (await API.getMensualSucursales()).mensual || {};
+  } catch (err) {
+    suc.mensual = {};
+    handleError(err);
+  }
+  if (suc.sub === 'matriz') $('suc-contenido').innerHTML = matrizHtml();
+}
+
+const CUADRANTES = {
+  estrella: { titulo: 'Cumplen y crecen', nota: 'Van bien: reconocerlas.', clase: 'ok' },
+  facil: { titulo: 'Cumplen pero no crecen', nota: 'Llegan al objetivo vendiendo menos que antes: revisar si el objetivo fue bajo.', clase: 'warn' },
+  empuje: { titulo: 'Crecen pero no llegan', nota: 'Venden más que antes pero no alcanza: un empujón y llegan.', clase: 'warn' },
+  atencion: { titulo: 'Ni cumplen ni crecen', nota: 'Atención: venden menos que antes y no llegan al objetivo.', clase: 'risk' },
+};
+
+function matrizHtml() {
+  const mes = suc.datos.mes;
+  if (!suc.avance.size) return '<div class="card empty">La matriz necesita los objetivos del mes por sucursal. Cargalos en <b>Configurar sucursales</b>.</div>';
+  if (!suc.mensual) return '<div class="card empty">Cargando el historial de cada sucursal…</div>';
+  const cob = coberturaMatriz(suc.avance, suc.mensual, mes);
+  if (!cob.anio && !cob.mes) {
+    return `<div class="card empty">Para medir el crecimiento hace falta la venta de cada sucursal del mes anterior o del mismo mes del año anterior. ${isAdmin() ? 'Cargá el historial en <b>Portal de sucursales → Historial por sucursal</b>.' : 'El administrador puede cargar el historial.'}</div>`;
+  }
+  if (!suc.matrizBase || !cob[suc.matrizBase]) suc.matrizBase = cob.anio >= cob.total / 2 || !cob.mes ? 'anio' : 'mes';
+  const base = suc.matrizBase;
+  const ref = base === 'anio' ? mesAnioAnterior(mes) : mesPrevioRep(mes);
+  const refNombre = nombreMes(fechaDeMes(ref));
+  const puntos = matrizSucursales(suc.avance, suc.mensual, mes, base);
+  const con = puntos.filter((p) => p.crecimiento !== null);
+  const sin = puntos.length - con.length;
+
+  // Escalas: cumplimiento 50%–150% y crecimiento −50%…+50% (lo de afuera se dibuja en el borde).
+  const W = 720, H = 420, IZQ = 52, DER = 16, ARR = 16, ABA = 40;
+  const X0 = 0.5, X1 = 1.5, Y0 = -0.5, Y1 = 0.5;
+  const lim = (v, a, b) => Math.min(Math.max(v, a), b);
+  const x = (v) => IZQ + ((lim(v, X0, X1) - X0) / (X1 - X0)) * (W - IZQ - DER);
+  const y = (v) => ARR + (1 - (lim(v, Y0, Y1) - Y0) / (Y1 - Y0)) * (H - ARR - ABA);
+  const ejeX = [0.5, 0.75, 1, 1.25, 1.5].map((v) => `<line x1="${x(v)}" x2="${x(v)}" y1="${ARR}" y2="${H - ABA}" class="${v === 1 ? 'mz-cero' : 'ac-grilla'}"/><text x="${x(v)}" y="${H - ABA + 16}" class="ac-eje" text-anchor="middle">${Math.round(v * 100)}%${v === X0 ? ' o menos' : v === X1 ? ' o más' : ''}</text>`).join('');
+  const ejeY = [-0.5, -0.25, 0, 0.25, 0.5].map((v) => `<line x1="${IZQ}" x2="${W - DER}" y1="${y(v)}" y2="${y(v)}" class="${v === 0 ? 'mz-cero' : 'ac-grilla'}"/><text x="${IZQ - 6}" y="${y(v) + 4}" class="ac-eje" text-anchor="end">${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(Math.round(v * 100))}%</text>`).join('');
+  const rotulos = `
+    <text x="${W - DER - 6}" y="${ARR + 14}" class="mz-rotulo" text-anchor="end">Cumplen y crecen</text>
+    <text x="${W - DER - 6}" y="${H - ABA - 8}" class="mz-rotulo" text-anchor="end">Cumplen sin crecer</text>
+    <text x="${IZQ + 6}" y="${ARR + 14}" class="mz-rotulo">Crecen pero no llegan</text>
+    <text x="${IZQ + 6}" y="${H - ABA - 8}" class="mz-rotulo mz-rotulo-risk">Ni cumplen ni crecen</text>
+    <text x="${(IZQ + W - DER) / 2}" y="${H - 4}" class="ac-eje" text-anchor="middle">Proyección contra el objetivo →</text>`;
+  const circulos = con.map((p) => `<circle cx="${x(p.cumplimiento).toFixed(1)}" cy="${y(p.crecimiento).toFixed(1)}" r="6" class="mz-p mz-${estado(p.cumplimiento).clase}" data-suc="${esc(p.sucursal)}"><title>${esc(p.sucursal)}: proyecta ${fmtPct(p.cumplimiento)} del objetivo · ${fmtVar(p.crecimiento)} vs ${esc(refNombre)} (${fmtMillones(p.proyeccion)} vs ${fmtMillones(p.referencia)})</title></circle>`).join('');
+
+  const grupos = Object.entries(CUADRANTES).map(([k, c]) => {
+    const lista = con.filter((p) => p.cuadrante === k).sort((a, b) => (k === 'atencion' ? a.cumplimiento - b.cumplimiento : b.cumplimiento - a.cumplimiento));
+    return `
+      <details class="card zona mz-grupo"${k === 'atencion' && lista.length ? ' open' : ''}>
+        <summary>
+          <span class="zona-nombre">${c.titulo}<small class="muted">${c.nota}</small></span>
+          <span class="chip ${c.clase}">${lista.length}</span>
+        </summary>
+        <ul class="zona-lista">${lista.map((p) => `
+          <li data-suc="${esc(p.sucursal)}" role="button" tabindex="0">
+            <span>${esc(p.sucursal)}</span>${avanceChip(p.sucursal)}<b class="${p.crecimiento >= 0 ? 'var-pos' : 'var-neg'}">${fmtVar(p.crecimiento)}</b>
+          </li>`).join('') || '<li class="muted">Ninguna.</li>'}</ul>
+      </details>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Cumplimiento vs crecimiento</h2>
+          <p class="muted small" style="margin:4px 0 0">Cada punto es una sucursal. A la derecha de la línea, proyecta llegar al objetivo; arriba, vende más que en ${esc(refNombre)} (proyección del mes contra ese mes completo). Tocá un punto para ver la sucursal.</p>
+        </div>
+        <div class="seg-btns" role="group" aria-label="Crecimiento contra">
+          <button type="button" data-matriz-base="anio" class="${base === 'anio' ? 'active' : ''}"${cob.anio ? '' : ' disabled'} title="${cob.anio} de ${cob.total} sucursales con dato">Vs. año anterior</button>
+          <button type="button" data-matriz-base="mes" class="${base === 'mes' ? 'active' : ''}"${cob.mes ? '' : ' disabled'} title="${cob.mes} de ${cob.total} sucursales con dato">Vs. mes anterior</button>
+        </div>
+      </div>
+      <svg class="mz-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Matriz de cumplimiento contra crecimiento de las sucursales">
+        <text x="14" y="${(ARR + H - ABA) / 2}" class="ac-eje" text-anchor="middle" transform="rotate(-90 14 ${(ARR + H - ABA) / 2})">Crecimiento vs ${esc(refNombre)} →</text>
+        ${ejeY}${ejeX}${rotulos}${circulos}
+      </svg>
+      <div class="leyenda" style="margin:6px 0 0">
+        <span><i class="sw" style="background:var(--logro)"></i>Proyecta 100% o más</span>
+        <span><i class="sw" style="background:#F59E0B"></i>90% a 100%</span>
+        <span><i class="sw" style="background:#EF4444"></i>Menos de 90%</span>
+        ${sin ? `<span class="muted">${sin} sucursal${sin === 1 ? '' : 'es'} sin venta en ${esc(refNombre)} no aparece${sin === 1 ? '' : 'n'}.</span>` : ''}
+      </div>
+    </div>
+    <div class="zonas mz-grupos">${grupos}</div>`;
+}
+
+// ---- Por supervisor ----
+
+// Asigna el supervisor desde el detalle de la sucursal, sin recargar todo el listado.
+async function guardarSupervisor(sucursal, supervisor, btn) {
+  btn.disabled = true;
+  try {
+    const r = await API.asignarSupervisor(sucursal, supervisor);
+    suc.config.maestro = r.maestro;
+    suc.info = new Map((r.maestro.filas || []).map((m) => [m.sucursal, m]));
+    showNotice(supervisor ? `${sucursal}: supervisor ${supervisor}.` : `${sucursal}: sin supervisor.`);
+    renderSucursales();
+    abrirPanel(sucursal);
+  } catch (err) {
+    handleError(err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function supervisoresHtml() {
+  const maestro = [...suc.info.values()];
+  if (!maestro.some((m) => m.supervisor)) {
+    return `<div class="card empty">Todavía no hay supervisores asignados.${isAdmin()
+      ? ' Asignalos de a uno desde el detalle de cada sucursal (tocá una sucursal en el Ranking), o cargá el listado con la columna <b>Supervisor</b> en <b>Configurar sucursales → Listado de sucursales</b>.'
+      : ' El administrador los puede cargar.'}</div>`;
+  }
+  const grupos = resumenSupervisores(suc.res, suc.avance, maestro);
+  const max = Math.max(...grupos.map((g) => g.total), 1);
+  const semaforo = (g) => `<span class="sup-semaforo" title="${g.verdes} en verde, ${g.amarillas} en amarillo, ${g.rojas} en rojo${g.sinObjetivo ? `, ${g.sinObjetivo} sin objetivo` : ''}">${g.verdes ? `<span class="chip ok">${g.verdes}</span>` : ''}${g.amarillas ? `<span class="chip warn">${g.amarillas}</span>` : ''}${g.rojas ? `<span class="chip risk">${g.rojas}</span>` : ''}</span>`;
+  const tarjetas = grupos.map((g) => {
+    const e = g.pct !== null ? estado(g.pct) : null;
+    return `
+    <details class="card zona">
+      <summary>
+        <span class="zona-nombre">${esc(g.supervisor)}<small class="muted">${g.sucursales.length} sucursal${g.sucursales.length === 1 ? '' : 'es'}${g.objetivo ? ` · objetivo ${fmtMillones(g.objetivo)}` : ''}</small></span>
+        <span class="zona-bar"><span style="width:${((g.total / max) * 100).toFixed(1)}%"></span></span>
+        <span class="zona-cifras"><b>${fmtMillones(g.total)}</b>${semaforo(g)}</span>
+        ${e ? `<span class="chip ${e.clase}" title="Proyección al cierre de sus sucursales sobre la suma de sus objetivos">${fmtPct(g.pct)}</span>` : ''}
+      </summary>
+      <ul class="zona-lista">${g.sucursales.map((s) => `
+        <li data-suc="${esc(s.sucursal)}" role="button" tabindex="0">
+          <span>${esc(s.sucursal)}${chipCerrada(s.sucursal)}</span>${avanceChip(s.sucursal)}<b>${fmtMillones(s.total)}${s.avance ? `<small class="muted zona-obj"> de ${fmtMillones(s.avance.objetivo)}</small>` : ''}</b>
+        </li>`).join('')}</ul>
+    </details>`;
+  }).join('');
+  return `
+    <div class="card-head" style="margin-bottom:12px">
+      <p class="muted small" style="margin:0">Cada supervisor con sus sucursales: cuántas van en verde, amarillo y rojo, y la proyección del grupo contra la suma de sus objetivos. Tocá uno para ver sus sucursales, de la mejor a la peor.</p>
+      ${exportarHtml('supervisores')}
+    </div>
+    <div class="zonas">${tarjetas}</div>`;
+}
+
 // ---- Zonas ----
 
 // Zonas del mes con objetivo y proyección sumados (solo de las sucursales con objetivo).
 function zonasDelMes() {
-  const maestro = suc.info.size ? [...suc.info.values()] : suc.res.sucursales.map((s) => ({ sucursal: s.sucursal, zona: zonaSugerida(s.sucursal) }));
+  const maestro = hayCiudades() ? [...suc.info.values()] : suc.res.sucursales.map((s) => ({ sucursal: s.sucursal, zona: zonaSugerida(s.sucursal) }));
   return resumenZonas(suc.res, maestro).map((z) => {
     let objetivo = 0, proyeccion = 0;
     for (const s of z.sucursales) {
@@ -2060,7 +2312,7 @@ function zonasHtml() {
         </li>`).join('')}</ul>
     </details>`;
   }).join('');
-  const aviso = suc.info.size
+  const aviso = hayCiudades()
     ? ''
     : `<p class="nota" style="margin:0 0 14px">Ciudades sugeridas por el nombre de cada sucursal. ${isAdmin() ? 'Para cargar la ciudad real y el encargado de cada una, cargá el listado en <b>Configurar sucursales</b>.' : 'El administrador puede cargar la ciudad real de cada sucursal.'}</p>`;
   return `
@@ -2658,7 +2910,13 @@ function abrirPanel(nombre) {
 
   $('suc-panel-titulo').textContent = nombre;
   $('suc-panel-body').innerHTML = `
-    <p class="muted small" style="margin:0 0 12px">${nombreMes(fechaDeMes(suc.datos.mes))} · puesto ${i + 1} de ${res.sucursales.length}${info?.zona ? ` · ${esc(info.zona)}` : ''}${info?.encargado ? ` · encargado: ${esc(info.encargado)}` : ''}</p>
+    <p class="muted small" style="margin:0 0 12px">${nombreMes(fechaDeMes(suc.datos.mes))} · puesto ${i + 1} de ${res.sucursales.length}${info?.zona ? ` · ${esc(info.zona)}` : ''}${info?.encargado ? ` · encargado: ${esc(info.encargado)}` : ''}${info?.supervisor ? ` · supervisor: <b>${esc(info.supervisor)}</b>` : ''}</p>
+    ${isAdmin() ? `<div class="panel-sup">
+      <label for="panel-sup" class="small">Supervisor</label>
+      <input id="panel-sup" list="panel-sup-lista" value="${esc(info?.supervisor || '')}" maxlength="60" placeholder="Nombre del supervisor" autocomplete="off">
+      <datalist id="panel-sup-lista">${[...new Set([...suc.info.values()].map((m) => m.supervisor).filter(Boolean))].sort().map((v) => `<option value="${esc(v)}">`).join('')}</datalist>
+      <button class="btn btn-sm" type="button" data-sup-guardar="${esc(nombre)}">Guardar</button>
+    </div>` : ''}
     <p style="margin:0 0 12px"><a class="btn btn-sm" href="/sucursal.html?ver=${encodeURIComponent(nombre)}&amp;mes=${encodeURIComponent(suc.datos.mes)}" target="_blank" rel="noopener">Ver como la sucursal ↗</a></p>
     ${marcas.length ? `<div class="panel-marcas">${marcas.join('')}</div>` : ''}
     ${objetivoHtml}

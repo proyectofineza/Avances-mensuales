@@ -147,6 +147,47 @@ export function tarjetaPlanDiario(published, { fecha, history = [], clima = [], 
   };
 }
 
+// Resumen de los lunes (r = resumenSemanal() de public/js/reportes.js).
+export function tarjetaResumenSemanal(r, { prueba = false, origen } = {}) {
+  const enlace = conEnlace(enlacePortal('sucursales', origen), 'Ver sucursales');
+  const dm = (f) => fmtFecha(f).slice(0, 5);
+  const pts = (v) => `${v >= 0 ? '+' : '−'}${(Math.abs(v) * 100).toFixed(1).replace('.', ',')} pts`;
+  const lista = (arr, fmt) => arr.map((x, i) => `${i + 1}. ${fmt(x)}`).join('\n\n');
+  const cambios = (arr) => arr.slice(0, 10).map((x) => `${x.sucursal} ${fmtPct(x.antes)} → ${fmtPct(x.ahora)}`).join(' · ') + (arr.length > 10 ? ` y ${arr.length - 10} más` : '');
+  const bloque = (titulo, texto, color) => (texto ? [
+    { type: 'TextBlock', text: titulo, weight: 'Bolder', color, wrap: true, spacing: 'Medium' },
+    { type: 'TextBlock', text: texto, wrap: true, spacing: 'Small' },
+  ] : []);
+  const s = r.semana, m = r.mesActual;
+  return {
+    $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+    type: 'AdaptiveCard',
+    version: '1.4',
+    body: [
+      ...(prueba ? [{ type: 'TextBlock', text: 'AVISO DE PRUEBA', color: 'Attention', weight: 'Bolder', size: 'Small' }] : []),
+      { type: 'TextBlock', text: 'Resumen semanal de sucursales', weight: 'Bolder', size: 'Large', wrap: true },
+      { type: 'TextBlock', text: `Baratote Minorista · del ${dm(r.desde)} al ${dm(r.hasta)} · ${r.conObjetivo} sucursales con objetivo`, isSubtle: true, spacing: 'None', wrap: true },
+      {
+        type: 'FactSet',
+        facts: [
+          { title: 'Venta de la semana', value: `${M1(s.venta)}${s.pct !== null ? ` · ${fmtPct(s.pct)} de lo que pedía el objetivo (${M1(s.plan)})` : ''}` },
+          ...(m.avance !== null ? [{ title: 'Avance del mes', value: `${fmtPct(m.avance)} (${M1(m.vendido)} de ${M1(m.objetivo)})` }] : []),
+          ...(m.proyeccionPct !== null ? [{ title: 'Proyección al cierre', value: `${fmtPct(m.proyeccionPct)} del objetivo` }] : []),
+          { title: 'Sucursales', value: `${r.cuenta.ok} en verde · ${r.cuenta.warn} en amarillo · ${r.cuenta.risk} en rojo` },
+        ],
+      },
+      ...bloque('Las 5 que mejor van', lista(r.mejores, (x) => `${x.sucursal}: proyecta ${fmtPct(x.proyeccionPct)}`), 'Good'),
+      ...bloque('Las 5 más lejos del objetivo', lista(r.peores, (x) => `${x.sucursal}: proyecta ${fmtPct(x.proyeccionPct)}`), 'Attention'),
+      ...bloque(`Pasaron de verde a amarillo o rojo (${r.bajaron.length})`, cambios(r.bajaron), 'Warning'),
+      ...bloque(`Subieron a verde (${r.subieron.length})`, cambios(r.subieron), 'Good'),
+      ...bloque('Las que más mejoraron', lista(r.mejoras, (x) => `${x.sucursal}: ${fmtPct(x.antes)} → ${fmtPct(x.ahora)} (${pts(x.cambio)})`)),
+      ...bloque('Por supervisor', r.supervisores.map((g) => `**${g.supervisor}**: ${g.verdes} de ${g.verdes + g.amarillas + g.rojas} en verde · proyecta ${fmtPct(g.pct)}`).join('\n\n')),
+      ...enlace.body,
+    ],
+    actions: enlace.actions,
+  };
+}
+
 // Devuelve { ok, detalle } — detalle explica el fallo para mostrarlo al admin.
 export function enviarTeams(published, opciones) {
   return enviarTarjeta(armarTarjeta(published, opciones));

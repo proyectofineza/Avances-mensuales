@@ -39,6 +39,8 @@ export const publicarInforme = (mes, texto) => api('POST', 'informe', { mes, tex
 export const borrarInforme = (mes) => api('DELETE', `informe?mes=${encodeURIComponent(mes)}`);
 export const getSucursalesConfig = (mes) => api('GET', `sucursales-config?mes=${encodeURIComponent(mes)}`);
 export const saveMaestro = (filas) => api('POST', 'sucursales-config', { tipo: 'maestro', filas });
+export const asignarSupervisor = (sucursal, supervisor) => api('POST', 'sucursales-config', { tipo: 'supervisor', sucursal, supervisor });
+export const getMensualSucursales = () => api('GET', 'sucursales?mensual=1');
 export const saveObjetivosSucursal = (mes, filas) => api('POST', 'sucursales-config', { tipo: 'objetivos', mes, filas });
 export const marcarCerrada = (sucursal, fecha) => api('POST', 'sucursales-config', { tipo: 'cerrada', sucursal, fecha });
 export const saveHorarioComercial = (general, sucursales) => api('POST', 'sucursales-config', { tipo: 'horario', general, sucursales });
@@ -49,6 +51,8 @@ export const getTeams =() => api('GET', 'teams');
 export const testTeams = () => api('POST', 'teams');
 export const testAvisoDiario = () => api('POST', 'teams', { tipo: 'plan' });
 export const setAvisoDiario = (activo) => api('PUT', 'teams', { avisoDiario: activo });
+export const testResumenSemanal = () => api('POST', 'teams', { tipo: 'semanal' });
+export const setResumenSemanal = (activo) => api('PUT', 'teams', { resumenSemanal: activo });
 export const getUsers = () => api('GET', 'users');
 export const createUser = (user) => api('POST', 'users', user);
 export const updateUser = (ci, changes) => api('PATCH', `users/${encodeURIComponent(ci)}`, changes);

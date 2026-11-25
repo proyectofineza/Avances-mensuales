@@ -243,6 +243,12 @@
               <p class="muted small" id="aviso-diario-estado" style="margin:0 0 10px"></p>
               <button class="btn btn-sm" type="button" id="btn-aviso-diario-test">Probar el aviso diario</button>
             </div>
+            <div class="aviso-diario">
+              <label class="check"><input type="checkbox" id="resumen-semanal"> Resumen semanal de sucursales (lunes 08:00)</label>
+              <p class="muted small" style="margin:4px 0 10px">Cada lunes manda cómo cerró la semana contra el objetivo, las 5 mejores y las 5 peores, las que pasaron de verde a amarillo o rojo, las que más mejoraron y cómo va cada supervisor.</p>
+              <p class="muted small" id="resumen-semanal-estado" style="margin:0 0 10px"></p>
+              <button class="btn btn-sm" type="button" id="btn-resumen-semanal-test">Probar el resumen semanal</button>
+            </div>
             <div class="alert form-msg" id="teams-msg" hidden></div>
           </div>
           <div class="card">
@@ -404,6 +410,7 @@
         <div class="suc-mes">
           <label for="suc-mes" class="small">Mes</label>
           <select id="suc-mes"></select>
+          <a class="btn btn-sm" href="/tv.html" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none" title="Pantalla completa para TV o reuniones: va rotando el resumen, el ranking, los supervisores y las ciudades">Modo pantalla ↗</a>
         </div>
       </div>
 
@@ -443,12 +450,12 @@
       <details class="card solo-admin suc-carga" id="suc-config">
         <summary>
           <span class="suc-carga-titulo">Configurar sucursales</span>
-          <span class="muted small">ciudad, encargado, objetivo y horario comercial</span>
+          <span class="muted small">ciudad, encargado, supervisor, objetivo y horario comercial</span>
         </summary>
         <div class="cfg-grid">
           <div class="cfg-bloque">
             <h3>Listado de sucursales</h3>
-            <p class="muted small">Columnas: <b>sucursal</b>, <b>ciudad</b> y <b>encargado</b>. Se carga una vez y se actualiza cuando abre o cierra una sucursal. <span id="cfg-maestro-estado"></span></p>
+            <p class="muted small">Columnas: <b>sucursal</b>, <b>ciudad</b>, <b>encargado</b> y <b>supervisor</b>. Se carga una vez y se actualiza cuando abre o cierra una sucursal. <span id="cfg-maestro-estado"></span></p>
             <button class="btn btn-sm" type="button" data-cfg-base="maestro">Descargar planilla base</button>
             <label for="cfg-maestro-archivo" style="margin-top:12px">Archivo CSV</label>
             <input type="file" id="cfg-maestro-archivo" accept=".csv,.txt,text/csv,text/plain">
@@ -551,6 +558,8 @@
         <button type="button" role="tab" data-sub="resumen">Resumen</button>
         <button type="button" role="tab" data-sub="informe">Informe IA</button>
         <button type="button" role="tab" data-sub="ranking">Ranking</button>
+        <button type="button" role="tab" data-sub="matriz">Matriz</button>
+        <button type="button" role="tab" data-sub="supervisores">Supervisores</button>
         <button type="button" role="tab" data-sub="zonas">Ciudades</button>
         <button type="button" role="tab" data-sub="calor">Mapa de calor</button>
         <button type="button" role="tab" data-sub="comparar">Comparar días</button>

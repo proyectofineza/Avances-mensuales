@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es-PY" data-tema="oscuro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Modo pantalla · Avance de ventas</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+  <meta name="theme-color" content="#0E1217">
+  <meta name="robots" content="noindex">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="tv-body">
+  <header class="tv-head">
+    <div class="tv-marca"><img src="img/baratote.png" alt="Baratote"><span id="tv-titulo">Avance de ventas</span></div>
+    <div class="tv-info"><span id="tv-actualizado"></span><b id="tv-reloj"></b></div>
+  </header>
+  <main class="tv-main" id="tv-slide" aria-live="polite"><div class="tv-cargando">Cargando…</div></main>
+  <footer class="tv-pie">
+    <div class="tv-puntos" id="tv-puntos"></div>
+    <div class="tv-ctl">
+      <button type="button" id="tv-pausa" title="Pausar o seguir (barra espaciadora)">Pausar</button>
+      <button type="button" id="tv-full" title="Pantalla completa (F)">Pantalla completa</button>
+      <a href="/app.html#sucursales">Salir</a>
+    </div>
+  </footer>
+  <script type="module" src="js/tv.js"></script>
+</body>
+</html>

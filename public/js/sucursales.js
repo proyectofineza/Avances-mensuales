@@ -336,7 +336,7 @@ export function resumirMes(filas, excluir = NO_MINORISTA) {
   return { total, totalExcluido, sucursales, dias };
 }
 
-// ---- Listado maestro (sucursal, zona, encargado) y objetivos por sucursal ----
+// ---- Listado maestro (sucursal, zona, encargado, supervisor) y objetivos por sucursal ----
 
 // Zona sugerida para la planilla base: el nombre sin el número final ("LUQUE 2" → "LUQUE").
 export function zonaSugerida(nombre) {
@@ -385,7 +385,11 @@ function leerTabla(texto, columnas) {
 
 export function leerMaestro(texto) {
   // La ciudad se guarda en `zona` (mismo dato de siempre); el título puede ser Ciudad, Localidad o Zona.
-  const r = leerTabla(texto, [{ clave: 'zona', re: /ciudad|localidad|zona|regi[oó]n/ }, { clave: 'encargado', re: /encargad|responsable|gerente|supervisor/ }]);
+  const r = leerTabla(texto, [
+    { clave: 'zona', re: /ciudad|localidad|zona|regi[oó]n/ },
+    { clave: 'encargado', re: /encargad|responsable|gerente/ },
+    { clave: 'supervisor', re: /supervis/ },
+  ]);
   r.filas.forEach((f) => { f.zona = f.zona.toUpperCase(); });
   return r;
 }

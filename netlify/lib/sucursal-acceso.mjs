@@ -91,6 +91,14 @@ export async function actualizarMensual(mes, filas) {
 // { 'AAAA-MM': monto } de una sucursal: la planilla de meses anteriores manda; si un mes no está,
 // lo cargado en el portal. Los meses del portal que todavía no tienen total se calculan y se guardan.
 export async function mensualDe(sucursal) {
+  const todas = await mensualTodas();
+  const out = {};
+  for (const [m, porSuc] of Object.entries(todas)) if (porSuc[sucursal] !== undefined) out[m] = porSuc[sucursal];
+  return out;
+}
+
+// { 'AAAA-MM': { SUCURSAL: monto } } de todas las sucursales, con la misma regla que mensualDe.
+export async function mensualTodas() {
   const [cache, index, historia] = await Promise.all([
     getJSON('suc-mensual', {}), getJSON('sucursales/index', []), getJSON('suc-historia', {}),
   ]);
@@ -101,9 +109,6 @@ export async function mensualDe(sucursal) {
     await setJSON('suc-mensual', cache);
   }
   const out = {};
-  for (const m of new Set([...Object.keys(cache), ...Object.keys(historia)])) {
-    const v = historia[m]?.[sucursal] ?? cache[m]?.[sucursal];
-    if (v !== undefined) out[m] = v;
-  }
+  for (const m of new Set([...Object.keys(cache), ...Object.keys(historia)])) out[m] = { ...cache[m], ...historia[m] };
   return out;
 }

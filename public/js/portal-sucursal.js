@@ -2,7 +2,7 @@
 // que ve la sucursal (solo sus datos y su puesto). Módulo ES sin dependencias del navegador.
 
 import { normalizarSucursal, parseMonto, resumirMes, ultimoDiaCompleto, avanceSucursales } from './sucursales.js';
-import { PESOS_MINORISTA, repartirMinorista } from './calc.js';
+import { PESOS_MINORISTA, repartirMinorista, fraccionPonderada, hoyAsuncion } from './calc.js';
 
 export const RADIO_DEFECTO = 300;      // metros alrededor del local
 export const PRECISION_MAXIMA = 1000;  // una ubicación menos precisa que esto no sirve para validar
@@ -126,7 +126,25 @@ const variacion = (a, b) => (a !== null && a !== undefined && b > 0 ? a / b - 1 
 //   mensual:    { 'AAAA-MM': monto } de esta sucursal (historial + portal)
 //   cerradas:   nombres de sucursales cerradas (no cuentan en el ranking)
 //   pesos, especiales: del reporte publicado del mes (peso de cada día y fechas especiales)
-export function vistaSucursal({ sucursal, mes, filasMes = [], objetivos = [], mensual = {}, cerradas = [], pesos = PESOS_MINORISTA, especiales = [] }) {
+// Meta de cada día: el objetivo del mes repartido según el peso de cada día (fin de semana pide más).
+// Racha: días seguidos, hasta el último día completo, vendiendo al menos la meta de ese día.
+//   dias: [{ fecha, monto }] del mes (todos los días cargados); hasta: último día completo.
+export function metaDiaria({ objetivo, mes, dias, hasta, pesos = PESOS_MINORISTA, especiales = [] }) {
+  if (!objetivo || !hasta) return { dias: [], racha: 0, mejorRacha: 0, cumplidos: 0 };
+  const inicio = `${mes}-01`;
+  const anterior = (f) => { const d = new Date(`${f}T12:00:00Z`); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
+  const fr = (f) => (f < inicio ? 0 : fraccionPonderada(f, pesos, especiales) || 0);
+  const lista = dias.filter((d) => d.fecha <= hasta).map((d) => {
+    const meta = objetivo * (fr(d.fecha) - fr(anterior(d.fecha)));
+    return { fecha: d.fecha, venta: d.monto, meta, cumple: meta > 0 && d.monto >= meta };
+  });
+  let racha = 0, mejorRacha = 0, corrida = 0;
+  for (const d of lista) { corrida = d.cumple ? corrida + 1 : 0; mejorRacha = Math.max(mejorRacha, corrida); }
+  for (let i = lista.length - 1; i >= 0 && lista[i].cumple; i--) racha++;
+  return { dias: lista, racha, mejorRacha, cumplidos: lista.filter((d) => d.cumple).length };
+}
+
+export function vistaSucursal({ sucursal, mes, filasMes = [], objetivos = [], mensual = {}, cerradas = [], pesos = PESOS_MINORISTA, especiales = [], hoy = hoyAsuncion() }) {
   const res = resumirMes(filasMes);
   const fuera = new Set(cerradas);
   const propia = res.sucursales.find((s) => s.sucursal === sucursal) || null;
@@ -168,6 +186,13 @@ export function vistaSucursal({ sucursal, mes, filasMes = [], objetivos = [], me
 
   // Venta diaria del mes (sin días futuros).
   const dias = res.dias.map((d) => ({ fecha: d.fecha, monto: propia?.dias[d.fecha] || 0 }));
+
+  // Meta de hoy (del plan de lo que falta) y racha de días cumpliendo la meta diaria.
+  const delPlanHoy = avance.plan.find((p) => p.fecha === hoy);
+  avance.metaHoy = delPlanHoy
+    ? { fecha: hoy, monto: delPlanHoy.monto, esHoy: true }
+    : avance.plan[0] ? { fecha: avance.plan[0].fecha, monto: avance.plan[0].monto, esHoy: false } : null;
+  avance.metaDiaria = metaDiaria({ objetivo, mes, dias, hasta, pesos, especiales });
 
   // Historial: el año del mes y los dos anteriores, mes a mes.
   const anio = Number(mes.slice(0, 4));

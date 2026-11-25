@@ -187,6 +187,8 @@ function vistaHtml(v) {
         </div>` : '<p class="muted" style="margin:10px 0 0">Todavía no hay un objetivo cargado para este mes.</p>'}
     </div>
 
+    ${metaHoyHtml(v)}
+
     <div class="kpis ps-kpis">
       ${kpi('Vendido en el mes', gs(a.vendido), `Promedio por día ${gs(Math.round(a.promedioDia))}`)}
       ${a.completo ? '' : kpi('Proyección al cierre', gs(a.proyeccion ? Math.round(a.proyeccion) : null), a.proyeccionPct !== null ? `${fmtPct(a.proyeccionPct)} del objetivo` : 'Si sigue el ritmo actual')}
@@ -203,6 +205,31 @@ function vistaHtml(v) {
 }
 
 const DIA_CORTO = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const wdDe = (f) => new Date(`${f}T12:00:00Z`).getUTCDay();
+
+// Meta de hoy y racha de días cumpliendo la meta diaria (solo con objetivo y mes en curso).
+function metaHoyHtml(v) {
+  const a = v.avance;
+  if (!a.objetivo || a.completo) return '';
+  const m = a.metaDiaria || { dias: [], racha: 0, mejorRacha: 0, cumplidos: 0 };
+  const hoy = a.metaHoy;
+  const ultimo = m.dias.at(-1);
+  const titulo = a.falta <= 0
+    ? '<b>¡Ya llegaste al objetivo del mes!</b> Todo lo que vendas hoy suma.'
+    : hoy ? `${hoy.esHoy ? 'Hoy' : `El ${DIA_CORTO[wdDe(hoy.fecha)].toLowerCase()} ${Number(hoy.fecha.slice(8))}`} necesitás vender <b class="ps-meta-monto">${gs(Math.round(hoy.monto))}</b>` : '';
+  let racha;
+  if (m.racha >= 2) racha = `🔥 Llevás <b>${m.racha} días seguidos</b> cumpliendo la meta del día.${m.mejorRacha > m.racha ? ` Tu mejor racha del mes: ${m.mejorRacha}.` : ' ¡Es tu mejor racha del mes!'}`;
+  else if (m.racha === 1) racha = `✔ El ${esc(fmtFecha(ultimo.fecha).slice(0, 5))} cumpliste la meta del día (${gs(Math.round(ultimo.venta))} de ${gs(Math.round(ultimo.meta))}). ¡Seguí la racha!`;
+  else if (ultimo) racha = `El ${esc(fmtFecha(ultimo.fecha).slice(0, 5))} vendiste ${gs(Math.round(ultimo.venta))} y la meta del día era ${gs(Math.round(ultimo.meta))}. ¡Arrancá una racha nueva!`;
+  else racha = '';
+  const puntos = m.dias.slice(-14).map((d) => `<i class="${d.cumple ? 'si' : 'no'}" title="${esc(fmtFecha(d.fecha))}: ${gs(Math.round(d.venta))} de ${gs(Math.round(d.meta))}"></i>`).join('');
+  return `
+    <div class="card ps-meta">
+      ${titulo ? `<p class="ps-meta-titulo">${titulo}</p>` : ''}
+      ${racha ? `<p class="ps-meta-racha">${racha}</p>` : ''}
+      ${m.dias.length ? `<div class="ps-meta-pie"><span class="ps-meta-puntos" aria-label="Últimos días: verde si se cumplió la meta del día">${puntos}</span><span class="muted small">Cumpliste la meta del día ${m.cumplidos} de ${m.dias.length} días este mes</span></div>` : ''}
+    </div>`;
+}
 
 // Cuánto vender cada día que queda para llegar al objetivo (el fin de semana pide más).
 function planHtml(v) {

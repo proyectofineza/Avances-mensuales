@@ -160,10 +160,12 @@ assert.equal(zonaSugerida('LAS RESIDENTAS'), 'LAS RESIDENTAS');
 assert.equal(zonaSugerida('KM 5'), 'KM'); // solo sugerencia: el admin la corrige
 
 const m = leerMaestro('Sucursal;Zona;Encargado\nLuque 1;luque;María González\n;X;Y\nABASTO;Asunción;\nLuque 1;Luque Centro;Ana');
-assert.deepEqual(m.filas, [{ sucursal: 'LUQUE 1', zona: 'LUQUE CENTRO', encargado: 'Ana' }, { sucursal: 'ABASTO', zona: 'ASUNCIÓN', encargado: '' }]);
+assert.deepEqual(m.filas, [{ sucursal: 'LUQUE 1', zona: 'LUQUE CENTRO', encargado: 'Ana', supervisor: '' }, { sucursal: 'ABASTO', zona: 'ASUNCIÓN', encargado: '', supervisor: '' }]);
 assert.equal(m.errores.length, 1); assert.equal(m.errores[0].linea, 3);
-assert.deepEqual(leerMaestro('LUQUE 1\tLUQUE\tMaría').filas, [{ sucursal: 'LUQUE 1', zona: 'LUQUE', encargado: 'María' }]); // sin títulos
-assert.deepEqual(leerMaestro('Nombre;Otra\nA;B'), { filas: [{ sucursal: 'A', zona: '', encargado: '' }], errores: [] }); // zona y encargado son opcionales
+assert.deepEqual(leerMaestro('LUQUE 1\tLUQUE\tMaría\tPedro').filas, [{ sucursal: 'LUQUE 1', zona: 'LUQUE', encargado: 'María', supervisor: 'Pedro' }]); // sin títulos
+assert.deepEqual(leerMaestro('Nombre;Otra\nA;B'), { filas: [{ sucursal: 'A', zona: '', encargado: '', supervisor: '' }], errores: [] }); // zona, encargado y supervisor son opcionales
+// Supervisor: columna propia; solo Sucursal y Supervisor también sirve.
+assert.deepEqual(leerMaestro('Sucursal;Supervisor\nLuque 1;Carlos Benítez').filas, [{ sucursal: 'LUQUE 1', zona: '', encargado: '', supervisor: 'Carlos Benítez' }]);
 assert.match(leerObjetivos('Sucursal;Cosa\nA;1').errores[0].motivo, /objetivo/);
 
 const o = leerObjetivos('Sucursal;Objetivo\nLUQUE 1;95.000.000\nABASTO;\nCOLON;abc\nKM 5;Gs. 40.000.000');
@@ -209,7 +211,7 @@ assert.equal(avanceSucursales(resO, [], '2026-10-10').size, 0);
 
 const zonas = resumenZonas(resO, [{ sucursal: 'LUQUE 1', zona: 'LUQUE' }]);
 assert.deepEqual(zonas.map((z) => [z.zona, z.total, z.sucursales.length]), [['LUQUE', 51e6, 1], ['SIN CIUDAD', 10e6, 1]]);
-assert.deepEqual(leerMaestro('Sucursal;Ciudad;Encargado\nRojas Cañada 1;Capiatá;Ana').filas, [{ sucursal: 'ROJAS CAÑADA 1', zona: 'CAPIATÁ', encargado: 'Ana' }]);
+assert.deepEqual(leerMaestro('Sucursal;Ciudad;Encargado\nRojas Cañada 1;Capiatá;Ana').filas, [{ sucursal: 'ROJAS CAÑADA 1', zona: 'CAPIATÁ', encargado: 'Ana', supervisor: '' }]);
 
 const ctl = controlMaestro([{ sucursal: 'A' }, { sucursal: 'B' }, { sucursal: 'CENTRAL' }], ['A', 'C', 'CENTRAL']);
 assert.deepEqual(ctl, { faltan: ['B'], nuevas: ['C'] });
