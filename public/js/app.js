@@ -1468,17 +1468,22 @@ async function guardarConfig(tipo) {
 
   const conocidas = new Set(nombresConocidos());
   const raras = conocidas.size ? r.filas.map((f) => f.sucursal).filter((n) => !conocidas.has(n)) : [];
-  const detalle = tipo === 'maestro'
+  const soloSup = tipo === 'maestro' && r.soloSupervisor;
+  const detalle = soloSup
+    ? `supervisor de ${r.filas.length} sucursales (${new Set(r.filas.map((f) => f.supervisor).filter(Boolean)).size} supervisores); la ciudad y el encargado no cambian`
+    : tipo === 'maestro'
     ? `${r.filas.length} sucursales en ${new Set(r.filas.map((f) => f.zona).filter(Boolean)).size} ciudades, ${new Set(r.filas.map((f) => f.supervisor).filter(Boolean)).size} supervisores`
     : `${r.filas.length} sucursales, total ${fmtMillones(r.filas.reduce((s, f) => s + f.objetivo, 0))} para ${nombreMes(fechaDeMes(mes))}`;
   const avisos = [
     r.errores.length ? `${r.errores.length} línea${r.errores.length === 1 ? '' : 's'} con problemas no se van a guardar (línea ${r.errores[0].linea}: ${r.errores[0].motivo})` : '',
     raras.length ? `${raras.length} no coinciden con ninguna sucursal con ventas: ${raras.slice(0, 8).join(', ')}${raras.length > 8 ? '…' : ''}` : '',
   ].filter(Boolean);
-  if (!confirm(`Se va a reemplazar ${tipo === 'maestro' ? 'el listado' : 'los objetivos del mes'}: ${detalle}.${avisos.length ? '\n\n' + avisos.join('\n') : ''}\n\n¿Guardar?`)) return;
+  const accion = soloSup ? 'Se va a actualizar el' : `Se va a reemplazar ${tipo === 'maestro' ? 'el listado' : 'los objetivos del mes'}:`;
+  if (!confirm(`${accion} ${detalle}.${avisos.length ? '\n\n' + avisos.join('\n') : ''}\n\n¿Guardar?`)) return;
 
   try {
-    if (tipo === 'maestro') await API.saveMaestro(r.filas);
+    if (soloSup) await API.asignarSupervisores(r.filas.map((f) => ({ sucursal: f.sucursal, supervisor: f.supervisor })));
+    else if (tipo === 'maestro') await API.saveMaestro(r.filas);
     else await API.saveObjetivosSucursal(mes, r.filas);
     $(`${pre}-texto`).value = '';
     $(`${pre}-archivo`).value = '';

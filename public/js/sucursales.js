@@ -380,7 +380,9 @@ function leerTabla(texto, columnas) {
     }
     filas.set(sucursal, fila); // si se repite, gana la última
   });
-  return { filas: [...filas.values()], errores };
+  // Columnas que trae la planilla (sin títulos, se toman todas).
+  const columnasLeidas = columnas.filter((c) => idx[c.clave] >= 0).map((c) => c.clave);
+  return { filas: [...filas.values()], errores, columnas: columnasLeidas };
 }
 
 export function leerMaestro(texto) {
@@ -391,6 +393,10 @@ export function leerMaestro(texto) {
     { clave: 'supervisor', re: /supervis/ },
   ]);
   r.filas.forEach((f) => { f.zona = f.zona.toUpperCase(); });
+  // Planilla con solo Sucursal y Supervisor: se actualiza el supervisor sin tocar ciudad ni encargado.
+  r.soloSupervisor = r.columnas.length === 1 && r.columnas[0] === 'supervisor';
+  // Los códigos al final del nombre ("PARAGUARI 1 - 72") se quitan.
+  r.filas.forEach((f) => { f.sucursal = f.sucursal.replace(/\s+-\s+\d+$/, ''); });
   return r;
 }
 

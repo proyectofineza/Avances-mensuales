@@ -163,9 +163,19 @@ const m = leerMaestro('Sucursal;Zona;Encargado\nLuque 1;luque;María González\n
 assert.deepEqual(m.filas, [{ sucursal: 'LUQUE 1', zona: 'LUQUE CENTRO', encargado: 'Ana', supervisor: '' }, { sucursal: 'ABASTO', zona: 'ASUNCIÓN', encargado: '', supervisor: '' }]);
 assert.equal(m.errores.length, 1); assert.equal(m.errores[0].linea, 3);
 assert.deepEqual(leerMaestro('LUQUE 1\tLUQUE\tMaría\tPedro').filas, [{ sucursal: 'LUQUE 1', zona: 'LUQUE', encargado: 'María', supervisor: 'Pedro' }]); // sin títulos
-assert.deepEqual(leerMaestro('Nombre;Otra\nA;B'), { filas: [{ sucursal: 'A', zona: '', encargado: '', supervisor: '' }], errores: [] }); // zona, encargado y supervisor son opcionales
-// Supervisor: columna propia; solo Sucursal y Supervisor también sirve.
-assert.deepEqual(leerMaestro('Sucursal;Supervisor\nLuque 1;Carlos Benítez').filas, [{ sucursal: 'LUQUE 1', zona: '', encargado: '', supervisor: 'Carlos Benítez' }]);
+const sinCols = leerMaestro('Nombre;Otra\nA;B');
+assert.deepEqual(sinCols.filas, [{ sucursal: 'A', zona: '', encargado: '', supervisor: '' }]); // zona, encargado y supervisor son opcionales
+assert.deepEqual(sinCols.errores, []);
+assert.equal(sinCols.soloSupervisor, false);
+// Supervisor: columna propia; solo Sucursal y Supervisor (en cualquier orden) actualiza solo el supervisor.
+const soloSup = leerMaestro('Sucursal;Supervisor\nLuque 1;Carlos Benítez');
+assert.deepEqual(soloSup.filas, [{ sucursal: 'LUQUE 1', zona: '', encargado: '', supervisor: 'Carlos Benítez' }]);
+assert.equal(soloSup.soloSupervisor, true);
+// Tal cual la lista de supervisores: supervisor primero y el código al final del nombre.
+const lista = leerMaestro('Supervisor \tSucursal\nAdministracion \tPARAGUARI 1 - 72\nIVAN NUÑEZ\tLUQUE - IGNACIO VERA - 245\nARACELY ALE\tLUQUE - AREGUA');
+assert.deepEqual(lista.filas.map((f) => [f.sucursal, f.supervisor]), [['PARAGUARI 1', 'Administracion'], ['LUQUE - IGNACIO VERA', 'IVAN NUÑEZ'], ['LUQUE - AREGUA', 'ARACELY ALE']]);
+assert.equal(lista.soloSupervisor, true);
+assert.equal(leerMaestro('Sucursal;Ciudad;Supervisor\nA;Luque;X').soloSupervisor, false);
 assert.match(leerObjetivos('Sucursal;Cosa\nA;1').errores[0].motivo, /objetivo/);
 
 const o = leerObjetivos('Sucursal;Objetivo\nLUQUE 1;95.000.000\nABASTO;\nCOLON;abc\nKM 5;Gs. 40.000.000');

@@ -59,16 +59,20 @@ export default handler(async (req) => {
     return json({ ok: true, cerradas: filas });
   }
 
-  // Asignar el supervisor de una sucursal sin recargar el listado (si no está en el listado, se agrega).
-  if (body.tipo === 'supervisor') {
-    const sucursal = normalizarSucursal(body.sucursal);
-    if (!sucursal) throw new HttpError(400, 'Indicá la sucursal.');
+  // Asignar el supervisor de una sucursal ('supervisor') o de varias ('supervisores', filas
+  // [{ sucursal, supervisor }]) sin tocar ciudad ni encargado; las que no están en el listado se agregan.
+  if (body.tipo === 'supervisor' || body.tipo === 'supervisores') {
+    const pedidos = (body.tipo === 'supervisor' ? [body] : Array.isArray(body.filas) ? body.filas : [])
+      .map((f) => ({ sucursal: normalizarSucursal(f.sucursal), supervisor: texto(f.supervisor) }))
+      .filter((f) => f.sucursal);
+    if (!pedidos.length) throw new HttpError(400, 'Indicá la sucursal.');
+    if (pedidos.length > MAX) throw new HttpError(400, `El máximo es ${MAX} sucursales.`);
     const actual = await getJSON('sucursales-maestro', { filas: [] });
-    const filas = [...(actual?.filas || [])];
-    const i = filas.findIndex((f) => f.sucursal === sucursal);
-    if (i >= 0) filas[i] = { ...filas[i], supervisor: texto(body.supervisor) };
-    else filas.push({ sucursal, zona: '', encargado: '', supervisor: texto(body.supervisor) });
-    filas.sort((a, b) => a.sucursal.localeCompare(b.sucursal));
+    const porNombre = new Map((actual?.filas || []).map((f) => [f.sucursal, f]));
+    for (const p of pedidos) {
+      porNombre.set(p.sucursal, { zona: '', encargado: '', ...porNombre.get(p.sucursal), sucursal: p.sucursal, supervisor: p.supervisor });
+    }
+    const filas = [...porNombre.values()].sort((a, b) => a.sucursal.localeCompare(b.sucursal));
     const maestro = { ...actual, filas, actualizado: new Date().toISOString(), por: user.nombre };
     await setJSON('sucursales-maestro', maestro);
     return json({ ok: true, maestro });

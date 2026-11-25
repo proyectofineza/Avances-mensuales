@@ -40,6 +40,7 @@ export const borrarInforme = (mes) => api('DELETE', `informe?mes=${encodeURIComp
 export const getSucursalesConfig = (mes) => api('GET', `sucursales-config?mes=${encodeURIComponent(mes)}`);
 export const saveMaestro = (filas) => api('POST', 'sucursales-config', { tipo: 'maestro', filas });
 export const asignarSupervisor = (sucursal, supervisor) => api('POST', 'sucursales-config', { tipo: 'supervisor', sucursal, supervisor });
+export const asignarSupervisores = (filas) => api('POST', 'sucursales-config', { tipo: 'supervisores', filas });
 export const getMensualSucursales = () => api('GET', 'sucursales?mensual=1');
 export const saveObjetivosSucursal = (mes, filas) => api('POST', 'sucursales-config', { tipo: 'objetivos', mes, filas });
 export const marcarCerrada = (sucursal, fecha) => api('POST', 'sucursales-config', { tipo: 'cerrada', sucursal, fecha });
