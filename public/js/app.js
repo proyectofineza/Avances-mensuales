@@ -29,6 +29,7 @@ async function init() {
   document.querySelectorAll('.solo-admin').forEach((el) => { el.hidden = !isAdmin(); });
   // En la barra del celular, los comerciales usan el lugar de Cargar y Usuarios para el Comparativo anual.
   document.querySelectorAll('.solo-comercial').forEach((el) => { el.hidden = isAdmin(); });
+  setupTeclas(); // después de mostrar/ocultar las pantallas de cada rol, para numerar solo las visibles
 
   $('btn-salir').addEventListener('click', async () => {
     try { await API.logout(); } finally { location.replace('index.html'); }
@@ -107,6 +108,20 @@ function setupMenu() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('menu-abierto')) abrir(false); });
 }
 
+// En la computadora, las teclas 1 a 7 abren las pantallas en el orden del menú (fuera de los campos de texto).
+function setupTeclas() {
+  const tabs = () => [...document.querySelectorAll('#tabs .tab')].filter((t) => !t.hidden);
+  tabs().forEach((t, i) => { if (i < 9) t.title = `${t.textContent.trim()} · tecla ${i + 1}`; });
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || !/^[1-9]$/.test(e.key)) return;
+    const el = e.target;
+    if (el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName || '')) return;
+    if (document.querySelector('dialog[open]') || !$('suc-panel').hidden) return;
+    const t = tabs()[Number(e.key) - 1];
+    if (t) { e.preventDefault(); location.hash = t.getAttribute('href'); }
+  });
+}
+
 const TITULO_VISTA = { ventas: 'Cargar ventas', usuarios: 'Usuarios', dashboard: 'Dashboard', sucursales: 'Sucursales', cierre: 'Cierre de mes', objetivos: 'Objetivo sugerido', anual: 'Comparativo anual' };
 
 let vistaAnterior = null;
@@ -121,6 +136,7 @@ function route() {
     return;
   }
   vistaAnterior = view;
+  guardarPref('ultima-vista', view); // al volver a entrar sin enlace, se abre esta pantalla
   if (vista !== view) history.replaceState(null, '', `#${view}`);
   if (view === 'sucursales' && sub) elegirSubSucursal(sub, false, false);
   for (const v of VISTAS) $(`view-${v}`).hidden = v !== view;
@@ -135,8 +151,10 @@ function route() {
   if (view === 'ventas') loadVentas();
   if (view === 'usuarios') loadUsuarios();
   if (view === 'dashboard') refreshDashboard(true);
-  if (view === 'sucursales') { loadSucursales(suc.mesPedido); suc.mesPedido = undefined; } // mesPedido: desde el cierre
-  if (view === 'cierre') loadCierre(cierre.datos?.mes);
+  // Sucursales y Cierre abren el mes que se eligió a mano en la otra (si esa pantalla lo tiene cargado).
+  const mesComun = (meses) => (state.mesElegido && meses?.includes(state.mesElegido) ? state.mesElegido : undefined);
+  if (view === 'sucursales') { loadSucursales(suc.mesPedido ?? mesComun(suc.datos?.meses)); suc.mesPedido = undefined; } // mesPedido: desde el cierre
+  if (view === 'cierre') loadCierre(mesComun(cierre.datos?.meses) ?? cierre.datos?.mes);
   if (view === 'objetivos') loadObjetivos($('obj-mes').value);
   if (view === 'anual') loadAnual();
 }

@@ -847,6 +847,10 @@ textarea {
 .rapido-lista li.risk i { background: var(--neg); box-shadow: 0 0 0 4px color-mix(in srgb, var(--neg) 20%, transparent); }
 .rapido-lista li.warn i { background: var(--c-min); box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-min) 20%, transparent); }
 .rapido-lista li.ok i { background: var(--pos); box-shadow: 0 0 0 4px color-mix(in srgb, var(--pos) 20%, transparent); }
+/* Atajos del Dashboard a la pestaña de Sucursales que corresponde */
+.rapido-ir, .u-ir { font-weight: 700; color: var(--fineza); text-decoration: none; white-space: nowrap; }
+.rapido-ir:hover, .u-ir:hover { text-decoration: underline; }
+.u-ir { justify-self: start; font-size: 13px; }
 .rapido-btn { margin-top: 14px; width: 100%; }
 
 /* Mini gráficos de las unidades */

@@ -47,7 +47,7 @@ export function avanceChip(nombre) {
 }
 
 export function setupSucursales() {
-  $('suc-mes').addEventListener('change', () => loadSucursales($('suc-mes').value));
+  $('suc-mes').addEventListener('change', () => { state.mesElegido = $('suc-mes').value; loadSucursales($('suc-mes').value); });
   $('suc-subtabs').addEventListener('click', (e) => {
     const b = e.target.closest('[data-sub]');
     if (!b) return;

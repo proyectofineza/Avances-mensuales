@@ -391,8 +391,9 @@ export function rapidoHtml(r, p) {
   if (enRiesgo.length) items.push({ tipo: 'risk', txt: `${enRiesgo.map(([n, c]) => `<b>${n}</b> proyecta ${fmtPct(c.proyeccionPct)}`).join(' · ')} del objetivo.` });
   const a = state.sucAlertas;
   if (a && a.mes === p.corte.slice(0, 7)) {
-    if (a.sinVentaReciente.length) items.push({ tipo: 'risk', txt: `<b>${a.sinVentaReciente.length} sucursal${a.sinVentaReciente.length === 1 ? '' : 'es'}</b> sin venta en los últimos días: ${a.sinVentaReciente.slice(0, 3).map((s) => esc(s.sucursal)).join(', ')}${a.sinVentaReciente.length > 3 ? '…' : ''}.` });
-    if (a.caidas.length) items.push({ tipo: 'warn', txt: `Vienen vendiendo menos: ${a.caidas.slice(0, 3).map((s) => `<b>${esc(s.sucursal)}</b> ${fmtVar(s.variacion)}`).join(', ')}.` });
+    const ver = ' <a class="rapido-ir" href="#sucursales/alertas">Ver alertas →</a>';
+    if (a.sinVentaReciente.length) items.push({ tipo: 'risk', txt: `<b>${a.sinVentaReciente.length} sucursal${a.sinVentaReciente.length === 1 ? '' : 'es'}</b> sin venta en los últimos días: ${a.sinVentaReciente.slice(0, 3).map((s) => esc(s.sucursal)).join(', ')}${a.sinVentaReciente.length > 3 ? '…' : ''}.${ver}` });
+    if (a.caidas.length) items.push({ tipo: 'warn', txt: `Vienen vendiendo menos: ${a.caidas.slice(0, 3).map((s) => `<b>${esc(s.sucursal)}</b> ${fmtVar(s.variacion)}`).join(', ')}.${ver}` });
   }
   // Lluvia pronosticada en el próximo viernes a domingo (días fuertes de Minorista).
   const finde = (state.clima?.dias || []).filter((d) => d.fecha > p.corte && esFinde(wdDe(d.fecha))).slice(0, 3);
@@ -598,7 +599,7 @@ export function renderDashboard() {
     </div>
 
     <div class="unidades ancla" id="s-unidades">
-      ${unidadCard('Baratote', 'lun-dom', r.baratote, COLOR.bar, r.manual, `<div class="canales"><div class="unidad-meta" style="font-weight:600">Por canal</div>${canal(u.may)}${canal(u.min)}</div>`, serieDe((x) => x.baratote))}
+      ${unidadCard('Baratote', 'lun-dom', r.baratote, COLOR.bar, r.manual, `<div class="canales"><div class="unidad-meta" style="font-weight:600">Por canal</div>${canal(u.may)}${canal(u.min)}<a class="u-ir" href="#sucursales/ranking">Minorista por sucursal →</a></div>`, serieDe((x) => x.baratote))}
       ${unidadCard('Fineglass', 'lun-vie', u.fgl, COLOR.fgl, r.manual, '', serieDe((x) => x.unidades.fgl))}
       ${unidadCard('Fineboats', 'lun-dom', u.fbt, COLOR.fbt, r.manual, '', serieDe((x) => x.unidades.fbt))}
     </div>

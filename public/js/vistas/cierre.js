@@ -3,7 +3,7 @@ import * as API from '../api.js';
 import { PESOS_MINORISTA, calcularReporte, estado, mesAnterior, mismoMesAnioAnterior, fmtMillones, fmtPct, fmtVar, fmtFecha, fmtDiaMes, fmtFechaHora, nombreMes, hoyAsuncion, ultimoDiaDelMes } from '../calc.js';
 import { informeAHtml } from '../informe.js';
 import { resumirMes, avanceSucursales, resumenZonas } from '../sucursales.js';
-import { $, COLOR, barW, compartirTexto, contarNumeros, descargarCsv, esc, fechaDeMes, gauge, handleError, imprimir, isAdmin, sumarDias, varHtml } from './comun.js';
+import { $, COLOR, barW, compartirTexto, contarNumeros, descargarCsv, esc, fechaDeMes, gauge, handleError, imprimir, isAdmin, state, sumarDias, varHtml } from './comun.js';
 import { objetivos } from './objetivos.js';
 import { suc } from './sucursales.js';
 
@@ -13,7 +13,7 @@ import { suc } from './sucursales.js';
 export const cierre = { datos: null, suc: null, informe: null, turno: 0 };
 
 export function setupCierre() {
-  $('cierre-mes').addEventListener('change', () => loadCierre($('cierre-mes').value));
+  $('cierre-mes').addEventListener('change', () => { state.mesElegido = $('cierre-mes').value; loadCierre($('cierre-mes').value); });
   $('cierre-contenido').addEventListener('click', (e) => {
     const exp = e.target.closest('[data-cexp]');
     if (exp) { exportarCierre(exp.dataset.cexp); return; }

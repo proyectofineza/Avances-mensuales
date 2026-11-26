@@ -35,6 +35,8 @@ export const state = {
   history: [],
   draft: null,
   users: [],
+  // Mes elegido a mano en Sucursales o en Cierre: al pasar de una a otra se abre el mismo mes.
+  mesElegido: null,
 };
 
 export const isAdmin = () => state.user?.rol === 'admin';
@@ -77,6 +79,9 @@ export function currentView() {
   const h = partesHash().vista;
   const permitidas = isAdmin() ? VISTAS : ['dashboard', 'sucursales', 'cierre', 'anual'];
   if (permitidas.includes(h)) return h;
+  // Sin pantalla en la dirección: la última que se usó en este navegador.
+  const ultima = leerPref('ultima-vista', '');
+  if (!h && permitidas.includes(ultima)) return ultima;
   return isAdmin() ? 'ventas' : 'dashboard';
 }
 
