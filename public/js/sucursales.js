@@ -446,6 +446,46 @@ export function avanceSucursales(res, objetivos, hasta, pesos = PESOS_MINORISTA,
   return out;
 }
 
+// ---- Bajo la lupa: sucursales que venden menos de un piso fijo por mes ----
+// Lo vendido hasta el último día completo (`hasta`) y la proyección al cierre (ponderada por día de la semana)
+// contra un piso en guaraníes, sin importar el objetivo. Las cerradas no cuentan.
+// nombres: las del listado maestro, para incluir las que no vendieron nada en el mes.
+// mensual: { 'AAAA-MM': { SUC: monto } }; se miran los `meses` anteriores a `mes`.
+export function bajoLaLupa(res, { piso = 50e6, hasta, mes, pesos = PESOS_MINORISTA, especiales = [], cerradas = [], nombres = [], mensual = {}, meses = 3, excluir = NO_MINORISTA } = {}) {
+  const fuera = new Set([...cerradas, ...excluir]);
+  const frac = hasta ? Math.min(fraccionPonderada(hasta, pesos, especiales) || 0, 1) : 0;
+  const porNombre = new Map(res.sucursales.map((s) => [s.sucursal, s]));
+  // Los `meses` inmediatamente anteriores (si falta alguno queda sin dato, no se saltea).
+  const anteriores = mes
+    ? Array.from({ length: meses }, (_, i) => {
+      const d = new Date(Date.UTC(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)) - 1 - (meses - i), 1));
+      return d.toISOString().slice(0, 7);
+    }).filter((m) => Object.keys(mensual || {}).some((k) => k <= m)) // desde el primer mes con historial
+    : [];
+  const filas = [];
+  for (const sucursal of new Set([...porNombre.keys(), ...nombres])) {
+    if (!sucursal || fuera.has(sucursal)) continue;
+    const dias = Object.entries(porNombre.get(sucursal)?.dias || {}).filter(([f, v]) => hasta && f <= hasta && v > 0);
+    const vendido = dias.reduce((a, [, v]) => a + v, 0);
+    const proyeccion = frac > 0 ? vendido / frac : vendido;
+    const historia = anteriores.map((m) => ({ mes: m, monto: mensual[m]?.[sucursal] ?? null }));
+    const conDato = historia.filter((h) => h.monto !== null);
+    filas.push({
+      sucursal, vendido, proyeccion, pctPiso: proyeccion / piso, falta: Math.max(piso - vendido, 0),
+      primeraVenta: dias.map(([f]) => f).sort()[0] || null, diasConVenta: dias.length,
+      historia, mesesConDato: conDato.length, mesesBajo: conDato.filter((h) => h.monto < piso).length,
+    });
+  }
+  const orden = (a, b) => a.proyeccion - b.proyeccion || a.sucursal.localeCompare(b.sucursal);
+  return {
+    piso, hasta, frac, cerrado: frac >= 1, anteriores, total: filas.length,
+    // Proyectan cerrar el mes por debajo del piso (o ya lo cerraron por debajo).
+    proyectanBajo: filas.filter((f) => f.proyeccion < piso).sort(orden),
+    // Lo vendido todavía no llega al piso, pero al ritmo que van lo pasan.
+    soloAcumulado: filas.filter((f) => f.vendido < piso && f.proyeccion >= piso).sort(orden),
+  };
+}
+
 // Totales por zona según el listado maestro. Las que no figuran van a "SIN CIUDAD".
 export function resumenZonas(res, maestro = []) {
   const info = new Map(maestro.map((m) => [m.sucursal, m]));

@@ -240,4 +240,48 @@ const alCierre = alertasSucursales(resCierre, { cerradas: ['INGAVI 2'] });
 assert.equal(alCierre.sinVentaReciente.length + alCierre.caidas.length + alCierre.conDiasSinVenta.length, 0);
 assert.equal(resCierre.total, 3200); // lo vendido antes del cierre sigue contando
 
+// Bajo la lupa: lo vendido y la proyección al cierre contra un piso fijo (50 M), con los 3 meses anteriores
+{
+  const { bajoLaLupa } = await import('../public/js/sucursales.js');
+  const filas = [];
+  for (let d = 1; d <= 15; d++) {
+    const fecha = `2026-10-${String(d).padStart(2, '0')}`;
+    filas.push({ sucursal: 'CHICA', fecha, monto: 1e6 }); // 15 M al 15: proyecta ~31 M
+    filas.push({ sucursal: 'MEDIA', fecha, monto: 3e6 }); // 45 M al 15: proyecta más de 50 M
+    filas.push({ sucursal: 'GRANDE', fecha, monto: 9e6 });
+    filas.push({ sucursal: 'CERRADA', fecha, monto: 1e6 });
+    filas.push({ sucursal: 'CENTRAL', fecha, monto: 1e6 }); // Mayorista: no cuenta
+  }
+  filas.push({ sucursal: 'CHICA', fecha: '2026-10-16', monto: 5e6 }); // después del último día completo: no cuenta
+  const res = resumirMes(filas);
+  const frac = fraccionPonderada('2026-10-15');
+  const mensual = {
+    '2026-07': { CHICA: 40e6 },
+    '2026-08': { CHICA: 45e6, MEDIA: 70e6 },
+    '2026-09': { CHICA: 48e6, MEDIA: 49e6, GRANDE: 300e6 },
+    '2026-10': { CHICA: 1 }, // el mes que se mira no es "anterior"
+  };
+  const L = bajoLaLupa(res, { hasta: '2026-10-15', mes: '2026-10', cerradas: ['CERRADA'], nombres: ['NUEVA', 'CHICA'], mensual });
+  assert.equal(L.piso, 50e6);
+  assert.deepEqual(L.anteriores, ['2026-07', '2026-08', '2026-09']);
+  assert.deepEqual(L.proyectanBajo.map((f) => f.sucursal), ['NUEVA', 'CHICA']); // NUEVA: del listado, sin venta
+  const chica = L.proyectanBajo[1];
+  assert.equal(chica.vendido, 15e6);
+  assert.ok(Math.abs(chica.proyeccion - 15e6 / frac) < 1);
+  assert.equal(chica.falta, 35e6);
+  assert.equal(chica.mesesBajo, 3);
+  assert.equal(chica.mesesConDato, 3);
+  assert.equal(chica.primeraVenta, '2026-10-01');
+  assert.equal(L.proyectanBajo[0].vendido, 0);
+  assert.equal(L.proyectanBajo[0].mesesConDato, 0);
+  assert.deepEqual(L.soloAcumulado.map((f) => [f.sucursal, f.mesesBajo, f.mesesConDato]), [['MEDIA', 1, 2]]);
+  assert.equal(L.total, 4); // CHICA, MEDIA, GRANDE, NUEVA (sin la cerrada ni CENTRAL)
+  assert.equal(L.cerrado, false);
+  // Mes terminado: la proyección es lo vendido.
+  const fin = bajoLaLupa(res, { hasta: '2026-10-31', mes: '2026-10', piso: 100e6 });
+  assert.equal(fin.cerrado, true);
+  assert.deepEqual(fin.proyectanBajo.map((f) => [f.sucursal, f.proyeccion]), [['CERRADA', 15e6], ['CHICA', 20e6], ['MEDIA', 45e6]]);
+  assert.equal(fin.anteriores.length, 0); // sin historial
+}
+
 console.log('sucursales: todas las pruebas pasaron');

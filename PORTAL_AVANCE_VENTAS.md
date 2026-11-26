@@ -542,6 +542,12 @@ Cargar las variables de entorno antes del primer deploy. Probar localmente con `
 - Usuarios → **Supervisor**: se marca a un usuario como supervisor con el nombre como figura en el listado de sucursales (sugiere los cargados). `PATCH /api/users/:ci { supervisor }` (vacío lo quita); `/api/me` y la lista de usuarios lo devuelven.
 - Al entrar, ese usuario ve primero lo suyo: en la vista rápida del Dashboard, **"Tus N sucursales: X en verde, Y en amarillo, Z en rojo · proyectan …"** (mismo cálculo que la pestaña Supervisores) con enlace al ranking, y el ranking de Sucursales arranca filtrado por su supervisor (una vez por sesión; después puede cambiar el filtro). No restringe lo que puede ver: sigue viendo todas las sucursales como cualquier comercial.
 
+### 12.38 Bajo la lupa (sucursales por debajo de un piso de venta)
+- Sucursales → pestaña **Bajo la lupa**: las sucursales que proyectan cerrar el mes (o ya cerraron) por debajo de un **piso fijo por mes**, sin importar su objetivo, para evaluar si conviene seguir abiertas. Piso por defecto **50 M** (`PISO_LUPA`); se cambia en la misma pestaña (en millones) y queda guardado en ese navegador (pref `suc-piso`).
+- Por sucursal: lo vendido hasta el último día completo, la proyección al cierre (mismo cálculo ponderado por día de la semana que el avance contra objetivo), % del piso, la venta de los **3 meses inmediatamente anteriores** (historial por sucursal + meses cargados en el portal; si falta un mes queda "—") y cuántos de esos meses cerró por debajo del piso ("3 de 3" en rojo = siempre por debajo).
+- Aparte (desplegable): las que todavía no llegan al piso en lo vendido pero al ritmo que van lo pasan. Incluye las sucursales del listado maestro sin venta en el mes; no incluye las marcadas como cerradas ni CENTRAL. Si la primera venta del mes es después del día 3 y no tiene historial, se marca "Desde el dd/mm" (la proyección la subestima).
+- El número de la pestaña es la cantidad que proyecta cerrar por debajo; el panel de la sucursal muestra "Bajo la lupa: proyecta …". Exporta a Excel, PDF y Compartir. Cálculo en `bajoLaLupa` (`public/js/sucursales.js`).
+
 ## 13. Fuera de alcance (por ahora)
 - Integración automática con el sistema de ventas (la carga es manual).
 - Objetivos por comercial individual.

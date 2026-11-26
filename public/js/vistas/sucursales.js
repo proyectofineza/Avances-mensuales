@@ -2,7 +2,7 @@
 import * as API from '../api.js';
 import { DIAS_SEMANA, PESOS_MINORISTA, parseCorte, fraccionPonderada, estado, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, fmtDiaMes, fmtFechaHora, nombreMes, hoyAsuncion } from '../calc.js';
 import { informeAHtml } from '../informe.js';
-import { resumirMes, alertasSucursales, pesoSemana, ultimoDiaCompleto, NO_MINORISTA, parseFecha, avanceSucursales, resumenZonas, zonaSugerida } from '../sucursales.js';
+import { resumirMes, alertasSucursales, pesoSemana, ultimoDiaCompleto, NO_MINORISTA, parseFecha, avanceSucursales, resumenZonas, zonaSugerida, bajoLaLupa } from '../sucursales.js';
 import { resumenSupervisores, mejorasSucursales, matrizSucursales, coberturaMatriz, mesAnioAnterior, mesPrevio as mesPrevioRep } from '../reportes.js';
 import { cierre } from './cierre.js';
 import { $, COLOR, DIA_CORTO, bar, compartirTexto, contarNumeros, currentView, descargarCsv, esFinde, esc, fechaDeMes, fmtM1, guardarPref, handleError, icono, imprimir, isAdmin, leerArchivo, leerPref, pluralDia, showMsg, showNotice, state, sumarDias, varHtml, wdDe } from './comun.js';
@@ -68,6 +68,12 @@ export function setupSucursales() {
   });
   $('suc-contenido').addEventListener('change', (e) => {
     const id = e.target.id;
+    if (id === 'lupa-piso') {
+      const m = Math.round(Number(e.target.value));
+      guardarPref('suc-piso', m > 0 ? String(m) : '');
+      renderSucursales();
+      return;
+    }
     if (id === 'cmp-a') suc.cmp.a = e.target.value || suc.cmp.a;
     else if (id === 'cmp-b') suc.cmp.b = e.target.value || suc.cmp.b;
     else if (id === 'cmp-wd') suc.cmp.wd = Number(e.target.value);
@@ -219,6 +225,18 @@ export function datosExportar(que) {
       ...grupos.map((g) => `- ${g.supervisor}: ${g.sucursales.length} suc. · ${g.verdes} en verde, ${g.amarillas} en amarillo, ${g.rojas} en rojo${g.pct === null ? '' : ` · proyecta ${fmtPct(g.pct)} del objetivo`}`)].join('\n');
     return { titulo: `Supervisores ${mesNombre}`, archivo: `supervisores-${mes}`, tabla, texto };
   }
+  if (que === 'lupa') {
+    const L = lupaDelMes();
+    const piso = fmtMillones(L.piso);
+    const mesesNombre = L.anteriores.map((m) => nombreMes(fechaDeMes(m)));
+    const tabla = [['Sucursal', 'Ciudad', 'Supervisor', L.cerrado ? 'Venta del mes' : `Vendido al ${fmtDiaMes(L.hasta)}`, 'Proyección al cierre', '% del piso', ...mesesNombre, 'Meses bajo el piso'],
+      ...L.proyectanBajo.map((f) => [f.sucursal, zonaDe(f.sucursal), suc.info.get(f.sucursal)?.supervisor || '', Math.round(f.vendido), Math.round(f.proyeccion), fmtPct(f.pctPiso),
+        ...f.historia.map((h) => (h.monto === null ? '' : Math.round(h.monto))), f.mesesConDato ? `${f.mesesBajo} de ${f.mesesConDato}` : 'sin historial'])];
+    const texto = [`Sucursales bajo la lupa · menos de ${piso} por mes · ${mesNombre}`,
+      `${L.proyectanBajo.length} de ${L.total} ${L.cerrado ? 'cerraron' : 'proyectan cerrar'} por debajo del piso.`, '',
+      ...L.proyectanBajo.map((f, i) => `${i + 1}. ${f.sucursal}: ${L.cerrado ? '' : `vendido ${fmtMillones(f.vendido)} · proyecta `}${fmtMillones(f.proyeccion)}${f.mesesConDato ? ` · ${f.mesesBajo} de ${f.mesesConDato} meses anteriores por debajo` : ''}`)].join('\n');
+    return { titulo: `Bajo la lupa ${mesNombre}`, archivo: `bajo-la-lupa-${mes}`, tabla, texto };
+  }
   if (que === 'comparar') return datosExportarComparacion();
   if (que === 'informe') {
     const info = suc.informe.datos?.informe;
@@ -300,7 +318,7 @@ export async function loadSucursales(mes) {
   }
 }
 
-export const SUBS_SUCURSALES = ['resumen', 'informe', 'ranking', 'matriz', 'supervisores', 'zonas', 'calor', 'comparar', 'alertas'];
+export const SUBS_SUCURSALES = ['resumen', 'informe', 'ranking', 'matriz', 'supervisores', 'zonas', 'calor', 'comparar', 'alertas', 'lupa'];
 
 // Abre una pestaña de Sucursales. agregarAlHistorial: deja una entrada para que "atrás" vuelva a la anterior.
 export function elegirSubSucursal(sub, agregarAlHistorial = true, pintar = true) {
@@ -359,6 +377,9 @@ export function renderSucursales() {
   const nAlertas = suc.alertas.sinVentaReciente.length + suc.alertas.caidas.length;
   $('suc-alertas-n').textContent = nAlertas;
   $('suc-alertas-n').hidden = nAlertas === 0;
+  const nLupa = lupaDelMes().proyectanBajo.length;
+  $('suc-lupa-n').textContent = nLupa;
+  $('suc-lupa-n').hidden = nLupa === 0;
   $('suc-subtabs').hidden = false;
   if (!SUBS_SUCURSALES.includes(suc.sub)) suc.sub = 'resumen';
   // La barra de direcciones refleja la pestaña abierta (#sucursales/ranking) para poder compartirla.
@@ -379,6 +400,7 @@ export function renderSucursales() {
   else if (suc.sub === 'comparar') { el.innerHTML = compararHtml(); renderComparacion(); }
   else if (suc.sub === 'informe') { el.innerHTML = informeHtml(); if (suc.informe.mes !== d.mes) cargarInforme(d.mes); }
   else if (suc.sub === 'alertas') el.innerHTML = alertasHtml();
+  else if (suc.sub === 'lupa') { el.innerHTML = lupaHtml(); if (!suc.mensual) cargarMensual(); }
   else el.innerHTML = resumenSucHtml();
   contarNumeros(el);
 }
@@ -675,6 +697,7 @@ export async function cargarMensual() {
     handleError(err);
   }
   if (suc.sub === 'matriz') $('suc-contenido').innerHTML = matrizHtml();
+  else if (suc.sub === 'lupa') { $('suc-contenido').innerHTML = lupaHtml(); contarNumeros($('suc-contenido')); }
 }
 
 export const CUADRANTES = {
@@ -896,6 +919,131 @@ export function alertasHtml() {
     </div>`;
 }
 
+// ---- Bajo la lupa: sucursales por debajo de un piso de venta por mes ----
+
+export const PISO_LUPA = 50e6;
+// El piso se elige en millones y queda guardado en este navegador.
+export const pisoLupa = () => {
+  const m = Number(leerPref('suc-piso', '')) || 0;
+  return m > 0 ? m * 1e6 : PISO_LUPA;
+};
+
+export function lupaDelMes() {
+  return bajoLaLupa(suc.res, {
+    piso: pisoLupa(), mes: suc.datos.mes, hasta: ultimoDiaCompleto(suc.res.dias).fecha,
+    pesos: pesosDelMes(suc.datos.mes), especiales: especialesDelMes(), cerradas: [...suc.cerradas.keys()],
+    nombres: [...suc.info.keys()], mensual: suc.mensual || {},
+  });
+}
+
+// "3 de 3 meses" por debajo del piso: la que nunca lo pasa es la que hay que evaluar.
+const historiaLupa = (f, piso) => {
+  if (!f.historia.length) return '<span class="muted small">—</span>';
+  const meses = f.historia.map((h) => `<span class="lupa-mes${h.monto !== null && h.monto < piso ? ' bajo' : ''}" title="${nombreMes(fechaDeMes(h.mes))}: ${h.monto === null ? 'sin dato' : fmtMillones(h.monto)}">${h.monto === null ? '—' : fmtM1(h.monto)}</span>`).join('');
+  return `<span class="lupa-meses">${meses}</span>`;
+};
+const chipLupa = (f) => {
+  if (!f.mesesConDato) return '<span class="chip">Sin historial</span>';
+  const todos = f.mesesBajo === f.mesesConDato;
+  return `<span class="chip ${todos ? 'risk' : f.mesesBajo ? 'warn' : 'ok'}" title="Meses anteriores por debajo del piso">${f.mesesBajo} de ${f.mesesConDato}</span>`;
+};
+
+export function lupaHtml() {
+  const L = lupaDelMes();
+  const piso = L.piso;
+  const pisoTxt = fmtMillones(piso);
+  const info = (n) => [zonaDe(n), suc.info.get(n)?.supervisor].filter(Boolean).map(esc).join(' · ');
+  const nuevaEnElMes = (f) => f.primeraVenta && Number(f.primeraVenta.slice(8)) > 3 && !f.mesesConDato;
+  const cargandoHist = !suc.mensual;
+  const siempre = L.proyectanBajo.filter((f) => f.mesesConDato >= 2 && f.mesesBajo === f.mesesConDato);
+  const sumaBajo = L.proyectanBajo.reduce((t, f) => t + f.vendido, 0);
+  const pocosDias = !L.cerrado && L.hasta && Number(L.hasta.slice(8)) < 7;
+  const mesesTxt = L.anteriores.length ? `${L.anteriores.length === 1 ? 'el mes anterior' : `los ${L.anteriores.length} meses anteriores`}` : 'los meses anteriores';
+
+  const conDetalle = new Set(suc.res.sucursales.map((s) => s.sucursal));
+  const filas = L.proyectanBajo.map((f) => `
+    <tr${conDetalle.has(f.sucursal) ? ` data-suc="${esc(f.sucursal)}" class="suc-row" tabindex="0"` : ''}>
+      <td><b>${esc(f.sucursal)}</b>${nuevaEnElMes(f) ? ` <span class="chip" title="Primera venta del mes el ${fmtFecha(f.primeraVenta)}: si abrió este mes, la proyección la subestima">Desde el ${fmtDiaMes(f.primeraVenta)}</span>` : ''}${info(f.sucursal) ? `<small class="muted lupa-info opc">${info(f.sucursal)}</small>` : ''}</td>
+      <td class="r">${f.vendido ? fmtMillones(f.vendido) : '<span class="muted">Sin venta</span>'}</td>
+      ${L.cerrado ? '' : `<td class="r"><b>${fmtMillones(f.proyeccion)}</b></td>`}
+      <td class="r opc"><span class="chip ${f.pctPiso < 0.6 ? 'risk' : 'warn'}">${fmtPct(f.pctPiso)}</span></td>
+      <td class="r opc">${cargandoHist ? '<span class="muted small">…</span>' : historiaLupa(f, piso)}</td>
+      <td class="r">${cargandoHist ? '' : chipLupa(f)}</td>
+    </tr>`).join('');
+  const columnas = L.cerrado ? 5 : 6;
+  const tabla = `
+    <div class="table-wrap">
+      <table class="suc-tabla lupa-tabla">
+        <thead><tr>
+          <th>Sucursal</th>
+          <th class="r" title="Lo vendido hasta el último día completo">${L.cerrado ? 'Venta del mes' : `Vendido al ${fmtDiaMes(L.hasta)}`}</th>
+          ${L.cerrado ? '' : '<th class="r" title="Si sigue al mismo ritmo, según el peso de cada día de la semana">Proyección al cierre</th>'}
+          <th class="r opc" title="${L.cerrado ? 'Venta del mes' : 'Proyección'} sobre el piso">% del piso</th>
+          <th class="r opc" title="Venta de cada uno de ${mesesTxt}, en millones">${L.anteriores.length ? L.anteriores.map((m) => nombreMes(fechaDeMes(m)).slice(0, 3)).join(' · ') : 'Meses anteriores'}</th>
+          <th class="r" title="Cuántos de ${mesesTxt} cerró por debajo del piso">Meses bajo el piso</th>
+        </tr></thead>
+        <tbody>${filas || `<tr><td colspan="${columnas}" class="muted">Ninguna sucursal ${L.cerrado ? 'cerró' : 'proyecta cerrar'} por debajo de ${pisoTxt}.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+
+  const casi = L.soloAcumulado.length && !L.cerrado ? `
+    <details class="card zona lupa-casi">
+      <summary>
+        <span class="zona-nombre">Todavía por debajo en lo vendido, pero proyectan pasar el piso<small class="muted">Lo vendido al ${fmtDiaMes(L.hasta)} no llega a ${pisoTxt}; al ritmo que van, lo pasan a fin de mes.</small></span>
+        <span class="chip warn">${L.soloAcumulado.length}</span>
+      </summary>
+      <div class="table-wrap">
+        <table class="suc-tabla">
+          <thead><tr><th>Sucursal</th><th class="r">Vendido</th><th class="r">Proyección</th><th class="r" title="Lo que le falta vender para llegar al piso">Falta para el piso</th></tr></thead>
+          <tbody>${L.soloAcumulado.map((f) => `
+            <tr data-suc="${esc(f.sucursal)}" class="suc-row" tabindex="0">
+              <td><b>${esc(f.sucursal)}</b></td><td class="r">${fmtMillones(f.vendido)}</td><td class="r">${fmtMillones(f.proyeccion)}</td><td class="r">${fmtMillones(f.falta)}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </details>` : '';
+
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Bajo la lupa</h2>
+          <p class="muted small" style="margin:4px 0 0">Sucursales que ${L.cerrado ? 'cerraron el mes' : 'van a cerrar el mes'} por debajo de <b>${pisoTxt}</b>, sin importar su objetivo. ${L.cerrado ? '' : `Se mira lo vendido hasta el ${fmtFecha(L.hasta)} (último día completo) y la proyección al cierre si siguen al mismo ritmo, según el peso de cada día de la semana. `}Las que quedan por debajo también en ${mesesTxt} son las que conviene evaluar si siguen abiertas.</p>
+        </div>
+        <div class="lupa-controles">
+          <label class="lupa-piso" for="lupa-piso">Piso por mes
+            <span><input type="number" id="lupa-piso" min="1" step="1" inputmode="numeric" value="${Math.round(piso / 1e6)}"> millones</span>
+          </label>
+          ${exportarHtml('lupa')}
+        </div>
+      </div>
+      ${pocosDias ? `<p class="nota">Con pocos días cargados la proyección todavía se mueve bastante: tomala como una primera señal.</p>` : ''}
+    </div>
+    <div class="kpis">
+      <div class="card kpi" style="--acento:#EF4444">
+        <div class="kpi-top">${icono('tienda')}<span class="kpi-label">${L.cerrado ? 'Cerraron' : 'Proyectan cerrar'} por debajo</span></div>
+        <span class="kpi-value" data-contar>${L.proyectanBajo.length}</span>
+        <span class="kpi-sub">de ${L.total} sucursales abiertas</span>
+      </div>
+      <div class="card kpi" style="--acento:#F59E0B">
+        <div class="kpi-top">${icono('calendario')}<span class="kpi-label">También por debajo antes</span></div>
+        <span class="kpi-value"${cargandoHist ? '' : ' data-contar'}>${cargandoHist ? '…' : siempre.length}</span>
+        <span class="kpi-sub">${cargandoHist ? 'Cargando el historial…' : `Por debajo en ${mesesTxt} (con al menos 2 meses de dato)`}</span>
+      </div>
+      <div class="card kpi" style="--acento:var(--c-min)">
+        <div class="kpi-top">${icono('venta')}<span class="kpi-label">Lo que venden entre todas</span></div>
+        <span class="kpi-value" data-contar>${fmtMillones(sumaBajo)}</span>
+        <span class="kpi-sub">${fmtPct(sumaBajo / (suc.res.total || 1))} de la venta Minorista del mes</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">${L.cerrado ? 'Cerraron el mes' : 'Proyectan cerrar el mes'} por debajo de ${pisoTxt}</h3>
+      <p class="muted small" style="margin:4px 0 10px">De la que menos a la que más vende. Tocá una para ver su detalle día por día.</p>
+      ${tabla}
+    </div>
+    ${casi}`;
+}
+
 // ---- Panel de detalle de una sucursal ----
 
 export function abrirPanel(nombre) {
@@ -926,6 +1074,8 @@ export function abrirPanel(nombre) {
   if (caida) marcas.push(`<span class="chip warn">Vende menos: ${fmtVar(caida.variacion)}</span>`);
   const sube = a.crecen.find((x) => x.sucursal === nombre);
   if (sube) marcas.push(`<span class="chip ok">Creciendo: ${fmtVar(sube.variacion)}</span>`);
+  const lupa = cierre ? null : lupaDelMes().proyectanBajo.find((x) => x.sucursal === nombre);
+  if (lupa) marcas.push(`<span class="chip risk" title="Ver la pestaña Bajo la lupa">Bajo la lupa: ${lupa.proyeccion === lupa.vendido ? 'vendió' : 'proyecta'} ${fmtMillones(lupa.proyeccion)}, menos de ${fmtMillones(pisoLupa())}</span>`);
 
   const info = suc.info.get(nombre);
   const av = suc.avance.get(nombre);

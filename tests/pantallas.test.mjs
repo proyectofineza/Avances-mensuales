@@ -12,7 +12,7 @@ if (!chromePath) {
   process.exit(0);
 }
 
-const SUBS = ['resumen', 'informe', 'ranking', 'matriz', 'supervisores', 'zonas', 'calor', 'comparar', 'alertas'];
+const SUBS = ['resumen', 'informe', 'ranking', 'matriz', 'supervisores', 'zonas', 'calor', 'comparar', 'alertas', 'lupa'];
 const servidor = await arrancarServidor();
 const chrome = await abrirChrome(chromePath);
 const fallas = [];
@@ -83,6 +83,21 @@ try {
     assert.match(await textoDe(admin, '#suc-panel-body'), /Venta del mes/);
     await admin.tecla('Escape');
     assert.equal(await visible(admin, '#suc-panel'), false, 'Esc no cerró el panel');
+  });
+  await prueba(admin, 'admin · bajo la lupa: piso, historial y panel', async () => {
+    await irA(admin, '#sucursales/lupa');
+    assert.match(await textoDe(admin, '#suc-contenido'), /Ninguna sucursal proyecta cerrar por debajo de Gs\. 50 M/); // los datos de prueba venden más
+    await admin.eval(`(() => { const i = document.getElementById('lupa-piso'); i.value = '150'; i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await admin.quieta();
+    const n = await admin.eval(`document.querySelectorAll('.lupa-tabla tbody tr[data-suc]').length`);
+    assert.ok(n > 0, 'con un piso de 150 M debería haber sucursales');
+    assert.equal(await textoDe(admin, '#suc-lupa-n'), String(n), 'el número de la pestaña no coincide');
+    assert.match(await textoDe(admin, '.lupa-tabla thead'), /\p{L}{3} · \p{L}{3} · \p{L}{3}/iu, 'faltan los 3 meses anteriores');
+    await admin.eval(`document.querySelector('.lupa-tabla tbody tr[data-suc]').click()`);
+    await admin.quieta();
+    assert.match(await textoDe(admin, '#suc-panel-body'), /Bajo la lupa: proyecta Gs\. \d+ M, menos de Gs\. 150 M/);
+    await admin.tecla('Escape');
+    await admin.eval(`localStorage.removeItem('suc-piso')`);
   });
   await prueba(admin, 'admin · botón Administrar', async () => {
     assert.equal(await visible(admin, '#suc-carga'), false, 'las cajas de administración deberían empezar ocultas');
@@ -172,7 +187,7 @@ try {
     assert.deepEqual(await barraInferior(admin), ['Inicio', 'Sucursales', 'Cargar', 'Cierre', 'Más']);
     assert.equal(await textoDe(admin, '#tab-badge-inf'), '1', 'falta el aviso de la solicitud pendiente sobre "Más"');
   });
-  for (const hash of ['#dashboard', '#sucursales/ranking', '#sucursales/matriz', '#sucursales/calor', '#cierre', '#anual', '#ventas', '#objetivos', '#usuarios']) {
+  for (const hash of ['#dashboard', '#sucursales/ranking', '#sucursales/matriz', '#sucursales/calor', '#sucursales/lupa', '#cierre', '#anual', '#ventas', '#objetivos', '#usuarios']) {
     await prueba(admin, `admin celular · ${hash} entra a lo ancho`, async () => {
       await irA(admin, hash);
       assert.ok(await anchoSobra(admin) <= 1, `la página se sale ${await anchoSobra(admin)} px de ancho`);

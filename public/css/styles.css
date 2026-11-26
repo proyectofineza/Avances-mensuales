@@ -941,6 +941,25 @@ textarea {
 .alerta-lista li:hover { transform: translateX(3px); }
 .alerta-lista small { color: var(--text-2); font-weight: 500; white-space: nowrap; }
 
+/* Bajo la lupa: sucursales por debajo del piso de venta por mes */
+.lupa-controles { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.lupa-piso { display: grid; gap: 4px; font-size: 12px; color: var(--text-2); margin: 0; }
+.lupa-piso span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.lupa-piso input { width: 84px; padding: 6px 8px; }
+.lupa-info { display: block; font-weight: 500; }
+.lupa-meses { display: inline-flex; gap: 4px; }
+.lupa-mes { min-width: 42px; padding: 2px 6px; border-radius: 8px; background: var(--vidrio-2); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+.lupa-mes.bajo { color: var(--neg); font-weight: 700; }
+.lupa-tabla td { vertical-align: middle; }
+.lupa-tabla td.r, .lupa-casi td.r { white-space: nowrap; }
+@media (max-width: 600px) {
+  .lupa-tabla th { font-size: 10px; }
+  .lupa-tabla td, .lupa-casi td { padding-left: 6px; padding-right: 6px; font-size: 13px; }
+  .suc-tabla.lupa-tabla td:first-child { word-break: normal; overflow-wrap: normal; }
+}
+.lupa-casi { margin-top: 16px; }
+.lupa-casi .table-wrap { padding: 0 16px 12px; }
+
 /* Ranking: filtros y exportar */
 .rank-filtros { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 14px; }
 .rank-filtros select { width: auto; min-width: 170px; }
