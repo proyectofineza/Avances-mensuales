@@ -449,7 +449,8 @@ export function avanceSucursales(res, objetivos, hasta, pesos = PESOS_MINORISTA,
 // ---- Bajo la lupa: sucursales que venden menos de un piso fijo por mes ----
 // Lo vendido hasta el último día completo (`hasta`) y la proyección al cierre (ponderada por día de la semana)
 // contra un piso en guaraníes, sin importar el objetivo. Las cerradas no cuentan.
-// nombres: las del listado maestro, para incluir las que no vendieron nada en el mes.
+// nombres: las del listado maestro, para incluir las que no vendieron nada en el mes pero sí el mes anterior
+// (las que tampoco vendieron el mes anterior se toman como cerradas aunque no estén marcadas).
 // mensual: { 'AAAA-MM': { SUC: monto } }; se miran los `meses` anteriores a `mes`.
 export function bajoLaLupa(res, { piso = 50e6, hasta, mes, pesos = PESOS_MINORISTA, especiales = [], cerradas = [], nombres = [], mensual = {}, meses = 3, excluir = NO_MINORISTA } = {}) {
   const fuera = new Set([...cerradas, ...excluir]);
@@ -462,9 +463,12 @@ export function bajoLaLupa(res, { piso = 50e6, hasta, mes, pesos = PESOS_MINORIS
       return d.toISOString().slice(0, 7);
     }).filter((m) => Object.keys(mensual || {}).some((k) => k <= m)) // desde el primer mes con historial
     : [];
+  const anterior = mes ? new Date(Date.UTC(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7) : null;
   const filas = [];
   for (const sucursal of new Set([...porNombre.keys(), ...nombres])) {
     if (!sucursal || fuera.has(sucursal)) continue;
+    // Del listado sin venta en el mes: solo si vendió el mes anterior (si no, ya no está abierta).
+    if (!porNombre.has(sucursal) && !(mensual?.[anterior]?.[sucursal] > 0)) continue;
     const dias = Object.entries(porNombre.get(sucursal)?.dias || {}).filter(([f, v]) => hasta && f <= hasta && v > 0);
     const vendido = dias.reduce((a, [, v]) => a + v, 0);
     const proyeccion = frac > 0 ? vendido / frac : vendido;

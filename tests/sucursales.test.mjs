@@ -257,11 +257,11 @@ assert.equal(resCierre.total, 3200); // lo vendido antes del cierre sigue contan
   const frac = fraccionPonderada('2026-10-15');
   const mensual = {
     '2026-07': { CHICA: 40e6 },
-    '2026-08': { CHICA: 45e6, MEDIA: 70e6 },
-    '2026-09': { CHICA: 48e6, MEDIA: 49e6, GRANDE: 300e6 },
+    '2026-09': { CHICA: 48e6, MEDIA: 49e6, GRANDE: 300e6, NUEVA: 20e6 },
+    '2026-08': { CHICA: 45e6, MEDIA: 70e6, VIEJA: 30e6 }, // VIEJA dejó de vender hace meses: no aparece
     '2026-10': { CHICA: 1 }, // el mes que se mira no es "anterior"
   };
-  const L = bajoLaLupa(res, { hasta: '2026-10-15', mes: '2026-10', cerradas: ['CERRADA'], nombres: ['NUEVA', 'CHICA'], mensual });
+  const L = bajoLaLupa(res, { hasta: '2026-10-15', mes: '2026-10', cerradas: ['CERRADA'], nombres: ['NUEVA', 'CHICA', 'VIEJA'], mensual });
   assert.equal(L.piso, 50e6);
   assert.deepEqual(L.anteriores, ['2026-07', '2026-08', '2026-09']);
   assert.deepEqual(L.proyectanBajo.map((f) => f.sucursal), ['NUEVA', 'CHICA']); // NUEVA: del listado, sin venta
@@ -273,8 +273,10 @@ assert.equal(resCierre.total, 3200); // lo vendido antes del cierre sigue contan
   assert.equal(chica.mesesConDato, 3);
   assert.equal(chica.primeraVenta, '2026-10-01');
   assert.equal(L.proyectanBajo[0].vendido, 0);
-  assert.equal(L.proyectanBajo[0].mesesConDato, 0);
+  assert.equal(L.proyectanBajo[0].mesesConDato, 1);
   assert.deepEqual(L.soloAcumulado.map((f) => [f.sucursal, f.mesesBajo, f.mesesConDato]), [['MEDIA', 1, 2]]);
+  // Sin historial cargado no se sabe si vendían: las del listado sin venta en el mes no aparecen.
+  assert.equal(bajoLaLupa(res, { hasta: '2026-10-15', mes: '2026-10', nombres: ['NUEVA'] }).proyectanBajo.some((f) => f.sucursal === 'NUEVA'), false);
   assert.equal(L.total, 4); // CHICA, MEDIA, GRANDE, NUEVA (sin la cerrada ni CENTRAL)
   assert.equal(L.cerrado, false);
   // Mes terminado: la proyección es lo vendido.
