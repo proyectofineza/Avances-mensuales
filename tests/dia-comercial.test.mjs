@@ -108,6 +108,16 @@ assert.deepEqual(o.horas['2026-10-31']['LUQUE 1'], { 40: 120 });
 o = fusionarMes(o, [{ sucursal: 'LUQUE 1', fecha: '2026-10-31', monto: 200 }], { ultimaFecha: '2026-11-01', horas: { '2026-10-31': {} }, comercial: true });
 assert.equal(tot(o, '2026-10-31'), 200);
 assert.equal(o.madrugada['2026-10-31'], undefined);
+// Carga por día: un archivo de varios días (trae la madrugada adentro) y después solo el día siguiente,
+// que vuelve a traer esa madrugada: se reemplaza, no se suma dos veces.
+let d = fusionarMes({ filas: [] }, [{ sucursal: 'A', fecha: '2026-11-06', monto: 130 }, { sucursal: 'A', fecha: '2026-11-07', monto: 50 }],
+  { ultimaFecha: '2026-11-07', horas: { '2026-11-06': { A: { 34: 100, 49: 30 } }, '2026-11-07': { A: { 30: 50 } } }, comercial: true });
+assert.deepEqual(d.madrugada['2026-11-06'], { A: 30 });
+d = fusionarMes(d, [{ sucursal: 'A', fecha: '2026-11-06', monto: 35 }, { sucursal: 'A', fecha: '2026-11-07', monto: 80 }],
+  { anteriores: ['2026-11-06'], ultimaFecha: '2026-11-07', horas: { '2026-11-06': { A: { 49: 35 } }, '2026-11-07': { A: { 30: 80 } } }, comercial: true });
+assert.equal(tot(d, '2026-11-06', 'A'), 135);
+assert.equal(tot(d, '2026-11-07', 'A'), 80);
+assert.deepEqual(d.horas['2026-11-06'].A, { 34: 100, 49: 35 });
 // Carga sin hora (planilla diaria): reemplaza como siempre y saca el día de los comerciales.
 o = fusionarMes(o, [{ sucursal: 'LUQUE 1', fecha: '2026-10-31', monto: 210 }], {});
 assert.equal(tot(o, '2026-10-31'), 210);
