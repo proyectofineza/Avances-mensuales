@@ -45,7 +45,8 @@ public/js/app.js     entrada: sesión, menú y ruteo por hash (#vista o #vista/p
 public/js/vistas/    un módulo por vista (ventas, usuarios, dashboard, sucursales, suc-admin,
                      suc-analisis, cierre, objetivos, anual), buscador.js (Ctrl+K: buscar sucursal)
                      y comun.js (utilidades compartidas)
-tests/               pruebas de calc.js
+tests/               pruebas de cálculo (npm test) y de pantallas con Chrome sin ventana
+                     (npm run test:pantallas; tests/pantallas/ tiene el servidor de prueba)
 ```
 
 ## Decisiones no especificadas

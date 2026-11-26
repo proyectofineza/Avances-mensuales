@@ -1,8 +1,8 @@
 // Vista "Comparativo anual": el año en curso resaltado contra los dos anteriores, mes a mes o
 // acumulado, con la variación de cada mes contra el año anterior y una tabla de calor por unidad.
 import * as API from '../api.js';
-import { estado, fmtMillones, fmtMiles, fmtVar, fmtFecha, nombreMes, hoyAsuncion } from '../calc.js';
-import { VISTAS_UNIDAD, resumenAnual, tablaVariaciones, faltaParaIgualar } from '../anual.js';
+import { estado, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, nombreMes, hoyAsuncion } from '../calc.js';
+import { VISTAS_UNIDAD, resumenAnual, tablaVariaciones, faltaParaIgualar, metaAnual } from '../anual.js';
 import { leerPlanillaMensual } from '../objetivos.js';
 import { $, MES_CORTO, MES_LARGO, compartirTexto, contarNumeros, currentView, esc, guardarPref, handleError, icono, imprimir, isAdmin, leerPref, showMsg, tono } from './comun.js';
 
@@ -20,8 +20,12 @@ export function setupAnual() {
     const v = e.target.closest('[data-anual-ver]');
     if (v) { anual.ver = v.dataset.anualVer; guardarPref('anual-ver', anual.ver); renderAnual(); return; }
     const exp = e.target.closest('[data-anual-exp]');
-    if (exp) exportarAnual(exp.dataset.anualExp);
+    if (exp) { exportarAnual(exp.dataset.anualExp); return; }
+    const ma = e.target.closest('[data-meta-anio]');
+    if (ma) { anual.metaAnio = Number(ma.dataset.metaAnio); guardarPref('anual-meta-anio', String(anual.metaAnio)); renderAnual(); return; }
+    if (e.target.closest('[data-meta-guardar]')) guardarMetaAnual();
   });
+  el.addEventListener('keydown', (e) => { if (e.target.id === 'meta-crec' && e.key === 'Enter') guardarMetaAnual(); });
   // Detalle de un mes al pasar el mouse o tocar el gráfico.
   const mostrar = (e) => {
     const hit = e.target.closest('.an-hit');
@@ -56,7 +60,8 @@ export function renderAnual() {
   const r = d ? resumenAnual(d.meses, d.enCurso, anual.u) : null;
   if (!r || !r.n) {
     $('anual-sub').textContent = '';
-    el.innerHTML = `<div class="card empty">Todavía no hay meses cerrados para comparar.${isAdmin() ? ' Cargalos abajo, en Cargar meses cerrados.' : ''}</div>`;
+    // En enero todavía no hay meses cerrados del año, pero el objetivo anual ya se puede ver.
+    el.innerHTML = `<div class="card empty">Todavía no hay meses cerrados ${r ? `de ${r.anio} ` : ''}para comparar.${isAdmin() ? ' Cargalos abajo, en Cargar meses cerrados.' : ''}</div>${d ? metaAnualHtml(d) : ''}`;
     if (isAdmin()) $('anual-carga').open = true;
     return;
   }
@@ -119,6 +124,7 @@ export function renderAnual() {
       <h3 class="an-sub">Cada mes contra el mismo mes de ${Y - 1}</h3>
       ${barrasAnualHtml(r)}
     </div>
+    ${metaAnualHtml(d)}
     ${faltaAnualHtml(d, Y, r.n)}
     ${calorAnualHtml(d.meses, Y, r.n)}
     <div class="an-exportar">
@@ -296,6 +302,97 @@ export function calorAnualHtml(meses, Y, n) {
         </table>
       </div>
     </div>`;
+}
+
+// ---- Objetivo anual: año anterior × (1 + crecimiento) ----
+// Se elige entre el año en curso y el que viene (desde octubre arranca mostrando el que viene, para planificarlo).
+const CRECIMIENTO_SUGERIDO = 0.1;
+const aniosMeta = () => { const a = Number(hoyAsuncion().slice(0, 4)); return [a, a + 1]; };
+function anioMetaElegido() {
+  const [a, b] = aniosMeta();
+  const pref = Number(anual.metaAnio || leerPref('anual-meta-anio', ''));
+  if (pref === a || pref === b) return pref;
+  return Number(hoyAsuncion().slice(5, 7)) >= 10 ? b : a;
+}
+const crecimientoDe = (d, anio) => d.metas?.[anio]?.crecimiento ?? CRECIMIENTO_SUGERIDO;
+const pctTexto = (v) => `${v >= 0 ? '+' : '−'}${String(Math.round(Math.abs(v) * 1000) / 10).replace('.', ',')}%`;
+
+export function metaAnualHtml(d) {
+  const anio = anioMetaElegido();
+  const guardada = d.metas?.[anio];
+  const c = crecimientoDe(d, anio);
+  const filas = metaAnual(d.meses, d.enCurso, anio, c);
+  const mill = (v) => fmtMiles(v / 1e6);
+  const enCurso = filas.some((f) => f.vendido !== null);
+  const estimado = filas.some((f) => f.estimado);
+  const n = filas.find((f) => f.n)?.n || 0;
+  const botones = aniosMeta().map((a) => `<button type="button" data-meta-anio="${a}" class="${a === anio ? 'active' : ''}">${a}</button>`).join('');
+  const estadoGuardado = guardada
+    ? `Guardado el ${fmtFecha(guardada.actualizado.slice(0, 10))} por ${esc(guardada.por)}.`
+    : `<span class="chip warn">Sin confirmar</span> ${pctTexto(CRECIMIENTO_SUGERIDO)} es el sugerido: ${isAdmin() ? 'cambialo si hace falta y guardalo.' : 'todavía no lo confirmó el administrador.'}`;
+  const control = isAdmin()
+    ? `<div class="meta-crec">
+        <label for="meta-crec" class="small">Crecer sobre ${anio - 1}</label>
+        <div><input type="text" inputmode="decimal" id="meta-crec" value="${String(Math.round(c * 1000) / 10).replace('.', ',')}" aria-label="Crecimiento en porcentaje"><span>%</span>
+        <button class="btn btn-sm" type="button" data-meta-guardar>Guardar</button></div>
+        <p class="muted small">${estadoGuardado}</p>
+        <div class="alert form-msg" id="meta-msg" hidden></div>
+      </div>`
+    : `<p class="muted small" style="margin:0 0 12px">${guardada ? '' : estadoGuardado}</p>`;
+  const tabla = !filas.length
+    ? `<p class="muted" style="margin:8px 0 0">Para calcular el objetivo ${anio} hace falta ${anio - 1} completo (o hasta el mes en curso, para estimar lo que falta). Cargá los meses cerrados abajo.</p>`
+    : `<div class="table-wrap">
+        <table class="suc-tabla an-falta-tabla">
+          <thead><tr><th>Unidad</th><th class="r opc">${anio - 1}${estimado ? '*' : ''}</th><th class="r">Objetivo ${anio}</th>
+            ${enCurso
+              ? `<th class="r">Vendido</th><th class="r opc">Objetivo a la fecha</th><th class="r">Cumplido</th><th class="r opc">Proyección</th><th class="opc"></th>`
+              : '<th class="r">Por mes</th><th class="r opc">Enero</th>'}</tr></thead>
+          <tbody>${filas.map((f) => `
+            <tr class="${f.id === 'min' || f.id === 'may' ? 'sub' : ''}${f.id === anual.u ? ' act' : ''}">
+              <td><button type="button" class="btn-link" data-anual-u="${f.id}">${esc(f.nombre)}</button></td>
+              <td class="r opc">${mill(f.base)}</td>
+              <td class="r"><b>${mill(f.meta)}</b></td>
+              ${enCurso
+                ? `<td class="r">${f.vendido === null ? '—' : mill(f.vendido)}</td>
+                   <td class="r opc">${f.vendido === null ? '—' : mill(f.metaALaFecha)}</td>
+                   <td class="r ${f.cumplido === null ? '' : f.cumplido >= 1 ? 'var-pos' : 'var-neg'}">${f.cumplido === null ? '—' : fmtPct(f.cumplido)}</td>
+                   <td class="r opc">${f.proyeccion === null ? '—' : mill(f.proyeccion)}</td>
+                   <td class="opc">${f.proyeccionPct === null ? '' : `<span class="chip ${estado(f.proyeccionPct).clase}" title="Proyección del año / objetivo">${fmtPct(f.proyeccionPct)}</span>`}</td>`
+                : `<td class="r">${mill(f.meta / 12)}</td><td class="r opc">${mill(f.metaMes[0])}</td>`}
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <p class="nota" style="margin:10px 0 0">${enCurso
+        ? `Vendido y objetivo a la fecha: enero a ${MES_LARGO[n - 1]}. El objetivo de cada mes es el mismo mes de ${anio - 1} ${pctTexto(c)}; "Cumplido" compara lo vendido contra el objetivo de esos meses. La proyección es la del gráfico de arriba.`
+        : `"Por mes" es el promedio; cada mes tiene su objetivo: el mismo mes de ${anio - 1} ${pctTexto(c)} (por ejemplo, enero).`}
+        ${estimado ? ` *${anio - 1} todavía no cerró: ${filas.find((f) => f.estimado)?.mesesEstimados.map((m) => MES_LARGO[m - 1]).join(' y ')} salen de la proyección (lo publicado del mes en curso y la tendencia), así que el objetivo es estimado hasta que cierre el año.` : ''}
+        En millones de Gs.</p>`;
+  return `
+    <div class="card an-falta an-meta">
+      <div class="card-head" style="margin-bottom:8px">
+        <div>
+          <h2>Objetivo anual ${anio}</h2>
+          <p class="muted small" style="margin:4px 0 0">${anio - 1}${estimado ? ' (estimado)' : ''} ${pctTexto(c)}, por unidad.</p>
+        </div>
+        <div class="seg-btns" role="group" aria-label="Año del objetivo">${botones}</div>
+      </div>
+      ${control}
+      ${tabla}
+    </div>`;
+}
+
+async function guardarMetaAnual() {
+  const anio = anioMetaElegido();
+  const v = Number(String($('meta-crec').value).replace(',', '.').replace(/[^\d.-]/g, ''));
+  if (!Number.isFinite(v)) { showMsg($('meta-msg'), 'Escribí el porcentaje, por ejemplo 10.', false); return; }
+  try {
+    const r = await API.guardarMetaAnual(anio, v / 100);
+    anual.datos.metas = r.metas;
+    renderAnual();
+    showMsg($('meta-msg'), `Objetivo ${anio} guardado: ${anio - 1} ${pctTexto(v / 100)}.`, true);
+  } catch (err) {
+    handleError(err, $('meta-msg'));
+  }
 }
 
 // Qué falta para igualar el año anterior completo, por unidad, y si la proyección alcanza.

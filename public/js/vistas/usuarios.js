@@ -1,11 +1,21 @@
 // Vista "Usuarios" (admin): altas, solicitudes, PIN y conexión.
 import * as API from '../api.js';
-import { fmtFechaHora, fmtCI } from '../calc.js';
+import { fmtFechaHora, fmtCI, hoyAsuncion } from '../calc.js';
 import { $, ROL_TEXTO, esc, handleError, showMsg, state } from './comun.js';
 
 // ---------- Usuarios ----------
 
 export let resetCi = null;
+// Usuario al que se le está eligiendo supervisor, y los supervisores del listado de sucursales (para sugerir).
+let supCi = null;
+let supervisoresConocidos = null;
+async function cargarSupervisores() {
+  if (supervisoresConocidos) return;
+  try {
+    const cfg = await API.getSucursalesConfig(hoyAsuncion().slice(0, 7));
+    supervisoresConocidos = [...new Set((cfg.maestro?.filas || []).map((m) => m.supervisor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  } catch { supervisoresConocidos = []; }
+}
 
 export function setupUsuarios() {
   for (const id of ['alta-ci', 'alta-pin']) {
@@ -40,8 +50,9 @@ export function setupUsuarios() {
     const accion = btn.dataset.accion;
     const msgEl = $('users-msg');
 
-    if (accion === 'reset') { resetCi = ci; renderUsers(); $('reset-pin')?.focus(); return; }
-    if (accion === 'cancelar') { resetCi = null; renderUsers(); return; }
+    if (accion === 'reset') { resetCi = ci; supCi = null; renderUsers(); $('reset-pin')?.focus(); return; }
+    if (accion === 'supervisor') { supCi = ci; resetCi = null; await cargarSupervisores(); renderUsers(); $('sup-input')?.focus(); return; }
+    if (accion === 'cancelar') { resetCi = null; supCi = null; renderUsers(); return; }
     if (accion === 'eliminar' && !confirm(`¿Eliminar a ${btn.dataset.nombre}? Esta acción no se puede deshacer: para volver a darle acceso habría que crearlo de nuevo.`)) return;
 
     btn.disabled = true;
@@ -52,6 +63,9 @@ export function setupUsuarios() {
         if (!/^\d{4,6}$/.test(pin)) { showMsg(msgEl, 'El PIN debe tener de 4 a 6 dígitos.', false); btn.disabled = false; return; }
         res = await API.updateUser(ci, { pin });
         resetCi = null;
+      } else if (accion === 'guardar-sup' || accion === 'quitar-sup') {
+        res = await API.updateUser(ci, { supervisor: accion === 'quitar-sup' ? '' : $('sup-input').value });
+        supCi = null;
       } else if (accion === 'eliminar') {
         res = await API.eliminarUsuario(ci);
       } else {
@@ -90,6 +104,7 @@ export function setupUsuarios() {
   });
   $('users-body').addEventListener('keydown', (e) => {
     if (e.target.id === 'reset-pin' && e.key === 'Enter') document.querySelector('[data-accion="guardar-pin"]')?.click();
+    if (e.target.id === 'sup-input' && e.key === 'Enter') document.querySelector('[data-accion="guardar-sup"]')?.click();
   });
 }
 
@@ -170,6 +185,16 @@ export function renderUsers() {
           <button class="btn btn-primary btn-sm" data-accion="guardar-pin" data-ci="${esc(u.ci)}">Guardar</button>
           <button class="btn btn-sm" data-accion="cancelar" data-ci="${esc(u.ci)}">Cancelar</button>
         </div>`;
+    } else if (supCi === u.ci) {
+      // Supervisor: el nombre como figura en el listado de sucursales (columna supervisor).
+      acciones = `
+        <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
+          <input id="sup-input" list="sup-lista" value="${esc(u.supervisor || '')}" maxlength="60" placeholder="Supervisor del listado" style="width:200px;height:36px" autocomplete="off" aria-label="Supervisor de sucursales">
+          <datalist id="sup-lista">${(supervisoresConocidos || []).map((s) => `<option value="${esc(s)}">`).join('')}</datalist>
+          <button class="btn btn-primary btn-sm" data-accion="guardar-sup" data-ci="${esc(u.ci)}">Guardar</button>
+          ${u.supervisor ? `<button class="btn btn-sm" data-accion="quitar-sup" data-ci="${esc(u.ci)}">Quitar</button>` : ''}
+          <button class="btn btn-sm" data-accion="cancelar" data-ci="${esc(u.ci)}">Cancelar</button>
+        </div>`;
     } else {
       const toggle = u.ci === state.user.ci
         ? '<span class="muted small">Sesión actual</span>'
@@ -178,6 +203,7 @@ export function renderUsers() {
       acciones = `
         <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
           <button class="btn btn-sm" data-accion="reset" data-ci="${esc(u.ci)}">Restablecer PIN</button>
+          <button class="btn btn-sm" data-accion="supervisor" data-ci="${esc(u.ci)}" title="Marcarlo como supervisor de sucursales: al entrar ve primero las suyas">Supervisor</button>
           ${toggle}
         </div>`;
     }
@@ -185,7 +211,7 @@ export function renderUsers() {
       <tr>
         <td style="white-space:nowrap" data-label="Cédula">${fmtCI(u.ci)}</td>
         <td class="t-titulo">${esc(u.nombre)}</td>
-        <td data-label="Rol">${ROL_TEXTO[u.rol] || esc(u.rol)}</td>
+        <td data-label="Rol">${ROL_TEXTO[u.rol] || esc(u.rol)}${u.supervisor ? `<div class="muted small">Supervisor: ${esc(u.supervisor)}</div>` : ''}</td>
         <td class="t-chip"><span class="chip ${u.activo ? 'ok' : 'off'}">${u.activo ? 'Activo' : 'Inactivo'}</span></td>
         <td style="white-space:nowrap" data-label="Última conexión">${conexionHtml(u)}</td>
         <td class="r t-acciones">${acciones}</td>

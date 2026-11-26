@@ -1,6 +1,6 @@
 // Comparativo anual: acumulado del año, brecha, proyección y tabla de variaciones.
 import assert from 'node:assert/strict';
-import { valorUnidad, resumenAnual, tablaVariaciones, faltaParaIgualar } from '../public/js/anual.js';
+import { valorUnidad, resumenAnual, tablaVariaciones, faltaParaIgualar, metaAnual } from '../public/js/anual.js';
 
 const k = (a, m) => `${a}-${String(m).padStart(2, '0')}`;
 const meses = {};
@@ -77,5 +77,29 @@ assert.equal(falta.falta, 1740 - ytd26); assert.equal(falta.mesesQuedan, 2);
 assert.equal(falta.crecimientoNecesario, (1740 - ytd26) / 290 - 1);
 assert.equal(falta.alcanza, true);
 assert.deepEqual(faltaParaIgualar({ '2026-01': { min: 5 } }, null), []);
+
+// Objetivo anual 2027 = 2026 × 1,10. 2026 todavía no cerró: nov y dic salen de la proyección (estimado).
+const m27 = metaAnual(meses, enCurso, 2027, 0.1);
+const tot27 = m27.find((x) => x.id === 'total');
+assert.equal(tot27.estimado, true);
+assert.deepEqual(tot27.mesesEstimados, [11, 12]);
+assert.ok(Math.abs(tot27.base - r.proyeccion.total) < 1e-9);
+assert.ok(Math.abs(tot27.meta - r.proyeccion.total * 1.1) < 1e-6);
+assert.equal(tot27.metaMes[0], 146 * 1.1);
+assert.equal(tot27.vendido, null); // 2027 todavía no empezó
+assert.equal(m27.length, 6);
+// Objetivo 2026 = 2025 (completo) × 1,10, con lo vendido hasta octubre contra el objetivo de esos meses.
+const tot26 = metaAnual(meses, enCurso, 2026, 0.1).find((x) => x.id === 'total');
+assert.equal(tot26.estimado, false);
+assert.equal(tot26.base, 1740);
+assert.ok(Math.abs(tot26.meta - 1914) < 1e-9);
+assert.equal(tot26.n, 10);
+assert.equal(tot26.vendido, ytd26);
+assert.ok(Math.abs(tot26.metaALaFecha - 1450 * 1.1) < 1e-9);
+assert.ok(Math.abs(tot26.cumplido - ytd26 / 1595) < 1e-9);
+assert.ok(Math.abs(tot26.porMes - (1914 - ytd26) / 2) < 1e-9);
+assert.ok(Math.abs(tot26.proyeccionPct - r.proyeccion.total / 1914) < 1e-9);
+// Sin año base: no hay objetivo
+assert.deepEqual(metaAnual({ '2026-01': { min: 5 } }, null, 2026, 0.1), []);
 
 console.log('anual: todas las pruebas pasaron');

@@ -1,7 +1,8 @@
 // Vista "Dashboard": avance del mes por unidad, proyección, clima, plan día a día.
 import * as API from '../api.js';
 import { UNIDADES, IDS, DIAS_SEMANA, PESOS_MINORISTA, AJUSTE_LLUVIA, parseCorte, calcularReporte, planRestante, cumplimientoPlan, estado, proyeccionLluvia, mesAnterior, mismoMesAnioAnterior, fmtMillones, fmtMiles, fmtPct, fmtVar, fmtFecha, fmtDiaMes, fmtFechaHora, nombreMes } from '../calc.js';
-import { resumirMes, alertasSucursales } from '../sucursales.js';
+import { resumirMes, alertasSucursales, avanceSucursales, ultimoDiaCompleto } from '../sucursales.js';
+import { resumenSupervisores } from '../reportes.js';
 import { avisoCierreHtml } from './cierre.js';
 import { $, CAL_LARGO, COLOR, DIA_CORTO, bar, barW, chipEstado, contarNumeros, esFinde, esc, fmtM1, gauge, handleError, icono, isAdmin, leerPref, state, varHtml, wdDe } from './comun.js';
 
@@ -31,7 +32,12 @@ export async function cargarAlertasSucursales() {
     const d = await API.getSucursales();
     const cfg = d.mes ? await API.getSucursalesConfig(d.mes).catch(() => ({})) : {};
     const cerradas = (cfg.cerradas || []).map((c) => c.sucursal);
-    state.sucAlertas = d.filas?.length ? { mes: d.mes, ...alertasSucursales(resumirMes(d.filas), { cerradas }) } : null;
+    const res = d.filas?.length ? resumirMes(d.filas) : null;
+    // res, objetivos y listado: para el resumen de las sucursales del supervisor que entra.
+    state.sucAlertas = res ? {
+      mes: d.mes, ...alertasSucursales(res, { cerradas }),
+      res, cerradas, objetivos: cfg.objetivos?.filas || [], maestro: cfg.maestro?.filas || [],
+    } : null;
   } catch {
     state.sucAlertas = null;
   }
@@ -381,6 +387,16 @@ export function climaHtml(r, p) {
     </div>`;
 }
 
+// Semáforo de las sucursales de un supervisor, con el mismo cálculo que la pestaña Supervisores.
+const mismoNombre = (x, y) => String(x || '').trim().toLowerCase() === String(y || '').trim().toLowerCase();
+export function misSucursales(a, p, supervisor) {
+  const cerradas = new Set(a.cerradas);
+  const objetivos = a.objetivos.filter((o) => !cerradas.has(o.sucursal));
+  const pesos = (p.corte?.startsWith(a.mes) && p.pesos) || PESOS_MINORISTA;
+  const avance = avanceSucursales(a.res, objetivos, ultimoDiaCompleto(a.res.dias).fecha, pesos, p.especiales || []);
+  return resumenSupervisores(a.res, avance, a.maestro).find((x) => mismoNombre(x.supervisor, supervisor)) || null;
+}
+
 // ---- 3. Vista rápida: lo esencial en una tarjeta ----
 export function rapidoHtml(r, p) {
   const t = r.total;
@@ -390,6 +406,14 @@ export function rapidoHtml(r, p) {
   const enRiesgo = [['Baratote', r.baratote], ['Fineglass', r.unidades.fgl], ['Fineboats', r.unidades.fbt]].filter(([, c]) => c.proyeccionPct < 0.9);
   if (enRiesgo.length) items.push({ tipo: 'risk', txt: `${enRiesgo.map(([n, c]) => `<b>${n}</b> proyecta ${fmtPct(c.proyeccionPct)}`).join(' · ')} del objetivo.` });
   const a = state.sucAlertas;
+  // Supervisor de sucursales: primero, cómo vienen las suyas.
+  const g = a && a.mes === p.corte.slice(0, 7) && state.user?.supervisor ? misSucursales(a, p, state.user.supervisor) : null;
+  if (g) {
+    items.unshift({
+      tipo: g.rojas ? 'risk' : g.amarillas ? 'warn' : 'ok',
+      txt: `<b>Tus ${g.sucursales.length} sucursales</b>: ${g.verdes} en verde, ${g.amarillas} en amarillo, ${g.rojas} en rojo${g.pct === null || g.pct === undefined ? '' : ` · proyectan ${fmtPct(g.pct)} del objetivo`}. <a class="rapido-ir" href="#sucursales/ranking">Ver las tuyas →</a>`,
+    });
+  }
   if (a && a.mes === p.corte.slice(0, 7)) {
     const ver = ' <a class="rapido-ir" href="#sucursales/alertas">Ver alertas →</a>';
     if (a.sinVentaReciente.length) items.push({ tipo: 'risk', txt: `<b>${a.sinVentaReciente.length} sucursal${a.sinVentaReciente.length === 1 ? '' : 'es'}</b> sin venta en los últimos días: ${a.sinVentaReciente.slice(0, 3).map((s) => esc(s.sucursal)).join(', ')}${a.sinVentaReciente.length > 3 ? '…' : ''}.${ver}` });

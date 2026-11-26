@@ -24,6 +24,7 @@ export function setupObjetivos() {
     const b = e.target.closest('[data-obj]');
     if (!b) return;
     if (b.dataset.obj === 'crecer') aplicarCrecimiento();
+    else if (b.dataset.obj === 'anioant') aplicarAnioAnterior();
     else if (b.dataset.obj === 'guardar') guardarSugeridoUI();
     else if (b.dataset.obj === 'confirmar') confirmarSugeridoUI();
   });
@@ -32,8 +33,10 @@ export function setupObjetivos() {
 export async function loadObjetivos(mes) {
   const turno = ++objetivos.turno;
   try {
-    const datos = await API.getObjetivos(mes);
+    // El crecimiento del objetivo anual de ese año (Comparativo anual) es el ajuste sugerido sobre el año anterior.
+    const [datos, anualDatos] = await Promise.all([API.getObjetivos(mes), API.getAnual().catch(() => null)]);
     if (turno !== objetivos.turno) return;
+    objetivos.crecimientoAnual = anualDatos?.metas?.[datos.mes.slice(0, 4)]?.crecimiento ?? 0.1;
     objetivos.datos = datos;
     renderObjetivos();
   } catch (err) {
@@ -155,6 +158,11 @@ export function renderObjetivos() {
           <div><input type="text" inputmode="decimal" id="obj-crec" value="0" aria-label="Ajuste en porcentaje"><span>%</span>
           <button class="btn btn-sm" type="button" data-obj="crecer"${Object.keys(calc.valores).length ? '' : ' disabled title="No hay datos para calcular"'}>Aplicar</button></div>
         </div>
+        <div class="obj-crecer">
+          <label for="obj-crec-aa" class="small">O usar ${esc(nombreCorto(d.mes))} ${y - 1} más</label>
+          <div><input type="text" inputmode="decimal" id="obj-crec-aa" value="${String(Math.round((objetivos.crecimientoAnual ?? 0.1) * 1000) / 10).replace('.', ',')}" aria-label="Crecimiento sobre el año anterior en porcentaje"><span>%</span>
+          <button class="btn btn-sm" type="button" data-obj="anioant"${h1 ? '' : ` disabled title="No hay datos de ${esc(nombreCorto(d.mes))} ${y - 1}"`}>Aplicar</button></div>
+        </div>
         <div class="actions" style="margin:0">
           <button class="btn" type="button" data-obj="guardar">Guardar sugerido</button>
           ${enCurso ? `<button class="btn btn-primary" type="button" data-obj="confirmar">Confirmar como objetivo de ${esc(nombreCorto(d.mes))}</button>` : ''}
@@ -191,6 +199,18 @@ export function aplicarCrecimiento() {
   const g = Number(String($('obj-crec').value).replace(',', '.')) || 0;
   document.querySelectorAll('#obj-contenido input[data-neg]').forEach((el) => {
     const base = calc[el.dataset.neg];
+    if (base !== undefined) el.value = fmtMiles(Math.round((base * (1 + g / 100)) / 1e6) * 1e6);
+  });
+  recalcularSugerido();
+}
+
+// Pone en el sugerido el mismo mes del año anterior más un crecimiento (por defecto el del objetivo anual).
+export function aplicarAnioAnterior() {
+  const d = objetivos.datos;
+  const h1 = d.historia[Number(d.mes.slice(0, 4)) - 1]?.valores || {};
+  const g = Number(String($('obj-crec-aa').value).replace(',', '.')) || 0;
+  document.querySelectorAll('#obj-contenido input[data-neg]').forEach((el) => {
+    const base = h1[el.dataset.neg];
     if (base !== undefined) el.value = fmtMiles(Math.round((base * (1 + g / 100)) / 1e6) * 1e6);
   });
   recalcularSugerido();

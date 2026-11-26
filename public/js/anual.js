@@ -107,6 +107,42 @@ export function tablaVariaciones(meses, anio, hasta, base = anio - 1) {
   });
 }
 
+// Objetivo anual: el año anterior completo × (1 + crecimiento), por unidad. Si el año base todavía no
+// cerró, sus meses que faltan salen de la proyección del Comparativo (mes en curso + tendencia) y el
+// objetivo queda "estimado" hasta que cierre. El objetivo de cada mes es el mismo mes del año base ×
+// (1 + crecimiento), así se puede ver si el año va adelantado o atrasado.
+export function metaAnual(meses, enCurso, anio, crecimiento) {
+  return VISTAS_UNIDAD.map((u) => {
+    const base = Array.from({ length: 12 }, (_, i) => valorUnidad(meses[clave(anio - 1, i + 1)], u.id));
+    const estimados = [];
+    if (base.some((v) => v === null)) {
+      const r = resumenAnual(meses, enCurso, u.id);
+      if (!r || r.anio !== anio - 1 || !r.proyeccion) return null;
+      base.forEach((v, i) => { if (v === null && r.proyeccion.serie[i] !== null) { base[i] = r.proyeccion.serie[i]; estimados.push(i + 1); } });
+      if (base.some((v) => v === null)) return null;
+    }
+    const f = 1 + crecimiento;
+    const metaMes = base.map((v) => v * f);
+    const totalBase = suma(base, 12);
+    const fila = { ...u, base: totalBase, estimado: estimados.length > 0, mesesEstimados: estimados, meta: totalBase * f, metaMes, vendido: null };
+    // Año en curso: lo vendido en los meses cerrados contra el objetivo de esos mismos meses.
+    const r = resumenAnual(meses, enCurso, u.id);
+    if (r && r.anio === anio && r.n > 0) {
+      const metaALaFecha = suma(metaMes, r.n);
+      Object.assign(fila, {
+        n: r.n, vendido: r.ytd.y, metaALaFecha,
+        cumplido: metaALaFecha > 0 ? r.ytd.y / metaALaFecha : null,
+        avance: fila.meta > 0 ? r.ytd.y / fila.meta : null,
+        falta: fila.meta - r.ytd.y,
+        porMes: r.n < 12 ? Math.max(fila.meta - r.ytd.y, 0) / (12 - r.n) : 0,
+        proyeccion: r.proyeccion?.total ?? null,
+        proyeccionPct: r.proyeccion && fila.meta > 0 ? r.proyeccion.total / fila.meta : null,
+      });
+    }
+    return fila;
+  }).filter(Boolean);
+}
+
 // Cuánto falta para igualar el año anterior completo, por unidad: lo vendido en los meses cerrados,
 // el total del año anterior, lo que falta y cuánto hay que crecer en los meses que quedan
 // (contra esos mismos meses del año anterior). Solo unidades con el año anterior completo.

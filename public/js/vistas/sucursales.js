@@ -275,6 +275,11 @@ export async function loadSucursales(mes) {
     suc.config = await API.getSucursalesConfig(datos.mes || hoyAsuncion().slice(0, 7)).catch(() => ({ maestro: null, objetivos: null }));
     suc.info = new Map((suc.config.maestro?.filas || []).map((m) => [m.sucursal, m]));
     suc.cerradas = new Map((suc.config.cerradas || []).map((c) => [c.sucursal, c.fecha]));
+    // Supervisor de sucursales: el ranking arranca filtrado por las suyas (una vez por sesión; después elige libre).
+    if (!suc.supervisorAplicado && state.user?.supervisor) {
+      const mio = [...suc.info.values()].map((m) => m.supervisor).find((s) => s && s.trim().toLowerCase() === state.user.supervisor.trim().toLowerCase());
+      if (mio) { suc.supervisor = mio; suc.supervisorAplicado = true; }
+    }
     if (isAdmin()) {
       if ($('cfg-obj-mes').value === datos.mes) suc.cfgObj = suc.config.objetivos;
       else if (!suc.cfgObj) cargarObjetivosConfig();

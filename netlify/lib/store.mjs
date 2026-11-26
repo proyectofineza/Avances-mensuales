@@ -73,5 +73,5 @@ export async function getActividades(cis) {
 }
 
 export function publicUser(u) {
-  return { ci: u.ci, nombre: u.nombre, rol: u.rol, activo: u.activo, pendiente: Boolean(u.pendiente), creado: u.creado };
+  return { ci: u.ci, nombre: u.nombre, rol: u.rol, activo: u.activo, pendiente: Boolean(u.pendiente), creado: u.creado, supervisor: u.supervisor || '' };
 }

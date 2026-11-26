@@ -128,6 +128,30 @@ try {
       assert.ok((await textoDe(admin, sel)).length > 40, 'la pantalla quedó vacía');
     });
   }
+  await prueba(admin, 'admin · objetivo anual: guardar el crecimiento', async () => {
+    await irA(admin, '#anual');
+    assert.match(await textoDe(admin, '.an-meta'), /Objetivo anual \d{4}/);
+    assert.ok(await admin.eval(`document.querySelectorAll('.an-meta tbody tr').length`) >= 4, 'faltan filas por unidad');
+    await admin.eval(`document.getElementById('meta-crec').value = '12'; document.querySelector('[data-meta-guardar]').click()`);
+    await admin.quieta();
+    assert.match(await textoDe(admin, '.an-meta'), /\+12%/);
+    assert.match(await textoDe(admin, '#meta-msg'), /guardado/i);
+  });
+  await prueba(admin, 'admin · objetivo sugerido: año anterior + %', async () => {
+    await irA(admin, '#objetivos');
+    await admin.eval(`document.querySelector('[data-obj="anioant"]').click()`);
+    const v = await admin.eval(`document.querySelector('#obj-contenido input[data-neg="may"]').value`);
+    assert.ok(v.replace(/\D/g, '').length >= 7, `no se completó el sugerido (${v})`);
+  });
+  await prueba(admin, 'admin · marcar a un usuario como supervisor', async () => {
+    await irA(admin, '#usuarios');
+    await admin.eval(`document.querySelector('[data-accion="supervisor"][data-ci="${USUARIOS.comercial.ci}"]').click()`);
+    await admin.quieta();
+    assert.ok(await admin.eval(`document.querySelectorAll('#sup-lista option').length`) > 0, 'no sugiere los supervisores del listado');
+    await admin.eval(`document.getElementById('sup-input').value = 'Supervisor Dos'; document.querySelector('[data-accion="guardar-sup"]').click()`);
+    await admin.quieta();
+    assert.match(await textoDe(admin, '#users-body'), /Supervisor: Supervisor Dos/);
+  });
   await prueba(admin, 'admin · mismo mes entre Sucursales y Cierre', async () => {
     await irA(admin, '#cierre');
     await admin.eval(`(() => { const s = document.getElementById('cierre-mes'); s.value = ${JSON.stringify(servidor.datos.previo)}; s.dispatchEvent(new Event('change')); })()`);
@@ -178,6 +202,17 @@ try {
     await irA(com, '#ventas');
     assert.equal(await com.eval('location.hash'), '#dashboard');
     assert.equal(await visible(com, '#suc-admin-btn'), false);
+  });
+  await prueba(com, 'comercial supervisor · ve primero sus sucursales', async () => {
+    await irA(com, '#dashboard');
+    assert.match(await textoDe(com, '.rapido-lista'), /Tus \d+ sucursales/);
+    await irA(com, '#sucursales/ranking');
+    assert.equal(await com.eval(`document.getElementById('suc-supervisor')?.value`), 'Supervisor Dos');
+  });
+  await prueba(com, 'comercial · ve el objetivo anual pero no lo cambia', async () => {
+    await irA(com, '#anual');
+    assert.match(await textoDe(com, '.an-meta'), /Objetivo anual/);
+    assert.equal(await com.eval(`!!document.getElementById('meta-crec')`), false);
   });
   for (const hash of ['#sucursales/resumen', '#sucursales/ranking', '#cierre', '#anual']) {
     await prueba(com, `comercial · ${hash}`, async () => {

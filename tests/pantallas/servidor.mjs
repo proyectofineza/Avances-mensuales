@@ -74,6 +74,13 @@ async function sembrar() {
   const publicado = { ...reporte(corte, avance), publicadoEn: new Date().toISOString(), por: 'Admin Prueba' };
   const ultimoPrevio = `${previo}-${String(diasDelMes(previo)).padStart(2, '0')}`;
   const cierrePrevio = { ...reporte(ultimoPrevio, 1.02), publicadoEn: `${ultimoPrevio}T22:00:00.000Z`, por: 'Admin Prueba' };
+  // Meses cerrados de los dos años anteriores y del año en curso (planilla mensual), para el Comparativo anual.
+  const historia = {};
+  for (let m = `${Number(mes.slice(0, 4)) - 2}-01`; m < previo; m = sumarDias(`${m}-28`, 7).slice(0, 7)) {
+    const f = 0.85 + azar() * 0.3;
+    historia[m] = Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, Math.round(v * f)]));
+  }
+  await setJSON('historia-mensual', historia);
   await setJSON('published', publicado);
   await setJSON(`history/${mes}`, [publicado]);
   await setJSON(`history/${previo}`, [cierrePrevio]);

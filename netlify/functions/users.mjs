@@ -90,6 +90,11 @@ export default handler(async (req, context) => {
       user.intentosFallidos = 0;
       user.bloqueadoHasta = null;
       mensaje = `Se restableció el PIN de ${user.nombre}.`;
+    } else if (typeof body.supervisor === 'string') {
+      // Supervisor de sucursales (el nombre como figura en el listado de sucursales): ve primero las suyas.
+      const sup = body.supervisor.trim().replace(/\s+/g, ' ').slice(0, 60);
+      if (sup) user.supervisor = sup; else delete user.supervisor;
+      mensaje = sup ? `${user.nombre} quedó como supervisor de las sucursales de ${sup}.` : `${user.nombre} ya no está marcado como supervisor.`;
     } else {
       throw new HttpError(400, 'Solicitud inválida.');
     }

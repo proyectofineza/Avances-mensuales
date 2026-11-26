@@ -1201,6 +1201,12 @@ kbd {
 .an-falta-tabla .chip { white-space: nowrap; }
 .an-falta-tabla td { white-space: nowrap; }
 @media (max-width: 600px) { .an-falta-tabla tr.sub td:first-child { padding-left: 12px; } }
+/* Objetivo anual: crecimiento sobre el año anterior (admin) */
+.an-meta .card-head { flex-wrap: wrap; gap: 10px; }
+.meta-crec { margin: 0 0 12px; }
+.meta-crec > div { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.meta-crec input { width: 70px; text-align: right; }
+.meta-crec p { margin: 6px 0 0; }
 .an-c-acu { font-weight: 800 !important; border: 1px solid var(--vidrio-borde); }
 .an-exportar { display: flex; gap: 8px; justify-content: flex-end; }
 @media (max-width: 600px) {
