@@ -138,8 +138,16 @@ export function setupSucursales() {
   });
   $('suc-panel-cerrar').addEventListener('click', cerrarPanel);
   $('suc-panel-fondo').addEventListener('click', cerrarPanel);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('suc-panel').hidden) cerrarPanel(); });
+  // Con el buscador abierto encima, Esc cierra solo el buscador.
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('suc-panel').hidden && !$('buscador').open) cerrarPanel(); });
+  // Barra de pestañas: en el celular se desliza; el degradé a la derecha avisa que hay más y se va al llegar al final.
+  $('suc-subtabs').addEventListener('scroll', marcarFinPestanas, { passive: true });
+  window.addEventListener('resize', marcarFinPestanas);
   if (!isAdmin()) return;
+
+  // Las tres cajas de administración (planilla, configuración, portal) quedan detrás de un solo botón.
+  $('suc-admin-btn').addEventListener('click', () => mostrarAdminSucursales($('suc-admin').hidden));
+  if (leerPref('suc-admin', 'no') === 'si') mostrarAdminSucursales(true);
 
   $('suc-mes-carga').value = hoyAsuncion().slice(0, 7);
   $('suc-archivo').addEventListener('change', async () => {
@@ -299,13 +307,38 @@ export function elegirSubSucursal(sub, agregarAlHistorial = true, pintar = true)
   if (pintar) renderSucursales();
 }
 
+// Muestra u oculta las cajas de administración de Sucursales (y recuerda la elección en este navegador).
+export function mostrarAdminSucursales(si, recordar = true) {
+  $('suc-admin').hidden = !si;
+  $('suc-admin-btn').setAttribute('aria-expanded', String(si));
+  $('suc-admin-btn').classList.toggle('active', si);
+  if (recordar) guardarPref('suc-admin', si ? 'si' : 'no');
+}
+
+// La pestaña abierta queda a la vista en la barra (en el celular no entran las 9 a lo ancho).
+function centrarPestanaActiva() {
+  const nav = $('suc-subtabs');
+  const b = nav.querySelector('.active');
+  if (!b || nav.scrollWidth <= nav.clientWidth) { marcarFinPestanas(); return; }
+  const rn = nav.getBoundingClientRect(), rb = b.getBoundingClientRect();
+  if (rb.left < rn.left + 8 || rb.right > rn.right - 40) {
+    nav.scrollTo({ left: nav.scrollLeft + (rb.left + rb.width / 2) - (rn.left + rn.width / 2), behavior: 'auto' });
+  }
+  marcarFinPestanas();
+}
+
+function marcarFinPestanas() {
+  const nav = $('suc-subtabs');
+  nav.classList.toggle('al-final', nav.scrollLeft + nav.clientWidth >= nav.scrollWidth - 4);
+}
+
 export function renderSucursales() {
   const d = suc.datos;
   const el = $('suc-contenido');
   if (!d?.mes || !d.filas.length) {
     $('suc-sub').textContent = '';
     $('suc-subtabs').hidden = true;
-    if (isAdmin()) $('suc-carga').open = true;
+    if (isAdmin()) { mostrarAdminSucursales(true, false); $('suc-carga').open = true; }
     el.innerHTML = `<div class="card empty">Todavía no hay ventas por sucursal cargadas.${isAdmin() ? ' Cargá la primera planilla arriba.' : ''}</div>`;
     return;
   }
@@ -331,6 +364,7 @@ export function renderSucursales() {
     b.classList.toggle('active', activa);
     b.setAttribute('aria-selected', String(activa));
   });
+  if (currentView() === 'sucursales') centrarPestanaActiva();
 
   if (suc.sub === 'ranking') { el.innerHTML = rankingHtml(); renderRankingTabla(); }
   else if (suc.sub === 'zonas') el.innerHTML = zonasHtml();

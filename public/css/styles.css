@@ -720,10 +720,20 @@ textarea {
 .suc-carga[open] { padding: 0 22px 22px; }
 .suc-carga[open] > summary { padding: 16px 0; border-bottom: 1px solid var(--border); border-radius: 0; }
 
+/* Botones del encabezado de Sucursales y cajas de administración (detrás de "Administrar") */
+.suc-head-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.suc-head-btns .btn { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
+.suc-head-btns .ico { width: 16px; height: 16px; }
+#suc-admin-btn.active { background: var(--acento-nav); border-color: var(--vidrio-borde-2); }
+.suc-admin { animation: aparecer .3s both; }
+
+/* Pestañas de Sucursales: quedan fijas arriba al bajar por la página */
 .subtabs {
   display: flex; gap: 4px; margin-bottom: 16px; padding: 5px; overflow-x: auto;
+  position: sticky; top: 10px; z-index: 15;
   background: var(--vidrio); border: 1px solid var(--vidrio-borde); border-radius: 16px;
   -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  scrollbar-width: thin;
 }
 .subtabs button {
   font: inherit; font-size: 14px; font-weight: 600; color: var(--text-2); background: none; border: 0;
@@ -918,6 +928,50 @@ textarea {
 .panel .sp-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 body.panel-abierto { overflow: hidden; }
 
+/* Buscador de sucursal */
+.buscar-btn {
+  display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 12px; margin: 0 0 6px;
+  border-radius: 12px; border: 1px solid var(--vidrio-borde); background: var(--vidrio-2);
+  color: var(--text-2); font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; text-align: left;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.buscar-btn:hover { color: var(--text); border-color: var(--vidrio-borde-2); }
+.buscar-btn span { flex: 1; }
+.buscar-btn .ico { width: 18px; height: 18px; }
+kbd {
+  font: inherit; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px;
+  border: 1px solid var(--vidrio-borde-2); color: var(--text-2); background: var(--vidrio);
+}
+.topbar-buscar {
+  margin-left: auto; width: 42px; height: 42px; border-radius: 12px; border: 1px solid var(--vidrio-borde); background: var(--vidrio-2);
+  color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.buscador {
+  width: min(560px, calc(100% - 32px)); max-height: min(560px, calc(100dvh - 120px)); margin: 12vh auto auto; padding: 0;
+  border: 1px solid var(--vidrio-borde-2); border-radius: 18px; background: var(--solido); color: var(--text);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .45); overflow: hidden;
+}
+.buscador[open] { display: flex; flex-direction: column; animation: aparecer .2s both; }
+.buscador::backdrop { background: rgba(0, 0, 0, .5); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+.buscador-campo { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-bottom: 1px solid var(--border); }
+.buscador-campo .ico { width: 20px; height: 20px; color: var(--text-2); flex: none; }
+.buscador-campo input { flex: 1; border: 0; background: none; height: 44px; padding: 0; font-size: 16px; box-shadow: none; outline: none; color: var(--text); }
+.buscador-campo input::-webkit-search-cancel-button { display: none; }
+.buscador-cerrar { border: 0; background: none; font-size: 26px; line-height: 1; cursor: pointer; color: var(--text-2); width: 40px; height: 40px; border-radius: 10px; }
+.buscador-cerrar:hover { background: var(--vidrio-2); color: var(--text); }
+.buscador-lista { list-style: none; margin: 0; padding: 6px; overflow-y: auto; flex: 1; }
+.buscador-lista li[data-i] {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 12px; cursor: pointer;
+}
+.buscador-lista li.elegido { background: var(--acento-nav); }
+.buscador-nombre { display: grid; gap: 2px; min-width: 0; }
+.buscador-nombre b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.buscador-nombre small { color: var(--text-2); font-size: 12px; }
+.buscador-dato { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.buscador-vacio { padding: 18px 12px; color: var(--text-2); font-size: 14px; text-align: center; }
+.buscador-pie { margin: 0; padding: 8px 16px; border-top: 1px solid var(--border); }
+@media (max-width: 600px) { .buscador-pie { display: none; } }
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 1100px) {
@@ -1004,12 +1058,17 @@ body.panel-abierto { overflow: hidden; }
 
   /* Pestañas de Sucursales fijas debajo de la barra superior, con aviso de que hay más a la derecha. */
   .subtabs {
-    position: sticky; top: 62px; z-index: 15;
+    top: 62px;
     -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent);
     mask-image: linear-gradient(90deg, #000 85%, transparent);
-    scroll-snap-type: x proximity;
+    scroll-snap-type: x proximity; scrollbar-width: none;
   }
+  .subtabs::-webkit-scrollbar { display: none; }
+  .subtabs.al-final { -webkit-mask-image: none; mask-image: none; }
   .subtabs button { scroll-snap-align: start; }
+  /* El buscador se abre con la lupa de la barra superior. */
+  .sidebar .buscar-btn { display: none; }
+  .buscador { margin-top: 10px; }
 
   /* Saltos a cada sección del dashboard */
   .saltos {

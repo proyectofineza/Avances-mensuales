@@ -43,7 +43,8 @@ netlify/lib/         auth.mjs (PIN scrypt, sesión HMAC, helpers) y store.mjs (B
 public/js/calc.js    reglas de cálculo, compartidas por el front y publish.mjs (aviso Teams)
 public/js/app.js     entrada: sesión, menú y ruteo por hash (#vista o #vista/pestaña, ej. #sucursales/matriz)
 public/js/vistas/    un módulo por vista (ventas, usuarios, dashboard, sucursales, suc-admin,
-                     suc-analisis, cierre, objetivos, anual) + comun.js (utilidades compartidas)
+                     suc-analisis, cierre, objetivos, anual), buscador.js (Ctrl+K: buscar sucursal)
+                     y comun.js (utilidades compartidas)
 tests/               pruebas de calc.js
 ```
 

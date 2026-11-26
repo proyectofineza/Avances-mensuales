@@ -25,6 +25,10 @@
   <!-- Menú lateral (en celular se abre con el botón del encabezado) -->
   <aside class="sidebar" id="sidebar" aria-label="Menú principal">
     <div class="brand"><span class="brand-logo"><img src="img/fineza.png" alt="Fineza"></span><span class="brand-txt">Ventas</span></div>
+    <button class="buscar-btn" type="button" data-buscar hidden>
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <span>Buscar sucursal</span><kbd>Ctrl K</kbd>
+    </button>
     <nav class="tabs" id="tabs" hidden>
       <p class="nav-grupo">Tableros</p>
       <a class="tab" href="#dashboard" data-view="dashboard">
@@ -84,6 +88,9 @@
     </button>
     <span class="brand-logo"><img src="img/fineza.png" alt="Fineza"></span>
     <span class="topbar-titulo" id="topbar-titulo"></span>
+    <button class="topbar-buscar" type="button" data-buscar aria-label="Buscar sucursal" title="Buscar sucursal" hidden>
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    </button>
   </header>
 
   <div class="notice-wrap" id="notice-wrap" hidden>
@@ -410,10 +417,18 @@
         <div class="suc-mes">
           <label for="suc-mes" class="small">Mes</label>
           <select id="suc-mes"></select>
-          <a class="btn btn-sm" href="/tv.html" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none" title="Pantalla completa para TV o reuniones: va rotando el resumen, el ranking, los supervisores y las ciudades">Modo pantalla ↗</a>
+          <div class="suc-head-btns">
+            <a class="btn btn-sm" href="/tv.html" target="_blank" rel="noopener" title="Pantalla completa para TV o reuniones: va rotando el resumen, el ranking, los supervisores y las ciudades">Modo pantalla ↗</a>
+            <button class="btn btn-sm solo-admin" type="button" id="suc-admin-btn" aria-expanded="false" aria-controls="suc-admin" title="Cargar planilla, configurar sucursales y portal de sucursales">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+              Administrar
+            </button>
+          </div>
         </div>
       </div>
 
+      <!-- Administración (solo admin): oculta detrás del botón "Administrar" para que las pestañas queden primero -->
+      <div class="suc-admin" id="suc-admin" hidden>
       <details class="card solo-admin suc-carga" id="suc-carga">
         <summary>
           <span class="suc-carga-titulo">Cargar planilla</span>
@@ -553,6 +568,7 @@
         </div>
         <div class="alert form-msg" id="sa-hist-msg" hidden></div>
       </details>
+      </div>
 
       <nav class="subtabs" id="suc-subtabs" role="tablist" aria-label="Vistas de sucursales" hidden>
         <button type="button" role="tab" data-sub="resumen">Resumen</button>
@@ -581,6 +597,18 @@
   </aside>
   </div>
 
+  <!-- Buscador de sucursal (Ctrl+K o "/" en la computadora; la lupa en el celular) -->
+  <dialog class="buscador" id="buscador" aria-label="Buscar sucursal">
+    <div class="buscador-campo">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="buscador-input" type="search" placeholder="Sucursal o ciudad…" autocomplete="off" spellcheck="false"
+        role="combobox" aria-expanded="true" aria-controls="buscador-lista" aria-autocomplete="list">
+      <button type="button" class="buscador-cerrar" id="buscador-cerrar" aria-label="Cerrar">&times;</button>
+    </div>
+    <ul class="buscador-lista" id="buscador-lista" role="listbox" aria-label="Sucursales"></ul>
+    <p class="buscador-pie muted small"><span class="solo-escritorio">↑ ↓ para moverte · Enter para abrir · Esc para cerrar</span></p>
+  </dialog>
+
   <!-- Barra de navegación inferior (solo celular) -->
   <nav class="nav-inferior" aria-label="Secciones">
     <a class="tab tab-inf" href="#dashboard" data-view="dashboard">
@@ -591,6 +619,10 @@
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l1.6-5h14.8L21 9"/><path d="M4 9v11h16V9"/><path d="M9.5 20v-5.5h5V20"/><path d="M3 9h18"/></svg>
       <span>Sucursales</span>
     </a>
+    <a class="tab tab-inf solo-admin" href="#ventas" data-view="ventas">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>
+      <span>Cargar</span>
+    </a>
     <a class="tab tab-inf" href="#cierre" data-view="cierre">
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M8.5 15l2.5 2.5 4.5-5"/></svg>
       <span>Cierre</span>
@@ -599,17 +631,10 @@
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16l4-5 3 3 6-7"/><path d="M7 19l4-3 3 1 6-4" opacity=".5"/></svg>
       <span>Anual</span>
     </a>
-    <a class="tab tab-inf solo-admin" href="#ventas" data-view="ventas">
-      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>
-      <span>Cargar</span>
-    </a>
-    <a class="tab tab-inf solo-admin" href="#usuarios" data-view="usuarios">
-      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M16 4.1a4 4 0 0 1 0 7.8"/><path d="M22 21a7 7 0 0 0-4-6.3"/></svg>
-      <span>Usuarios</span><span class="tab-badge" id="tab-badge-inf" hidden></span>
-    </a>
+    <!-- Usuarios, Objetivo y Anual (admin) están en "Más"; el número avisa de solicitudes de acceso pendientes. -->
     <button class="tab tab-inf" type="button" id="nav-mas" aria-controls="sidebar">
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
-      <span>Más</span>
+      <span>Más</span><span class="tab-badge" id="tab-badge-inf" hidden></span>
     </button>
   </nav>
 

@@ -2,6 +2,7 @@
 import * as API from './api.js';
 import { calcularReporte } from './calc.js';
 import { anual, loadAnual, setupAnual } from './vistas/anual.js';
+import { setupBuscador } from './vistas/buscador.js';
 import { cierre, loadCierre, setupCierre } from './vistas/cierre.js';
 import { $, ROL_TEXTO, VISTAS, contarNumeros, currentView, guardarPref, isAdmin, partesHash, sinMovimiento, state } from './vistas/comun.js';
 import { planHtml, refreshDashboard } from './vistas/dashboard.js';
@@ -58,6 +59,7 @@ async function init() {
     setupUsuarios();
   }
   setupSucursales();
+  setupBuscador();
   setupCierre();
   setupAnual();
   if (isAdmin()) setupObjetivos();
@@ -126,6 +128,9 @@ function route() {
     t.classList.toggle('active', t.dataset.view === view);
     if (t.dataset.view === view) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
   });
+  // En el celular, "Más" queda marcado cuando la pantalla abierta no está en la barra (Usuarios, Objetivo, Anual).
+  const enBarra = [...document.querySelectorAll('.nav-inferior .tab[data-view]')].some((t) => !t.hidden && t.dataset.view === view);
+  $('nav-mas').classList.toggle('active', !enBarra);
   $('topbar-titulo').textContent = TITULO_VISTA[view] || '';
   if (view === 'ventas') loadVentas();
   if (view === 'usuarios') loadUsuarios();

@@ -127,10 +127,12 @@ export function conexionHtml(u) {
 
 export function actualizarBadge() {
   const n = state.users.filter((u) => u.pendiente).length;
+  // tab-badge: Usuarios en el menú lateral; tab-badge-inf: "Más" en la barra del celular.
   for (const id of ['tab-badge', 'tab-badge-inf']) {
     $(id).textContent = n;
     $(id).hidden = n === 0;
   }
+  $('nav-mas').setAttribute('aria-label', n ? `Más (${n} solicitud${n === 1 ? '' : 'es'} de acceso pendiente${n === 1 ? '' : 's'})` : 'Más');
 }
 
 export function renderPendientes() {
